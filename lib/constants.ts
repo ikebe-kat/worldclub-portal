@@ -79,3 +79,9 @@ export function calendarDisplayName(fullName: string, empCode?: string): string 
   const surname = parts[0] || fullName;
   return surname;
 }
+
+/** import互換用（ワールドクラブでは使用しない） */
+export const KOUKYU_PART_CODES: readonly string[] = [];
+export const isKoukyuPart = (_empCode: string): boolean => false;
+export const displayReason = (reason: string | null, _empCode: string): string | null => reason;
+export const displayChipLabel = (label: string, _empCode: string): string => label;
