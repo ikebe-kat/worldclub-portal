@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { T } from "@/lib/constants";
 import { supabase } from "@/lib/supabase";
@@ -136,7 +136,7 @@ export default function PaidLeaveSub({ employee }: { employee: any }) {
 
     /* 従業員 */
     const { data: ed } = await supabase.from("employees").select("id, employee_code, full_name, store_id, hire_date, weekly_work_days").eq("company_id", employee.company_id).order("employee_code");
-    const emps: EmpInfo[] = (ed || []).map((e: any) => ({
+    const emps: EmpInfo[] = (ed || []).filter((e: any) => !["W02","W49","W67"].includes(e.employee_code)).map((e: any) => ({
       id: e.id, code: e.employee_code, name: e.full_name,
       store_name: storeMap[e.store_id] || "", store_id: e.store_id,
       hire_date: e.hire_date, weekly: e.weekly_work_days ?? 5,

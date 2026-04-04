@@ -385,7 +385,7 @@ const IndividualSub = ({ employee }: { employee: any }) => {
       const storeMap: Record<string, string> = {};
       storeList.forEach((s: { id: string; name: string }) => { storeMap[s.id] = s.name; });
       const { data: ed } = await supabase.from("employees").select("id, employee_code, full_name, store_id, department, role, hire_date, paid_leave_grant_date, holiday_calendar").eq("company_id", employee.company_id).order("employee_code");
-      setEmps((ed || []).map((e: any) => ({ ...e, code: e.employee_code, name: e.full_name, store_name: storeMap[e.store_id] || "" })));
+      setEmps((ed || []).filter((e: any) => !["W02","W49","W67"].includes(e.employee_code)).map((e: any) => ({ ...e, code: e.employee_code, name: e.full_name, store_name: storeMap[e.store_id] || "" })));
     })();
   }, [employee?.company_id]);
 
@@ -696,7 +696,7 @@ const DailySub = ({ employee }: { employee: any }) => {
       const storeMap: Record<string, string> = {};
       storeList.forEach((s: { id: string; name: string }) => { storeMap[s.id] = s.name; });
       const { data: ed } = await supabase.from("employees").select("id, employee_code, full_name, store_id, department, role, hire_date, paid_leave_grant_date, holiday_calendar").eq("company_id", employee.company_id).order("employee_code");
-      setEmps((ed || []).map((e: any) => ({ ...e, code: e.employee_code, name: e.full_name, store_name: storeMap[e.store_id] || "" })));
+      setEmps((ed || []).filter((e: any) => !["W02","W49","W67"].includes(e.employee_code)).map((e: any) => ({ ...e, code: e.employee_code, name: e.full_name, store_name: storeMap[e.store_id] || "" })));
     })();
   }, [employee?.company_id]);
 
@@ -892,7 +892,7 @@ const MonthlySub = ({ employee }: { employee: any }) => {
       const storeMap: Record<string, string> = {};
       storeList.forEach((s: { id: string; name: string }) => { storeMap[s.id] = s.name; });
       const { data: ed } = await supabase.from("employees").select("id, employee_code, full_name, store_id, department, role, hire_date, paid_leave_grant_date, holiday_calendar").eq("company_id", employee.company_id).order("employee_code");
-      setEmps((ed || []).map((e: any) => ({ ...e, code: e.employee_code, name: e.full_name, store_name: storeMap[e.store_id] || "" })));
+      setEmps((ed || []).filter((e: any) => !["W02","W49","W67"].includes(e.employee_code)).map((e: any) => ({ ...e, code: e.employee_code, name: e.full_name, store_name: storeMap[e.store_id] || "" })));
     })();
   }, [employee?.company_id]);
 
@@ -1198,7 +1198,7 @@ const DocumentsSub = ({ employee }: { employee: any }) => {
     if (!employee?.company_id) return;
     setLoading(true);
     const { data: empData } = await supabase.from("employees").select("id, employee_code, full_name, store_id, department, role, hire_date, paid_leave_grant_date, holiday_calendar").eq("company_id", employee.company_id).order("employee_code");
-    const empList = (empData || []).map((e: any) => ({ ...e, code: e.employee_code, name: e.full_name, store_name: "" }));
+    const empList = (empData || []).filter((e: any) => !["W02","W49","W67"].includes(e.employee_code)).map((e: any) => ({ ...e, code: e.employee_code, name: e.full_name, store_name: "" }));
     setEmps(empList);
     const empMap: Record<string, { code: string; name: string }> = {};
     empList.forEach((e: EmpOption) => { empMap[e.id] = { code: e.code, name: e.name }; });
