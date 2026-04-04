@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 // ═══════════════════════════════════════════
 // components/tabs/RosterTab.tsx — 名簿タブ（マイページ機能実装済み）
 // ═══════════════════════════════════════════
@@ -476,11 +476,11 @@ export default function RosterTab({ employee }: { employee: any }) {
       .select("id, employee_code, full_name, full_name_kana, email, phone, gender, birth_date, hire_date, employment_type, position, department, grade, role, store_id, skills, photo_url")
       .eq("company_id", employee.company_id)
       .order("employee_code");
-
     const mapped: EmpRecord[] = (empData || []).map((e: any) => {
       const rawStoreName = storeNameMap[e.store_id] || "";
       const { short, groupId } = resolveStore(rawStoreName);
-      return { ...e, store_short: short, group_id: groupId };
+      const isHQ = ["W02","W49","W67"].includes(e.employee_code);
+      return { ...e, store_short: isHQ ? "本部" : short, group_id: groupId };
     });
 
     setAllEmps(mapped);

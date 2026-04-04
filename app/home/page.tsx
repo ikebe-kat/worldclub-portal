@@ -156,7 +156,13 @@ export default function HomePage() {
   const perm = getPermLevel(employee.role || null);
 
   let TABS: { id: TabId; label: string }[];
-  if (perm === "super" || perm === "admin") {
+  if (perm === "super" && employee.employee_code !== "W67") {
+    TABS = [
+      { id: "calendar", label: "カレンダー" },
+      { id: "roster",   label: "名簿" },
+      { id: "admin",    label: "管理" },
+    ];
+  } else if (perm === "super" || perm === "admin") {
     TABS = [...BASE_TABS, { id: "admin", label: "管理" }];
   } else {
     TABS = BASE_TABS;

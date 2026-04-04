@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { T } from "@/lib/constants";
 import Dialog from "@/components/ui/Dialog";
@@ -375,6 +375,7 @@ export default function EmployeeManageSub({ employee }: { employee: any }) {
   const filtered = useMemo(() => {
     let list = emps;
     if (!showInactive) list = list.filter(e => e.is_active !== false); else list = list.filter(e => e.is_active === false);
+    list = list.filter(e => !["W02","W49","W67"].includes(e.employee_code));
     if (storeFilter !== "all") list = list.filter(e => e.store_id === storeFilter);
     if (search) { const q = search.toLowerCase(); list = list.filter(e => e.full_name.toLowerCase().includes(q) || e.employee_code.includes(q) || (e.full_name_kana || "").toLowerCase().includes(q)); }
     return list;
