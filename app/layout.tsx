@@ -1,4 +1,4 @@
-import type { Metadata, Viewport } from "next";
+﻿import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -13,13 +13,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "WORLD CLUB 勤怠管理",
-  description: "株式会社ワールドクラブ 勤怠管理システム",
+  title: "WORLD CLUB 社内ポータル",
+  description: "株式会社ワールドクラブ 社内ポータルシステム",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "WC勤怠管理",
+    title: "WC社内ポータル",
   },
 };
 

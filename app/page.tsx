@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
@@ -75,7 +75,7 @@ export default function LoginPage() {
       <div className="bg-white rounded shadow-sm border border-gray-100 p-8 w-full max-w-sm">
         <div className="text-center mb-8">
           <img src="/worldclub-logo.png" alt="WORLD CLUB" className="h-20 mx-auto mb-4" style={{ borderRadius: 8 }} />
-          <p className="text-gray-400 text-xs tracking-widest">勤怠管理</p>
+          <p className="text-gray-400 text-xs tracking-widest">社内ポータル</p>
         </div>
 
         <div className="space-y-4">
@@ -85,7 +85,7 @@ export default function LoginPage() {
               type="text"
               value={employeeCode}
               onChange={(e) => setEmployeeCode(e.target.value)}
-              placeholder="例: 1 または WC001"
+              placeholder="例: 001"
               className="w-full border border-gray-200 rounded px-4 py-3 text-gray-800 placeholder-gray-300 focus:outline-none focus:border-green-700 text-lg"
               onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
             />

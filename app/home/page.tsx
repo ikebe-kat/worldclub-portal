@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { T } from "@/lib/constants";
@@ -185,7 +185,7 @@ export default function HomePage() {
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <WcLogo />
           <span style={{ fontSize: 13, fontWeight: 700, color: T.text, letterSpacing: "1px" }}>WORLD CLUB</span>
-          <span style={{ fontSize: 12, color: T.textMuted, marginLeft: 2 }}>勤怠管理</span>
+          <span style={{ fontSize: 12, color: T.textMuted, marginLeft: 2 }}>社内ポータル</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{employee.full_name}</span>

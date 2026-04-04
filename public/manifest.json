@@ -1,7 +1,7 @@
-{
-  "name": "WORLD CLUB 勤怠管理",
-  "short_name": "WC勤怠管理",
-  "description": "株式会社ワールドクラブ 勤怠管理",
+﻿{
+  "name": "WORLD CLUB 社内ポータル",
+  "short_name": "WC社内ポータル",
+  "description": "株式会社ワールドクラブ 社内ポータル",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
