@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { T, displayReason, displayChipLabel, isKoukyuPart } from "@/lib/constants";
 import { Badge, ReasonBadges } from "@/components/ui";
@@ -27,8 +27,8 @@ const ALL_SUB_TABS: { id: SubTab; label: string; visibleTo: "owner_only" | "supe
   { id: "employee_manage", label: "従業員管理", visibleTo: "super_only" },
   { id: "settings", label: "設定", visibleTo: "owner_only" },
 ];
-const OWNER_CODES = ["002", "067"];
-const SUPER_CODES = ["002", "018", "067"];
+const OWNER_CODES = ["W02", "W67"];
+const SUPER_CODES = ["W02", "W49", "W67"];
 
 const DOW = ["日","月","火","水","木","金","土"];
 const fmTime = (t: string | null) => t ? t.slice(0,5) : "—";
@@ -1289,7 +1289,7 @@ export default function AdminTab({ employee }: { employee: any }) {
   const isSuper = SUPER_CODES.includes(myCode);
   const visibleTabs = ALL_SUB_TABS.filter(t => {
     if (t.visibleTo === "owner_only") return isOwner;
-    if (t.visibleTo === "owner_or_kondo") return isOwner || myCode === "003";
+    if (t.visibleTo === "owner_or_kondo") return isOwner;
     if (t.visibleTo === "super_only") return isOwner || isSuper;
     return true;
   });
