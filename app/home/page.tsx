@@ -156,7 +156,7 @@ export default function HomePage() {
   const perm = getPermLevel(employee.role || null);
 
   let TABS: { id: TabId; label: string }[];
-  if (perm === "super" && employee.employee_code !== "W67") {
+  if (perm === "super" && employee.employee_code !== "W67" && employee.employee_code !== "WC001") {
     TABS = [
       { id: "calendar", label: "カレンダー" },
       { id: "roster",   label: "名簿" },

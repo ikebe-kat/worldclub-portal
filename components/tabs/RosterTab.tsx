@@ -317,7 +317,7 @@ const ProfileModal = ({ emp, viewerPerm, viewerCode, isSelf, companyId, onClose,
         >
           {/* ヘッダー */}
           <div style={{
-            background: `linear-gradient(135deg, ${T.primary}, #00D4E8)`,
+            background: `linear-gradient(135deg, #1a4b24, #2d7a3a)`,
             padding: "24px 20px 18px", color: "#fff",
             borderRadius: "12px 12px 0 0", position: "relative",
           }}>
