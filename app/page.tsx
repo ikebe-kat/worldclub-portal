@@ -43,7 +43,7 @@ export default function LoginPage() {
   const handleLogin = async () => {
     setError('')
     setLoading(true)
-    const code = employeeCode.toUpperCase().startsWith("WC")
+    const code = employeeCode.toUpperCase().startsWith("WC") || employeeCode.toUpperCase().startsWith("W")
       ? employeeCode.toUpperCase()
       : "WC" + employeeCode.padStart(3, '0');
 
