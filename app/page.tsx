@@ -15,6 +15,7 @@ export default function LoginPage() {
     // ポータルからの自動ログイン
     const portalToken = params.get("portal_token");
     if (portalToken) {
+      setPortalLoading(true);
       (async () => {
         const { data } = await supabase
           .from('employees')
@@ -39,6 +40,7 @@ export default function LoginPage() {
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [portalLoading, setPortalLoading] = useState(false)
 
   const handleLogin = async () => {
     setError('')
@@ -69,6 +71,8 @@ export default function LoginPage() {
     const empData = { ...data, store_name: (data as any).stores?.store_name || "" }; delete (empData as any).stores; localStorage.setItem('employee', JSON.stringify(empData))
     router.push('/home')
   }
+
+  if (portalLoading) return (<div className="min-h-screen bg-gray-50 flex items-center justify-center"><p className="text-gray-400 text-sm">読み込み中...</p></div>);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
