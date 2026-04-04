@@ -59,6 +59,7 @@ export default function HomePage() {
     }
     const emp = JSON.parse(stored);
     setEmployee(emp);
+    if (emp.employee_code === "W02" || emp.employee_code === "W49") setTab("calendar");
   }, []);
 
   /* ── バッジ件数取得 ── */
