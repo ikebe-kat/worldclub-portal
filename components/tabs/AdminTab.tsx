@@ -10,14 +10,16 @@ import PaidLeaveSub from "@/components/tabs/PaidLeaveSub";
 import SharoushiSub from "@/components/tabs/SharoushiSub";
 import EmployeeManageSub from "@/components/tabs/EmployeeManageSub";
 import SettingsSub from "@/components/tabs/SettingsSub";
+import ShiftSub from "@/components/tabs/ShiftSub";
 
 interface EmpOption { id: string; code: string; name: string; store_id: string; store_name: string; department: string | null; role: string | null; hire_date: string | null; paid_leave_grant_date: string | null; holiday_calendar: string | null; }
 interface AttRow { id: string; attendance_date: string; day_of_week: string | null; punch_in: string | null; punch_out: string | null; reason: string | null; break_minutes: number | null; late_minutes: number | null; early_leave_minutes: number | null; actual_hours: number | null; scheduled_hours: number | null; overtime_hours: number | null; over_under: number | null; employee_note: string | null; admin_memo: string | null; is_holiday: boolean | null; work_pattern_code: string | null; }
 
-type SubTab = "notifications" | "paidleave" | "sharoushi" | "individual" | "daily" | "monthly" | "requests" | "documents" | "employee_manage" | "settings";
+type SubTab = "notifications" | "paidleave" | "shift" | "sharoushi" | "individual" | "daily" | "monthly" | "requests" | "documents" | "employee_manage" | "settings";
 const ALL_SUB_TABS: { id: SubTab; label: string; visibleTo: "owner_only" | "super_only" | "all" }[] = [
   { id: "notifications", label: "お知らせ", visibleTo: "owner_or_kondo" },
   { id: "paidleave", label: "有給管理", visibleTo: "owner_or_kondo" },
+  { id: "shift", label: "シフト管理", visibleTo: "owner_or_kondo" },
   { id: "sharoushi", label: "社労士出力", visibleTo: "owner_only" },
   { id: "individual", label: "個人出勤簿", visibleTo: "all" },
   { id: "daily", label: "日次一覧", visibleTo: "all" },
@@ -1302,6 +1304,7 @@ export default function AdminTab({ employee }: { employee: any }) {
       </div>
       {sub === "notifications" && <NotificationsSub employee={employee} />}
       {sub === "paidleave" && <PaidLeaveSub employee={employee} />}
+      {sub === "shift" && <ShiftSub employee={employee} />}
       {sub === "sharoushi" && <SharoushiSub employee={employee} />}
       {sub === "individual" && <IndividualSub employee={employee} />}
       {sub === "daily" && <DailySub employee={employee} />}
