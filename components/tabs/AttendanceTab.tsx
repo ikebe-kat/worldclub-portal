@@ -459,24 +459,16 @@ export default function AttendanceTab({ employee }: { employee: any }) {
             </div>
 
             <Dot color={T.holidayRed} label="休暇申請" />
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
-              <Chip label="有給（全日）" selected={selZenjitsu === "有給（全日）"} color={T.yukyuBlue} onClick={() => toggleZenjitsu("有給（全日）")} />
-              <Chip label={displayChipLabel("希望休（全日）", employee?.employee_code || "")} selected={selZenjitsu === "希望休（全日）"} color={T.kibouYellow} onClick={() => toggleZenjitsu("希望休（全日）")} />
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
-              <Chip label="午前有給" selected={selGozen === "午前有給"} color={T.yukyuBlue} onClick={() => toggleGozen("午前有給")} />
-              <Chip label={displayChipLabel("午前希望休", employee?.employee_code || "")} selected={selGozen === "午前希望休"} color={T.kibouYellow} onClick={() => toggleGozen("午前希望休")} />
-            </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 20 }}>
-              <Chip label="午後有給" selected={selGogo === "午後有給"} color={T.yukyuBlue} onClick={() => toggleGogo("午後有給")} />
-              <Chip label={displayChipLabel("午後希望休", employee?.employee_code || "")} selected={selGogo === "午後希望休"} color={T.kibouYellow} onClick={() => toggleGogo("午後希望休")} />
+              <Chip label="公休（全日）" selected={selZenjitsu === "希望休（全日）"} color={T.kibouYellow} onClick={() => toggleZenjitsu("希望休（全日）")} />
+              <Chip label="有給（全日）" selected={selZenjitsu === "有給（全日）"} color={T.yukyuBlue} onClick={() => toggleZenjitsu("有給（全日）")} />
             </div>
 
             <Dot color={T.kinmuGreen} label="勤務申請" />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 8 }}>
-              {["出張", "休日出勤", "代休", "半日代休", "遅刻", "早退", "欠勤"].map(k => (
+              {["出張", "遅刻", "早退", "欠勤"].map(k => (
                 <Chip key={k} label={k}
-                  selected={k === "代休" ? daikyuMode === "full" : k === "半日代休" ? daikyuMode === "half" : selKinmu.includes(k)}
+                  selected={selKinmu.includes(k)}
                   color={T.kinmuGreen} onClick={() => toggleKinmu(k)} />
               ))}
             </div>
@@ -489,24 +481,6 @@ export default function AttendanceTab({ employee }: { employee: any }) {
                   <Field label="開始日"><input type="date" value={shucchoFrom} onChange={e => setShucchoFrom(e.target.value)} style={inputStyle} /></Field>
                   <Field label="終了日"><input type="date" value={shucchoTo} onChange={e => setShucchoTo(e.target.value)} style={inputStyle} /></Field>
                 </div>
-              </div>
-            )}
-
-            {daikyuMode === "full" && (
-              <div style={{ padding: 14, borderRadius: "6px", border: `1px solid ${T.kinmuGreen}`, backgroundColor: "#F0FFF4", marginBottom: 12 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: T.kinmuGreen, marginBottom: 10 }}>代休の対象日（休日出勤した日）</div>
-                <Field label="対象日"><input type="date" value={daikyuDate} onChange={e => setDaikyuDate(e.target.value)} style={inputStyle} /></Field>
-              </div>
-            )}
-
-            {daikyuMode === "half" && (
-              <div style={{ padding: 14, borderRadius: "6px", border: `1px solid ${T.kinmuGreen}`, backgroundColor: "#F0FFF4", marginBottom: 12 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: T.kinmuGreen, marginBottom: 10 }}>半日代休の詳細</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
-                  <Chip label="午前代休" selected={daikyuHalf === "am"} color={T.kinmuGreen} onClick={() => setDaikyuHalf(daikyuHalf === "am" ? null : "am")} />
-                  <Chip label="午後代休" selected={daikyuHalf === "pm"} color={T.kinmuGreen} onClick={() => setDaikyuHalf(daikyuHalf === "pm" ? null : "pm")} />
-                </div>
-                <Field label="対象日（休日出勤した日）"><input type="date" value={daikyuDate} onChange={e => setDaikyuDate(e.target.value)} style={inputStyle} /></Field>
               </div>
             )}
 

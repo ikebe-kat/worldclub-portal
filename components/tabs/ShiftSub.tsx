@@ -13,6 +13,9 @@ const STORE_ID   = "06027f43-fa49-4b2e-8009-903456b0ce33";
 
 const PUSH_URL = "https://pktqlbpdjemmomfanvgt.supabase.co/functions/v1/send-push";
 
+/* ⑤ 表示対象の従業員コード（WC001〜WC016のみ、本部メンバー除外） */
+const VISIBLE_CODES = Array.from({ length: 16 }, (_, i) => `WC${String(i + 1).padStart(3, "0")}`);
+
 /* ── 色定義 ── */
 const C = {
   koukyuu:   "#1a4b24",   // 緑 = 公休（確定）
@@ -69,10 +72,6 @@ export default function ShiftSub({ employee }: { employee: any }) {
   const [confirming, setConfirming] = useState(false);
   const [dialog, setDialog] = useState<{ message: string; mode: "alert" | "confirm"; confirmLabel?: string; confirmColor?: string; onOk: () => void } | null>(null);
 
-  /* ── 管理者による直接トグル（緑セル）のローカル管理 ── */
-  // adminToggles: key = "empId|YYYY-MM-DD", value = true(ON) / false(OFF=削除済)
-  const [adminToggles, setAdminToggles] = useState<Record<string, boolean>>({});
-
   const days = daysInMonth(yr, mo);
 
   /* ── データ取得 ── */
@@ -81,11 +80,10 @@ export default function ShiftSub({ employee }: { employee: any }) {
     const monthStart = dateStr(yr, mo, 1);
     const monthEnd = dateStr(yr, mo, days);
 
-    // 従業員一覧（is_active=true, 本部除外）
+    // 従業員一覧（is_active=true）
     const { data: emps } = await supabase.from("employees")
       .select("id, employee_code, full_name, employment_type")
       .eq("company_id", COMPANY_ID)
-      .eq("store_id", STORE_ID)
       .eq("is_active", true)
       .order("employee_code");
 
@@ -97,17 +95,20 @@ export default function ShiftSub({ employee }: { employee: any }) {
       .gte("attendance_date", monthStart)
       .lte("attendance_date", monthEnd);
 
-    // attendance_daily（当月：有給・公休確認用）
+    // ④ attendance_daily（当月：有給・公休確認用）
     const { data: att } = await supabase.from("attendance_daily")
       .select("employee_id, attendance_date, reason")
       .eq("company_id", COMPANY_ID)
       .gte("attendance_date", monthStart)
-      .lte("attendance_date", monthEnd);
+      .lte("attendance_date", monthEnd)
+      .not("reason", "is", null);
 
-    setEmployees(emps || []);
+    // ⑤ WC001〜WC016のみフィルタ
+    const filteredEmps = (emps || []).filter(e => VISIBLE_CODES.includes(e.employee_code));
+
+    setEmployees(filteredEmps);
     setLeaveReqs(reqs || []);
     setAttData(att || []);
-    setAdminToggles({});
     setLoading(false);
   }, [yr, mo, days]);
 
@@ -128,15 +129,10 @@ export default function ShiftSub({ employee }: { employee: any }) {
   };
 
   /* ── セル状態判定 ── */
-  const getCellState = (empId: string, day: number): "approved" | "pending" | "returned" | "yukyu" | "admin_set" | "workday" => {
+  const getCellState = (empId: string, day: number): "approved" | "pending" | "returned" | "yukyu" | "workday" => {
     const ds = dateStr(yr, mo, day);
-    const key = `${empId}|${ds}`;
 
-    // admin直接トグル確認
-    if (adminToggles[key] === true) return "admin_set";
-    if (adminToggles[key] === false) return "workday"; // admin がOFFにした
-
-    // leave_requests
+    // leave_requests（優先）
     const req = leaveReqs.find(r => r.employee_id === empId && r.attendance_date === ds);
     if (req) {
       if (req.status === "approved") return "approved";
@@ -144,7 +140,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
       if (req.status === "returned") return "returned";
     }
 
-    // attendance_daily
+    // ④ attendance_daily（公休・有給を反映）
     const att = attData.find(a => a.employee_id === empId && a.attendance_date === ds);
     if (att?.reason?.includes("有給")) return "yukyu";
     if (att?.reason === "公休" || att?.reason === "公休（全日）") return "approved";
@@ -156,7 +152,6 @@ export default function ShiftSub({ employee }: { employee: any }) {
   const cellBg = (state: string) => {
     switch (state) {
       case "approved":  return C.koukyuu;
-      case "admin_set": return C.koukyuu;
       case "pending":   return C.pending;
       case "returned":  return C.returned;
       case "yukyu":     return C.yukyu;
@@ -174,7 +169,6 @@ export default function ShiftSub({ employee }: { employee: any }) {
   const cellLabel = (state: string) => {
     switch (state) {
       case "approved":  return "休";
-      case "admin_set": return "休";
       case "pending":   return "申";
       case "returned":  return "戻";
       case "yukyu":     return "有";
@@ -185,36 +179,16 @@ export default function ShiftSub({ employee }: { employee: any }) {
   /* ── 未承認件数 ── */
   const pendingCount = leaveReqs.filter(r => r.status === "pending").length;
 
-  /* ── セルタップ処理 ── */
+  /* ── ⑦ セルタップ処理（空きセル→直接公休insert） ── */
   const handleCellTap = async (emp: Emp, day: number) => {
     const ds = dateStr(yr, mo, day);
     const state = getCellState(emp.id, day);
-    const key = `${emp.id}|${ds}`;
 
     if (state === "yukyu") return; // 有給は変更不可
 
     if (state === "pending") {
       // 申請中→承認/差し戻しポップアップ
-      setDialog({
-        message: `${surname(emp.full_name)}の${mo}/${day}の公休申請`,
-        mode: "confirm",
-        confirmLabel: "承認",
-        confirmColor: C.koukyuu,
-        onOk: async () => {
-          setDialog(null);
-          const req = leaveReqs.find(r => r.employee_id === emp.id && r.attendance_date === ds && r.status === "pending");
-          if (req) {
-            await supabase.from("leave_requests").update({
-              status: "approved",
-              approved_by: employee.id,
-              approved_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            }).eq("id", req.id);
-            loadData();
-          }
-        },
-      });
-      // 差し戻しボタンは別途表示する（下記 pendingDialog で対応）
+      handlePendingTap(emp, day);
       return;
     }
 
@@ -229,29 +203,17 @@ export default function ShiftSub({ employee }: { employee: any }) {
     }
 
     if (state === "approved") {
-      // 確定公休→管理者がOFFにする
+      // 確定公休→管理者がOFFにする（leave_requestsから削除）
       const req = leaveReqs.find(r => r.employee_id === emp.id && r.attendance_date === ds);
       if (req) {
         await supabase.from("leave_requests").delete().eq("id", req.id);
-      }
-      setAdminToggles(prev => ({ ...prev, [key]: false }));
-      loadData();
-      return;
-    }
-
-    if (state === "admin_set") {
-      // 管理者がONにしたものを再タップでOFF
-      setAdminToggles(prev => ({ ...prev, [key]: false }));
-      // DBからも削除
-      const req = leaveReqs.find(r => r.employee_id === emp.id && r.attendance_date === ds);
-      if (req) {
-        await supabase.from("leave_requests").delete().eq("id", req.id);
+        loadData();
       }
       return;
     }
 
-    // workday→公休ON（管理者直接設定 → approved で insert）
-    await supabase.from("leave_requests").upsert({
+    // ⑦ workday→公休ON（管理者直接設定 → approved で insert、即緑）
+    const { error } = await supabase.from("leave_requests").upsert({
       company_id: COMPANY_ID,
       store_id: STORE_ID,
       employee_id: emp.id,
@@ -262,8 +224,9 @@ export default function ShiftSub({ employee }: { employee: any }) {
       approved_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }, { onConflict: "employee_id,attendance_date,type" });
-    setAdminToggles(prev => ({ ...prev, [key]: true }));
-    loadData();
+    if (!error) {
+      loadData();
+    }
   };
 
   /* ── 申請の承認/差し戻しダイアログ ── */
@@ -329,7 +292,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
         for (const emp of employees) {
           for (let d = 1; d <= days; d++) {
             const state = getCellState(emp.id, d);
-            if (state === "approved" || state === "admin_set") {
+            if (state === "approved") {
               const ds = dateStr(yr, mo, d);
               const dow = DOW[dowOf(yr, mo, d)];
               upserts.push({
@@ -346,7 +309,6 @@ export default function ShiftSub({ employee }: { employee: any }) {
         }
 
         if (upserts.length > 0) {
-          // バッチupsert（50件ずつ）
           for (let i = 0; i < upserts.length; i += 50) {
             const batch = upserts.slice(i, i + 50);
             await supabase.from("attendance_daily")
@@ -400,7 +362,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
             onClick={handleConfirm}
             disabled={confirming}
             style={{
-              padding: "8px 20px", borderRadius: 6, border: "none",
+              padding: "8px 20px", borderRadius: 4, border: "none",
               backgroundColor: C.koukyuu, color: "#fff",
               fontSize: 13, fontWeight: 700, cursor: confirming ? "not-allowed" : "pointer",
               opacity: confirming ? 0.6 : 1,
@@ -414,7 +376,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
       {/* ── 凡例 ── */}
       <div style={{
         display: "flex", gap: 12, marginBottom: 12, flexWrap: "wrap",
-        padding: "8px 12px", backgroundColor: "#fff", borderRadius: 8,
+        padding: "8px 12px", backgroundColor: "#fff", borderRadius: 0,
         border: `1px solid ${T.border}`,
       }}>
         {[
@@ -426,7 +388,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
         ].map((item) => (
           <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <div style={{
-              width: 16, height: 16, borderRadius: 3,
+              width: 16, height: 16, borderRadius: 0,
               backgroundColor: item.color,
               border: item.color === "#E5E7EB" ? `1px solid ${T.border}` : "none",
             }} />
@@ -442,7 +404,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
         <div ref={tableRef} style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <table style={{
             borderCollapse: "collapse", fontSize: 11, minWidth: "100%",
-            backgroundColor: "#fff", borderRadius: 8, overflow: "hidden",
+            backgroundColor: "#fff",
           }}>
             <thead>
               <tr>
@@ -505,13 +467,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
                       return (
                         <td
                           key={d}
-                          onClick={() => {
-                            if (state === "pending") {
-                              handlePendingTap(emp, d);
-                            } else {
-                              handleCellTap(emp, d);
-                            }
-                          }}
+                          onClick={() => handleCellTap(emp, d)}
                           style={{
                             ...tdCellStyle,
                             backgroundColor: bg,
@@ -535,7 +491,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
       {/* ── 使い方ガイド ── */}
       <div style={{
         marginTop: 16, padding: "12px 14px", backgroundColor: T.primaryLight,
-        borderRadius: 8, border: `1px solid ${T.border}`,
+        borderRadius: 0, border: `1px solid ${T.border}`,
       }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: C.koukyuu, marginBottom: 6 }}>
           使い方
@@ -561,7 +517,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
         >
           <div
             style={{
-              backgroundColor: "#fff", borderRadius: 12,
+              backgroundColor: "#fff", borderRadius: 8,
               padding: "24px 20px", width: "100%", maxWidth: 320,
             }}
             onClick={(e) => e.stopPropagation()}
@@ -573,7 +529,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
               <button
                 onClick={returnPending}
                 style={{
-                  flex: 1, padding: 12, borderRadius: 6,
+                  flex: 1, padding: 12, borderRadius: 4,
                   border: `1px solid ${C.returned}`, backgroundColor: "#fff",
                   color: C.returned, fontSize: 14, fontWeight: 600, cursor: "pointer",
                 }}
@@ -583,7 +539,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
               <button
                 onClick={approvePending}
                 style={{
-                  flex: 1, padding: 12, borderRadius: 6, border: "none",
+                  flex: 1, padding: 12, borderRadius: 4, border: "none",
                   backgroundColor: C.koukyuu, color: "#fff",
                   fontSize: 14, fontWeight: 600, cursor: "pointer",
                 }}
@@ -631,5 +587,5 @@ const tdNameStyle: React.CSSProperties = {
 const tdCellStyle: React.CSSProperties = {
   padding: "6px 2px", textAlign: "center", fontSize: 10, fontWeight: 700,
   borderRight: `1px solid ${T.borderLight}`, borderBottom: `1px solid ${T.border}`,
-  minWidth: 28, userSelect: "none", transition: "background-color 0.15s",
+  minWidth: 28, userSelect: "none",
 };
