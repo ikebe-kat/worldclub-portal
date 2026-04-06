@@ -34,7 +34,7 @@ interface Emp {
 interface LeaveReq {
   id: string;
   employee_id: string;
-  request_date: string;
+  attendance_date: string;
   type: string;
   status: string;
 }
@@ -91,11 +91,11 @@ export default function ShiftSub({ employee }: { employee: any }) {
 
     // leave_requests（当月）
     const { data: reqs } = await supabase.from("leave_requests")
-      .select("id, employee_id, request_date, type, status")
+      .select("id, employee_id, attendance_date, type, status")
       .eq("company_id", COMPANY_ID)
       .eq("type", "shift_koukyuu")
-      .gte("request_date", monthStart)
-      .lte("request_date", monthEnd);
+      .gte("attendance_date", monthStart)
+      .lte("attendance_date", monthEnd);
 
     // attendance_daily（当月：有給・公休確認用）
     const { data: att } = await supabase.from("attendance_daily")
@@ -137,7 +137,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
     if (adminToggles[key] === false) return "workday"; // admin がOFFにした
 
     // leave_requests
-    const req = leaveReqs.find(r => r.employee_id === empId && r.request_date === ds);
+    const req = leaveReqs.find(r => r.employee_id === empId && r.attendance_date === ds);
     if (req) {
       if (req.status === "approved") return "approved";
       if (req.status === "pending") return "pending";
@@ -202,7 +202,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
         confirmColor: C.koukyuu,
         onOk: async () => {
           setDialog(null);
-          const req = leaveReqs.find(r => r.employee_id === emp.id && r.request_date === ds && r.status === "pending");
+          const req = leaveReqs.find(r => r.employee_id === emp.id && r.attendance_date === ds && r.status === "pending");
           if (req) {
             await supabase.from("leave_requests").update({
               status: "approved",
@@ -220,7 +220,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
 
     if (state === "returned") {
       // 差し戻し済み→削除してworkdayに戻す
-      const req = leaveReqs.find(r => r.employee_id === emp.id && r.request_date === ds);
+      const req = leaveReqs.find(r => r.employee_id === emp.id && r.attendance_date === ds);
       if (req) {
         await supabase.from("leave_requests").delete().eq("id", req.id);
         loadData();
@@ -230,7 +230,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
 
     if (state === "approved") {
       // 確定公休→管理者がOFFにする
-      const req = leaveReqs.find(r => r.employee_id === emp.id && r.request_date === ds);
+      const req = leaveReqs.find(r => r.employee_id === emp.id && r.attendance_date === ds);
       if (req) {
         await supabase.from("leave_requests").delete().eq("id", req.id);
       }
@@ -243,7 +243,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
       // 管理者がONにしたものを再タップでOFF
       setAdminToggles(prev => ({ ...prev, [key]: false }));
       // DBからも削除
-      const req = leaveReqs.find(r => r.employee_id === emp.id && r.request_date === ds);
+      const req = leaveReqs.find(r => r.employee_id === emp.id && r.attendance_date === ds);
       if (req) {
         await supabase.from("leave_requests").delete().eq("id", req.id);
       }
@@ -255,13 +255,13 @@ export default function ShiftSub({ employee }: { employee: any }) {
       company_id: COMPANY_ID,
       store_id: STORE_ID,
       employee_id: emp.id,
-      request_date: ds,
+      attendance_date: ds,
       type: "shift_koukyuu",
       status: "approved",
       approved_by: employee.id,
       approved_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-    }, { onConflict: "employee_id,request_date,type" });
+    }, { onConflict: "employee_id,attendance_date,type" });
     setAdminToggles(prev => ({ ...prev, [key]: true }));
     loadData();
   };
@@ -271,7 +271,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
 
   const handlePendingTap = (emp: Emp, day: number) => {
     const ds = dateStr(yr, mo, day);
-    const req = leaveReqs.find(r => r.employee_id === emp.id && r.request_date === ds && r.status === "pending");
+    const req = leaveReqs.find(r => r.employee_id === emp.id && r.attendance_date === ds && r.status === "pending");
     if (req) {
       setPendingDialog({ emp, day, reqId: req.id });
     }
