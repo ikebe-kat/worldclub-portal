@@ -73,6 +73,8 @@ export default function AttendanceTab({ employee }: { employee: any }) {
   const [mo, setMo] = useState(now.getMonth() + 1);
   const [rows, setRows] = useState<any[]>([]);
   const [holidays, setHolidays] = useState<string[]>([]);
+  const [shiftConf, setShiftConf] = useState<{ confirmed_at: string } | null>(null);
+  const [nextShiftConf, setNextShiftConf] = useState<{ confirmed_at: string } | null>(null);
   const [scheduledMin, setScheduledMin] = useState<number>(0);
   const [kibouQuota, setKibouQuota] = useState<number>(0);
   const [loading, setLoading] = useState(true);
@@ -160,6 +162,19 @@ export default function AttendanceTab({ employee }: { employee: any }) {
     });
     setRows(merged);
 
+    // shift_confirmations（当月・翌月）
+    const curMonth = `${yr}-${String(mo).padStart(2, "0")}`;
+    const [nyr, nmo] = stepMonth(yr, mo, 1);
+    const nextMonth = `${nyr}-${String(nmo).padStart(2, "0")}`;
+    const { data: confs } = await supabase.from("shift_confirmations")
+      .select("target_month, confirmed_at")
+      .eq("company_id", employee.company_id)
+      .in("target_month", [curMonth, nextMonth]);
+    const cur = (confs || []).find((c: any) => c.target_month === curMonth);
+    const nxt = (confs || []).find((c: any) => c.target_month === nextMonth);
+    setShiftConf(cur ? { confirmed_at: cur.confirmed_at } : null);
+    setNextShiftConf(nxt ? { confirmed_at: nxt.confirmed_at } : null);
+
     if (employee.holiday_calendar) {
       const { data: holData } = await supabase
         .from("holiday_calendars").select("holiday_date")
@@ -224,6 +239,26 @@ export default function AttendanceTab({ employee }: { employee: any }) {
     const tw = allDays.reduce((s, d) => s + d.wm, 0);
     return { wd, hd, ab, yu, kr: isKoukyuPart(employee?.employee_code || "") ? 999 : kibouQuota - ku, tw, sm: scheduledMin, df: tw - scheduledMin };
   }, [allDays, scheduledMin, kibouQuota]);
+
+  /* ── 公休申請の締切判定 ── */
+  const isKoukyuLocked = useCallback((dateStr: string): boolean => {
+    if (!dateStr) return false;
+    const [y, m] = dateStr.split("-").map(Number);
+    const targetMonth = `${y}-${String(m).padStart(2, "0")}`;
+    const today = new Date();
+    const curRealMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+    const [ny, nm] = stepMonth(today.getFullYear(), today.getMonth() + 1, 1);
+    const nextRealMonth = `${ny}-${String(nm).padStart(2, "0")}`;
+
+    // 当該月が確定済み
+    if (targetMonth === curRealMonth && shiftConf) return true;
+    if (targetMonth === nextRealMonth && nextShiftConf) return true;
+
+    // 25日以降は翌月分は締切
+    if (targetMonth === nextRealMonth && today.getDate() >= 25) return true;
+
+    return false;
+  }, [shiftConf, nextShiftConf]);
 
   /* ── モーダル開く ── */
   const openModal = (day: any) => {
@@ -351,6 +386,11 @@ export default function AttendanceTab({ employee }: { employee: any }) {
 
     // ── 公休（全日）はleave_requestsへpending申請として保存 ──
     if (previewReason === "公休（全日）") {
+      if (isKoukyuLocked(modalDay.dateStr)) {
+        setSaving(false);
+        showAlert("この月の公休申請は締切済みです");
+        return;
+      }
       // 既存の申請があれば削除（再申請）
       await supabase.from("leave_requests")
         .delete()
@@ -427,6 +467,21 @@ export default function AttendanceTab({ employee }: { employee: any }) {
           <button onClick={() => go(1)} style={{ width: 30, height: 30, border: `1px solid ${T.border}`, borderRadius: "6px", backgroundColor: "#fff", cursor: "pointer", fontSize: 13, color: T.textSec }}>▶</button>
         </div>
       </div>
+
+      {/* シフト確定バナー */}
+      {shiftConf && (() => {
+        const d = new Date(shiftConf.confirmed_at);
+        const txt = `シフトが確定しました ${d.getMonth() + 1}月${d.getDate()}日 ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+        return (
+          <div style={{
+            backgroundColor: T.primary, color: "#fff", padding: "10px 14px",
+            borderRadius: 6, fontSize: 13, fontWeight: 600, marginBottom: 12,
+            textAlign: "center",
+          }}>
+            ✓ {txt}
+          </div>
+        );
+      })()}
 
       {/* サマリー */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 6, marginBottom: 6 }}>
@@ -545,7 +600,14 @@ export default function AttendanceTab({ employee }: { employee: any }) {
               {modalDay.reason && (
                 <button onClick={cancelReason} disabled={saving} style={{ flex: 1, padding: "12px", borderRadius: "6px", border: `1px solid ${T.danger}`, backgroundColor: "#fff", color: T.danger, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>{saving ? "..." : "取消"}</button>
               )}
-              <button onClick={submitReason} disabled={saving || !previewReason} style={{ flex: 1, padding: "12px", borderRadius: "6px", border: "none", backgroundColor: previewReason ? T.primary : T.border, color: previewReason ? "#fff" : T.textMuted, fontSize: 14, fontWeight: 600, cursor: previewReason ? "pointer" : "default" }}>{saving ? (previewReason === "公休（全日）" ? "申請中..." : "登録中...") : (previewReason === "公休（全日）" ? "申請" : "登録")}</button>
+              {(() => {
+                const locked = previewReason === "公休（全日）" && modalDay && isKoukyuLocked(modalDay.dateStr);
+                const disabled = saving || !previewReason || locked;
+                const label = locked ? "締切済み" : saving ? (previewReason === "公休（全日）" ? "申請中..." : "登録中...") : (previewReason === "公休（全日）" ? "申請" : "登録");
+                return (
+                  <button onClick={submitReason} disabled={disabled} style={{ flex: 1, padding: "12px", borderRadius: "6px", border: "none", backgroundColor: disabled ? T.border : T.primary, color: disabled ? T.textMuted : "#fff", fontSize: 14, fontWeight: 600, cursor: disabled ? "default" : "pointer" }}>{label}</button>
+                );
+              })()}
             </div>
           </div>
         </div>

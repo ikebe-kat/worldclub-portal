@@ -294,6 +294,19 @@ export default function ShiftSub({ employee }: { employee: any }) {
     loadData();
   };
 
+  /* ── トースト表示 ── */
+  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  /* ── 下書き保存（leave_requestsはセルタップ時に既に保存済み） ── */
+  const handleDraftSave = () => {
+    setToast("保存しました");
+  };
+
   /* ── 確定ボタン処理 ── */
   const handleConfirm = async () => {
     setDialog({
@@ -333,8 +346,23 @@ export default function ShiftSub({ employee }: { employee: any }) {
           }
         }
 
+        // shift_confirmations に確定記録を upsert
+        const targetMonth = `${yr}-${String(mo).padStart(2, "0")}`;
+        await supabase.from("shift_confirmations").delete()
+          .eq("company_id", COMPANY_ID).eq("target_month", targetMonth);
+        const { error: confErr } = await supabase.from("shift_confirmations").insert({
+          company_id: COMPANY_ID,
+          confirmed_by: employee.id,
+          target_month: targetMonth,
+          confirmed_at: new Date().toISOString(),
+        });
+
         setConfirming(false);
-        setDialog({ message: `${upserts.length}件の公休を登録しました。`, mode: "alert", onOk: () => { setDialog(null); loadData(); } });
+        if (confErr) {
+          setDialog({ message: `確定記録の保存に失敗\n${confErr.message}`, mode: "alert", onOk: () => { setDialog(null); loadData(); } });
+        } else {
+          setDialog({ message: `${upserts.length}件の公休を登録し、シフトを確定しました。`, mode: "alert", onOk: () => { setDialog(null); loadData(); } });
+        }
       },
     });
   };
@@ -375,6 +403,17 @@ export default function ShiftSub({ employee }: { employee: any }) {
               未承認 {pendingCount}件
             </span>
           )}
+          <button
+            onClick={handleDraftSave}
+            disabled={confirming}
+            style={{
+              padding: "8px 16px", borderRadius: 4,
+              border: `1px solid ${C.koukyuu}`, backgroundColor: "#fff",
+              color: C.koukyuu, fontSize: 13, fontWeight: 700, cursor: "pointer",
+            }}
+          >
+            下書き保存
+          </button>
           <button
             onClick={handleConfirm}
             disabled={confirming}
@@ -565,6 +604,18 @@ export default function ShiftSub({ employee }: { employee: any }) {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── トースト ── */}
+      {toast && (
+        <div style={{
+          position: "fixed", bottom: 32, left: "50%", transform: "translateX(-50%)",
+          backgroundColor: C.koukyuu, color: "#fff", padding: "10px 24px",
+          borderRadius: 4, fontSize: 13, fontWeight: 600,
+          boxShadow: "0 4px 12px rgba(0,0,0,0.15)", zIndex: 3000,
+        }}>
+          {toast}
         </div>
       )}
 
