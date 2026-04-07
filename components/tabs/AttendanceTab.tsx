@@ -75,6 +75,8 @@ export default function AttendanceTab({ employee }: { employee: any }) {
   const [holidays, setHolidays] = useState<string[]>([]);
   const [shiftConf, setShiftConf] = useState<{ confirmed_at: string } | null>(null);
   const [nextShiftConf, setNextShiftConf] = useState<{ confirmed_at: string } | null>(null);
+  const [nextSubmission, setNextSubmission] = useState<{ submitted_at: string } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const [scheduledMin, setScheduledMin] = useState<number>(0);
   const [kibouQuota, setKibouQuota] = useState<number>(0);
   const [loading, setLoading] = useState(true);
@@ -183,6 +185,14 @@ export default function AttendanceTab({ employee }: { employee: any }) {
     setShiftConf(cur ? { confirmed_at: cur.confirmed_at } : null);
     setNextShiftConf(nxt ? { confirmed_at: nxt.confirmed_at } : null);
 
+    // shift_submissions（翌月分の提出有無）
+    const { data: subData } = await supabase.from("shift_submissions")
+      .select("submitted_at")
+      .eq("employee_id", employee.id)
+      .eq("target_month", nextMonth)
+      .maybeSingle();
+    setNextSubmission(subData ? { submitted_at: subData.submitted_at } : null);
+
     if (employee.holiday_calendar) {
       const { data: holData } = await supabase
         .from("holiday_calendars").select("holiday_date")
@@ -247,6 +257,28 @@ export default function AttendanceTab({ employee }: { employee: any }) {
     const tw = allDays.reduce((s, d) => s + d.wm, 0);
     return { wd, hd, ab, yu, kr: isKoukyuPart(employee?.employee_code || "") ? 999 : kibouQuota - ku, tw, sm: scheduledMin, df: tw - scheduledMin };
   }, [allDays, scheduledMin, kibouQuota]);
+
+  /* ── 翌月シフト希望提出 ── */
+  const today = new Date();
+  const nextRealYear = today.getMonth() === 11 ? today.getFullYear() + 1 : today.getFullYear();
+  const nextRealMonth = today.getMonth() === 11 ? 1 : today.getMonth() + 2;
+  const nextRealMonthStr = `${nextRealYear}-${String(nextRealMonth).padStart(2, "0")}`;
+  const submissionLocked = today.getDate() >= 26;
+  const submitted = !!nextSubmission;
+
+  const handleShiftSubmit = async () => {
+    if (submitting || submitted || submissionLocked) return;
+    setSubmitting(true);
+    const { error } = await supabase.from("shift_submissions").insert({
+      company_id: employee.company_id,
+      employee_id: employee.id,
+      target_month: nextRealMonthStr,
+      submitted_at: new Date().toISOString(),
+    });
+    setSubmitting(false);
+    if (error) { showAlert("提出に失敗しました: " + error.message); return; }
+    setNextSubmission({ submitted_at: new Date().toISOString() });
+  };
 
   /* ── 公休申請の締切判定 ── */
   const isKoukyuLocked = useCallback((dateStr: string): boolean => {
@@ -469,12 +501,35 @@ export default function AttendanceTab({ employee }: { employee: any }) {
   return (
     <div style={{ padding: "16px 12px", maxWidth: 720, margin: "0 auto" }}>
       {/* 月ナビ */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, gap: 8, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <button onClick={() => go(-1)} style={{ width: 30, height: 30, border: `1px solid ${T.border}`, borderRadius: "6px", backgroundColor: "#fff", cursor: "pointer", fontSize: 13, color: T.textSec }}>◀</button>
           <span style={{ fontSize: 15, fontWeight: 700, color: T.text, minWidth: 90, textAlign: "center" }}>{yr}年{mo}月</span>
           <button onClick={() => go(1)} style={{ width: 30, height: 30, border: `1px solid ${T.border}`, borderRadius: "6px", backgroundColor: "#fff", cursor: "pointer", fontSize: 13, color: T.textSec }}>▶</button>
         </div>
+        {(() => {
+          const label =
+            submitted ? `${nextRealMonth}月 提出済み ✓` :
+            submissionLocked ? "締切済み" :
+            `${nextRealMonth}月のシフト希望を提出`;
+          const disabled = submitted || submissionLocked || submitting;
+          return (
+            <button
+              onClick={handleShiftSubmit}
+              disabled={disabled}
+              style={{
+                padding: "8px 14px", borderRadius: 6, border: "none",
+                backgroundColor: submitted ? T.primary : disabled ? T.border : T.primary,
+                color: submitted ? "#fff" : disabled ? T.textMuted : "#fff",
+                fontSize: 12, fontWeight: 700,
+                cursor: disabled ? "default" : "pointer",
+                opacity: submitting ? 0.6 : 1,
+              }}
+            >
+              {submitting ? "送信中..." : label}
+            </button>
+          );
+        })()}
       </div>
 
       {/* シフト確定バナー */}

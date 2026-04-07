@@ -75,6 +75,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
   const [employees, setEmployees] = useState<Emp[]>([]);
   const [leaveReqs, setLeaveReqs] = useState<LeaveReq[]>([]);
   const [attData, setAttData] = useState<AttRow[]>([]);
+  const [submittedIds, setSubmittedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [confirming, setConfirming] = useState(false);
   const [dialog, setDialog] = useState<{ message: string; mode: "alert" | "confirm"; confirmLabel?: string; confirmColor?: string; onOk: () => void } | null>(null);
@@ -113,9 +114,18 @@ export default function ShiftSub({ employee }: { employee: any }) {
     // ⑤ WC001〜WC016のみフィルタ
     const filteredEmps = (emps || []).filter(e => VISIBLE_CODES.includes(e.employee_code));
 
+    // shift_submissions（当月分の提出有無）
+    const targetMonth = `${yr}-${String(mo).padStart(2, "0")}`;
+    const { data: subs } = await supabase.from("shift_submissions")
+      .select("employee_id")
+      .eq("company_id", COMPANY_ID)
+      .eq("target_month", targetMonth);
+    const submitted = new Set<string>((subs || []).map((s: any) => s.employee_id));
+
     setEmployees(filteredEmps);
     setLeaveReqs(reqs || []);
     setAttData(att || []);
+    setSubmittedIds(submitted);
     setLoading(false);
   }, [yr, mo, days]);
 
@@ -131,6 +141,9 @@ export default function ShiftSub({ employee }: { employee: any }) {
 
   /* ── セル状態判定 ── */
   const getCellState = (empId: string, day: number): CellState => {
+    // 提出していない従業員のセルは空白
+    if (!submittedIds.has(empId)) return "workday";
+
     const ds = dateStr(yr, mo, day);
 
     // leave_requests（type別に優先順位：yukyu→shift_koukyuu）
@@ -192,6 +205,9 @@ export default function ShiftSub({ employee }: { employee: any }) {
 
   /* ── ⑦ セルタップ処理（空きセル→直接公休insert） ── */
   const handleCellTap = async (emp: Emp, day: number) => {
+    // 未提出者は操作不可
+    if (!submittedIds.has(emp.id)) return;
+
     const ds = dateStr(yr, mo, day);
     const state = getCellState(emp.id, day);
 
@@ -561,6 +577,12 @@ export default function ShiftSub({ employee }: { employee: any }) {
                       </div>
                       <div style={{ fontSize: 9, color: T.textMuted }}>
                         {emp.employment_type === "正社員" ? "社" : "P"}
+                      </div>
+                      <div style={{
+                        fontSize: 9, fontWeight: 600,
+                        color: submittedIds.has(emp.id) ? C.koukyuu : T.textMuted,
+                      }}>
+                        {submittedIds.has(emp.id) ? "提出済" : "未提出"}
                       </div>
                     </td>
                     {Array.from({ length: days }, (_, i) => {
