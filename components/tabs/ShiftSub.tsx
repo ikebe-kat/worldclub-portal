@@ -121,13 +121,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
 
   useEffect(() => { loadData(true); }, [loadData]);
 
-  /* ── リアルタイム購読 ── */
-  useEffect(() => {
-    const ch = supabase.channel("shift-updates")
-      .on("postgres_changes", { event: "*", schema: "public", table: "leave_requests" }, () => loadData())
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
-  }, [loadData]);
+  /* ── リアルタイム購読は応答性のため無効化（楽観的更新で即時反映） ── */
 
   /* ── 月切替 ── */
   const stepMo = (dir: 1 | -1) => {
@@ -210,13 +204,23 @@ export default function ShiftSub({ employee }: { employee: any }) {
       return;
     }
 
-    // 差し戻し済み → 削除して workday に戻す
+    // 差し戻し済み → 承認に変更（出勤簿から消さない）
     if (state === "returned" || state === "yukyu_returned") {
       const targetType = state === "yukyu_returned" ? "yukyu" : "shift_koukyuu";
       const req = leaveReqs.find(r => r.employee_id === emp.id && r.attendance_date === ds && r.type === targetType);
       if (req) {
-        await supabase.from("leave_requests").delete().eq("id", req.id);
-        loadData();
+        // 楽観的更新
+        setLeaveReqs(prev => prev.map(r => r.id === req.id ? { ...r, status: "approved", reject_reason: null } : r));
+        supabase.from("leave_requests").update({
+          status: "approved",
+          reject_reason: null,
+          approved_by: employee.id,
+          approver_id: employee.id,
+          approved_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }).eq("id", req.id).then(({ error }) => {
+          if (error) { console.error(error); loadData(); }
+        });
       }
       return;
     }
@@ -225,14 +229,23 @@ export default function ShiftSub({ employee }: { employee: any }) {
       // 確定公休→管理者がOFFにする（leave_requestsから削除）
       const req = leaveReqs.find(r => r.employee_id === emp.id && r.attendance_date === ds && r.type === "shift_koukyuu");
       if (req) {
-        await supabase.from("leave_requests").delete().eq("id", req.id);
-        loadData();
+        setLeaveReqs(prev => prev.filter(r => r.id !== req.id));
+        supabase.from("leave_requests").delete().eq("id", req.id).then(({ error }) => {
+          if (error) { console.error(error); loadData(); }
+        });
       }
       return;
     }
 
-    // ⑦ workday→公休ON（管理者直接設定 → approved で insert、即緑）
-    // 既存レコードを削除してから insert（onConflictの制約が無い場合への対策）
+    // workday→公休ON（管理者直接設定 → approved で insert、即緑）
+    // 楽観的更新：即座にローカル state にも反映
+    const tempId = `temp-${Date.now()}`;
+    setLeaveReqs(prev => [
+      ...prev.filter(r => !(r.employee_id === emp.id && r.attendance_date === ds && r.type === "shift_koukyuu")),
+      { id: tempId, employee_id: emp.id, attendance_date: ds, type: "shift_koukyuu", status: "approved", reject_reason: null },
+    ]);
+
+    // 既存レコードを削除してから insert
     await supabase.from("leave_requests")
       .delete()
       .eq("employee_id", emp.id)
@@ -250,10 +263,11 @@ export default function ShiftSub({ employee }: { employee: any }) {
       approved_by: employee.id,
       approver_id: employee.id,
       approved_at: new Date().toISOString(),
-    }).select();
+    }).select().single();
 
     if (error) {
       console.error("[ShiftSub] leave_requests insert error:", error);
+      setLeaveReqs(prev => prev.filter(r => r.id !== tempId));
       setDialog({
         message: `公休登録に失敗しました\n${error.message}`,
         mode: "alert",
@@ -261,8 +275,8 @@ export default function ShiftSub({ employee }: { employee: any }) {
       });
       return;
     }
-    console.log("[ShiftSub] inserted:", data);
-    loadData();
+    // tempId を本物のレコードに差し替え
+    setLeaveReqs(prev => prev.map(r => r.id === tempId ? (data as any) : r));
   };
 
   /* ── 申請の承認/差し戻しダイアログ ── */
@@ -280,15 +294,19 @@ export default function ShiftSub({ employee }: { employee: any }) {
 
   const approvePending = async () => {
     if (!pendingDialog) return;
-    await supabase.from("leave_requests").update({
+    const reqId = pendingDialog.reqId;
+    setLeaveReqs(prev => prev.map(r => r.id === reqId ? { ...r, status: "approved", reject_reason: null } : r));
+    setPendingDialog(null);
+    supabase.from("leave_requests").update({
       status: "approved",
+      reject_reason: null,
       approved_by: employee.id,
       approver_id: employee.id,
       approved_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-    }).eq("id", pendingDialog.reqId);
-    setPendingDialog(null);
-    loadData();
+    }).eq("id", reqId).then(({ error }) => {
+      if (error) { console.error(error); loadData(); }
+    });
   };
 
   const returnPending = async () => {
@@ -297,11 +315,16 @@ export default function ShiftSub({ employee }: { employee: any }) {
       setDialog({ message: "差し戻し理由を入力してください", mode: "alert", onOk: () => setDialog(null) });
       return;
     }
-    await supabase.from("leave_requests").update({
+    const reqId = pendingDialog.reqId;
+    const reasonText = rejectReasonInput.trim();
+    setLeaveReqs(prev => prev.map(r => r.id === reqId ? { ...r, status: "returned", reject_reason: reasonText } : r));
+    supabase.from("leave_requests").update({
       status: "returned",
-      reject_reason: rejectReasonInput.trim(),
+      reject_reason: reasonText,
       updated_at: new Date().toISOString(),
-    }).eq("id", pendingDialog.reqId);
+    }).eq("id", reqId).then(({ error }) => {
+      if (error) { console.error(error); loadData(); }
+    });
 
     const isYukyu = pendingDialog.reqType === "yukyu";
     const category = isYukyu ? "有給申請" : "公休申請";
@@ -314,14 +337,13 @@ export default function ShiftSub({ employee }: { employee: any }) {
         type: "request_processed",
         payload: {
           employee_id: pendingDialog.emp.id,
-          category: `${category}（${mo}/${pendingDialog.day}）：${rejectReasonInput.trim()}`,
+          category: `${category}（${mo}/${pendingDialog.day}）：${reasonText}`,
           status: "差し戻し",
         },
       }),
     }).catch(() => {});
 
     setPendingDialog(null);
-    loadData();
   };
 
   /* ── トースト表示 ── */

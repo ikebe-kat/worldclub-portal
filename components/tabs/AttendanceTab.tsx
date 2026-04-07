@@ -137,14 +137,14 @@ export default function AttendanceTab({ employee }: { employee: any }) {
       .from("attendance_daily").select("attendance_date, punch_in, punch_out, reason, actual_hours, over_under")
       .eq("employee_id", employee.id).gte("attendance_date", from).lte("attendance_date", to).order("attendance_date");
 
-    // leave_requests（申請中／差し戻しのみ）を取得して出勤簿に反映
-    // approved は確定後 attendance_daily に書かれてから表示する
+    // leave_requests（申請中／差し戻し／承認待ち）を取得して出勤簿に反映
+    // approved は確定ボタン押下までは「確定待ち」として表示
     const { data: lrData } = await supabase
       .from("leave_requests")
       .select("attendance_date, status, type, reject_reason")
       .eq("employee_id", employee.id)
       .in("type", ["shift_koukyuu", "yukyu"])
-      .in("status", ["pending", "returned"])
+      .in("status", ["pending", "returned", "approved"])
       .gte("attendance_date", from)
       .lte("attendance_date", to);
 
@@ -154,6 +154,8 @@ export default function AttendanceTab({ employee }: { employee: any }) {
       let lrLabel: string | null = null;
       if (lr.status === "pending") {
         lrLabel = isYukyu ? "有給申請中" : "公休申請中";
+      } else if (lr.status === "approved") {
+        lrLabel = isYukyu ? "有給確定待ち" : "公休確定待ち";
       } else if (lr.status === "returned") {
         const reason = lr.reject_reason ? `（${lr.reject_reason}）` : "";
         lrLabel = isYukyu ? `有給差し戻し${reason}` : `公休差し戻し${reason}`;
