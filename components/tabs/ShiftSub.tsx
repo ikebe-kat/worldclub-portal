@@ -139,10 +139,34 @@ export default function ShiftSub({ employee }: { employee: any }) {
     setYr(ny); setMo(nm);
   };
 
+  /* ── 提出チェックを免除する従業員ID集合（WC001=小川は直接編集可） ── */
+  const exemptIds = new Set(employees.filter(e => e.employee_code === "WC001").map(e => e.id));
+
+  /* ── 内部用：submittedIdsチェックなしの状態判定（確定処理用） ── */
+  const getCellStateRaw = (empId: string, day: number): CellState => {
+    const ds = dateStr(yr, mo, day);
+    const yukyuReq = leaveReqs.find(r => r.employee_id === empId && r.attendance_date === ds && r.type === "yukyu");
+    if (yukyuReq) {
+      if (yukyuReq.status === "approved") return "yukyu";
+      if (yukyuReq.status === "pending")  return "yukyu_pending";
+      if (yukyuReq.status === "returned") return "yukyu_returned";
+    }
+    const koukyuReq = leaveReqs.find(r => r.employee_id === empId && r.attendance_date === ds && r.type === "shift_koukyuu");
+    if (koukyuReq) {
+      if (koukyuReq.status === "approved") return "approved";
+      if (koukyuReq.status === "pending")  return "pending";
+      if (koukyuReq.status === "returned") return "returned";
+    }
+    const att = attData.find(a => a.employee_id === empId && a.attendance_date === ds);
+    if (att?.reason?.includes("有給")) return "yukyu";
+    if (att?.reason === "公休" || att?.reason === "公休（全日）") return "approved";
+    return "workday";
+  };
+
   /* ── セル状態判定 ── */
   const getCellState = (empId: string, day: number): CellState => {
-    // 提出していない従業員のセルは空白
-    if (!submittedIds.has(empId)) return "workday";
+    // 提出していない従業員のセルは空白（ただしWC001は例外）
+    if (!submittedIds.has(empId) && !exemptIds.has(empId)) return "workday";
 
     const ds = dateStr(yr, mo, day);
 
@@ -205,8 +229,8 @@ export default function ShiftSub({ employee }: { employee: any }) {
 
   /* ── ⑦ セルタップ処理（空きセル→直接公休insert） ── */
   const handleCellTap = async (emp: Emp, day: number) => {
-    // 未提出者は操作不可
-    if (!submittedIds.has(emp.id)) return;
+    // 未提出者は操作不可（ただしWC001は例外）
+    if (!submittedIds.has(emp.id) && !exemptIds.has(emp.id)) return;
 
     const ds = dateStr(yr, mo, day);
     const state = getCellState(emp.id, day);
@@ -220,24 +244,8 @@ export default function ShiftSub({ employee }: { employee: any }) {
       return;
     }
 
-    // 差し戻し済み → 承認に変更（出勤簿から消さない）
+    // 差し戻し済みは何もしない（赤いまま残す）
     if (state === "returned" || state === "yukyu_returned") {
-      const targetType = state === "yukyu_returned" ? "yukyu" : "shift_koukyuu";
-      const req = leaveReqs.find(r => r.employee_id === emp.id && r.attendance_date === ds && r.type === targetType);
-      if (req) {
-        // 楽観的更新
-        setLeaveReqs(prev => prev.map(r => r.id === req.id ? { ...r, status: "approved", reject_reason: null } : r));
-        supabase.from("leave_requests").update({
-          status: "approved",
-          reject_reason: null,
-          approved_by: employee.id,
-          approver_id: employee.id,
-          approved_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }).eq("id", req.id).then(({ error }) => {
-          if (error) { console.error(error); loadData(); }
-        });
-      }
       return;
     }
 
@@ -334,13 +342,23 @@ export default function ShiftSub({ employee }: { employee: any }) {
     const reqId = pendingDialog.reqId;
     const reasonText = rejectReasonInput.trim();
     setLeaveReqs(prev => prev.map(r => r.id === reqId ? { ...r, status: "returned", reject_reason: reasonText } : r));
-    supabase.from("leave_requests").update({
+
+    const { error: updErr } = await supabase.from("leave_requests").update({
       status: "returned",
       reject_reason: reasonText,
       updated_at: new Date().toISOString(),
-    }).eq("id", reqId).then(({ error }) => {
-      if (error) { console.error(error); loadData(); }
-    });
+    }).eq("id", reqId);
+
+    if (updErr) {
+      console.error("[ShiftSub] returnPending update error:", updErr);
+      setDialog({
+        message: `差し戻しに失敗しました\n${updErr.message}`,
+        mode: "alert",
+        onOk: () => { setDialog(null); loadData(); },
+      });
+      setPendingDialog(null);
+      return;
+    }
 
     const isYukyu = pendingDialog.reqType === "yukyu";
     const category = isYukyu ? "有給申請" : "公休申請";
@@ -386,16 +404,14 @@ export default function ShiftSub({ employee }: { employee: any }) {
         setDialog(null);
         setConfirming(true);
 
+        // 提出フィルタを無視して全従業員の approved/yukyu を attendance_daily に転記
         const upserts: any[] = [];
         for (const emp of employees) {
           for (let d = 1; d <= days; d++) {
-            const state = getCellState(emp.id, d);
+            const state = getCellStateRaw(emp.id, d);
             if (state !== "approved" && state !== "yukyu") continue;
             const ds = dateStr(yr, mo, d);
             const dow = DOW[dowOf(yr, mo, d)];
-            // 確定済みでないもののみ転記（attendance_daily由来は既に書かれている）
-            const fromAtt = attData.find(a => a.employee_id === emp.id && a.attendance_date === ds);
-            if (fromAtt) continue;
             upserts.push({
               company_id: COMPANY_ID,
               employee_id: emp.id,

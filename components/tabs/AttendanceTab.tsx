@@ -479,9 +479,16 @@ export default function AttendanceTab({ employee }: { employee: any }) {
     if (!modalDay) return;
     showConfirm("この日の事由を取り消しますか？", async () => {
       setSaving(true);
+      // attendance_daily の reason をクリア
       const { error } = await supabase.from("attendance_daily")
         .update({ reason: null, employee_note: null, updated_at: new Date().toISOString() })
         .eq("employee_id", employee.id).eq("attendance_date", modalDay.dateStr);
+      // leave_requests の公休/有給申請も削除
+      await supabase.from("leave_requests")
+        .delete()
+        .eq("employee_id", employee.id)
+        .eq("attendance_date", modalDay.dateStr)
+        .in("type", ["shift_koukyuu", "yukyu"]);
       setSaving(false);
       if (!error) {
         setModalDay(null); loadData();
