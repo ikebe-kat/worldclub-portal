@@ -213,7 +213,14 @@ export default function ShiftSub({ employee }: { employee: any }) {
     }
 
     // ⑦ workday→公休ON（管理者直接設定 → approved で insert、即緑）
-    const { error } = await supabase.from("leave_requests").upsert({
+    // 既存レコードを削除してから insert（onConflictの制約が無い場合への対策）
+    await supabase.from("leave_requests")
+      .delete()
+      .eq("employee_id", emp.id)
+      .eq("attendance_date", ds)
+      .eq("type", "shift_koukyuu");
+
+    const { data, error } = await supabase.from("leave_requests").insert({
       company_id: COMPANY_ID,
       store_id: STORE_ID,
       employee_id: emp.id,
@@ -221,12 +228,21 @@ export default function ShiftSub({ employee }: { employee: any }) {
       type: "shift_koukyuu",
       status: "approved",
       approved_by: employee.id,
+      approver_id: employee.id,
       approved_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }, { onConflict: "employee_id,attendance_date,type" });
-    if (!error) {
-      loadData();
+    }).select();
+
+    if (error) {
+      console.error("[ShiftSub] leave_requests insert error:", error);
+      setDialog({
+        message: `公休登録に失敗しました\n${error.message}`,
+        mode: "alert",
+        onOk: () => setDialog(null),
+      });
+      return;
     }
+    console.log("[ShiftSub] inserted:", data);
+    loadData();
   };
 
   /* ── 申請の承認/差し戻しダイアログ ── */

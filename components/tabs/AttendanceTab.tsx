@@ -212,7 +212,7 @@ export default function AttendanceTab({ employee }: { employee: any }) {
       const parts = day.reason.split("+").map((s: string) => s.trim());
       const kinmuBuf: string[] = [];
       for (const p of parts) {
-        if (p === "有給（全日）" || p === "希望休（全日）") { setSelZenjitsu(p); continue; }
+        if (p === "有給（全日）" || p === "希望休（全日）" || p === "公休（全日）") { setSelZenjitsu(p); continue; }
         if (p === "午前有給" || p === "午前希望休") { setSelGozen(p); continue; }
         if (p === "午後有給" || p === "午後希望休") { setSelGogo(p); continue; }
         const dk = parseDaikyu(p);
@@ -460,7 +460,7 @@ export default function AttendanceTab({ employee }: { employee: any }) {
 
             <Dot color={T.holidayRed} label="休暇申請" />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 20 }}>
-              <Chip label="公休（全日）" selected={selZenjitsu === "希望休（全日）"} color={T.kibouYellow} onClick={() => toggleZenjitsu("希望休（全日）")} />
+              <Chip label="公休（全日）" selected={selZenjitsu === "公休（全日）"} color={T.primary} onClick={() => toggleZenjitsu("公休（全日）")} />
               <Chip label="有給（全日）" selected={selZenjitsu === "有給（全日）"} color={T.yukyuBlue} onClick={() => toggleZenjitsu("有給（全日）")} />
             </div>
 

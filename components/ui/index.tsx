@@ -65,12 +65,12 @@ export const ReasonBadges = ({ reason }: ReasonBadgesProps) => {
         const t = p.trim();
         let bg: string = T.textMuted;
         if      (t.includes("有給"))                                    bg = T.yukyuBlue;
-        else if (t.includes("希望休") || t.includes("公休（") || t.includes("午前公休") || t.includes("午後公休"))  bg = T.kibouYellow;
+        else if (t === "公休" || t.includes("公休（") || t.includes("午前公休") || t.includes("午後公休")) bg = T.primary;
+        else if (t.includes("希望休"))                                  bg = T.kibouYellow;
         else if (["出張","休日出勤","代休"].some((k) => t.includes(k))) bg = T.kinmuGreen;
-        else if (t === "公休")                                          bg = T.holidayRed;
         else if (t === "欠勤")                                          bg = "#6B7280";
         return (
-          <Badge key={i} bg={bg} color={(t.includes("希望休") || t.includes("公休（") || t.includes("午前公休") || t.includes("午後公休")) ? "#78350F" : "#fff"}>
+          <Badge key={i} bg={bg} color={t.includes("希望休") ? "#78350F" : "#fff"}>
             {t}
           </Badge>
         );
