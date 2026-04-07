@@ -134,7 +134,31 @@ export default function AttendanceTab({ employee }: { employee: any }) {
     const { data: attData } = await supabase
       .from("attendance_daily").select("attendance_date, punch_in, punch_out, reason, actual_hours, over_under")
       .eq("employee_id", employee.id).gte("attendance_date", from).lte("attendance_date", to).order("attendance_date");
-    setRows(attData ?? []);
+
+    // leave_requests（申請中／差し戻し）を取得して出勤簿に反映
+    const { data: lrData } = await supabase
+      .from("leave_requests")
+      .select("attendance_date, status, reason")
+      .eq("employee_id", employee.id)
+      .eq("type", "shift_koukyuu")
+      .gte("attendance_date", from)
+      .lte("attendance_date", to);
+
+    const merged = [...(attData ?? [])];
+    (lrData ?? []).forEach((lr: any) => {
+      const existing = merged.find(m => m.attendance_date === lr.attendance_date);
+      const lrLabel =
+        lr.status === "pending"  ? "公休申請中" :
+        lr.status === "returned" ? "公休差し戻し" :
+        lr.status === "approved" ? "公休（全日）" : null;
+      if (!lrLabel) return;
+      if (existing) {
+        if (!existing.reason) existing.reason = lrLabel;
+      } else {
+        merged.push({ attendance_date: lr.attendance_date, punch_in: null, punch_out: null, reason: lrLabel, actual_hours: null, over_under: null });
+      }
+    });
+    setRows(merged);
 
     if (employee.holiday_calendar) {
       const { data: holData } = await supabase
@@ -521,7 +545,7 @@ export default function AttendanceTab({ employee }: { employee: any }) {
               {modalDay.reason && (
                 <button onClick={cancelReason} disabled={saving} style={{ flex: 1, padding: "12px", borderRadius: "6px", border: `1px solid ${T.danger}`, backgroundColor: "#fff", color: T.danger, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>{saving ? "..." : "取消"}</button>
               )}
-              <button onClick={submitReason} disabled={saving || !previewReason} style={{ flex: 1, padding: "12px", borderRadius: "6px", border: "none", backgroundColor: previewReason ? T.primary : T.border, color: previewReason ? "#fff" : T.textMuted, fontSize: 14, fontWeight: 600, cursor: previewReason ? "pointer" : "default" }}>{saving ? "登録中..." : "登録"}</button>
+              <button onClick={submitReason} disabled={saving || !previewReason} style={{ flex: 1, padding: "12px", borderRadius: "6px", border: "none", backgroundColor: previewReason ? T.primary : T.border, color: previewReason ? "#fff" : T.textMuted, fontSize: 14, fontWeight: 600, cursor: previewReason ? "pointer" : "default" }}>{saving ? (previewReason === "公休（全日）" ? "申請中..." : "登録中...") : (previewReason === "公休（全日）" ? "申請" : "登録")}</button>
             </div>
           </div>
         </div>

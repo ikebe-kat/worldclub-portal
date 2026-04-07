@@ -75,8 +75,8 @@ export default function ShiftSub({ employee }: { employee: any }) {
   const days = daysInMonth(yr, mo);
 
   /* ── データ取得 ── */
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const loadData = useCallback(async (showLoading = false) => {
+    if (showLoading) setLoading(true);
     const monthStart = dateStr(yr, mo, 1);
     const monthEnd = dateStr(yr, mo, days);
 
@@ -112,7 +112,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
     setLoading(false);
   }, [yr, mo, days]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { loadData(true); }, [loadData]);
 
   /* ── リアルタイム購読 ── */
   useEffect(() => {
