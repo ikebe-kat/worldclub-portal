@@ -395,6 +395,19 @@ export default function ShiftSub({ employee }: { employee: any }) {
 
   /* ── 確定ボタン処理 ── */
   const handleConfirm = async () => {
+    // 提出済み従業員に未承認(pending)が残っていたら確定不可
+    const hasPending = leaveReqs.some(r =>
+      r.status === "pending" &&
+      (submittedIds.has(r.employee_id) || exemptIds.has(r.employee_id))
+    );
+    if (hasPending) {
+      setDialog({
+        message: "未承認の申請があります。\n全て承認または差し戻しをしてから確定してください。",
+        mode: "alert",
+        onOk: () => setDialog(null),
+      });
+      return;
+    }
     setDialog({
       message: `${yr}年${mo}月のシフトを確定しますか？\n確定済み公休をattendance_dailyに一括登録します。`,
       mode: "confirm",
@@ -415,7 +428,6 @@ export default function ShiftSub({ employee }: { employee: any }) {
             upserts.push({
               company_id: COMPANY_ID,
               employee_id: emp.id,
-              store_id: STORE_ID,
               attendance_date: ds,
               day_of_week: dow,
               reason: state === "yukyu" ? "有給（全日）" : "公休（全日）",

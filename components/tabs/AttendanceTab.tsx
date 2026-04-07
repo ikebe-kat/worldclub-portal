@@ -515,6 +515,8 @@ export default function AttendanceTab({ employee }: { employee: any }) {
           <button onClick={() => go(1)} style={{ width: 30, height: 30, border: `1px solid ${T.border}`, borderRadius: "6px", backgroundColor: "#fff", cursor: "pointer", fontSize: 13, color: T.textSec }}>▶</button>
         </div>
         {(() => {
+          // WC001（小川）は提出フロー不要
+          if (employee?.employee_code === "WC001") return null;
           // 翌月の出勤簿を表示中のときだけボタンを出す
           if (yr !== nextRealYear || mo !== nextRealMonth) return null;
           const label =
