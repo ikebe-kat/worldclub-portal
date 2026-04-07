@@ -127,9 +127,9 @@ export default function AttendanceTab({ employee }: { employee: any }) {
   const swipeRef = useSmoothSwipe(go);
 
   /* ── データ取得 ── */
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (showLoading = false) => {
     if (!employee?.id) return;
-    setLoading(true);
+    if (showLoading) setLoading(true);
     const from = `${yr}-${String(mo).padStart(2, "0")}-01`;
     const toDate = new Date(yr, mo, 0);
     const to = `${yr}-${String(mo).padStart(2, "0")}-${String(toDate.getDate()).padStart(2, "0")}`;
@@ -188,11 +188,15 @@ export default function AttendanceTab({ employee }: { employee: any }) {
     setShiftConf(cur ? { confirmed_at: cur.confirmed_at } : null);
     setNextShiftConf(nxt ? { confirmed_at: nxt.confirmed_at } : null);
 
-    // shift_submissions（翌月分の提出有無）
+    // shift_submissions（実日付の翌月分の提出有無）
+    const _today = new Date();
+    const _ny = _today.getMonth() === 11 ? _today.getFullYear() + 1 : _today.getFullYear();
+    const _nm = _today.getMonth() === 11 ? 1 : _today.getMonth() + 2;
+    const _nextRealMonthStr = `${_ny}-${String(_nm).padStart(2, "0")}`;
     const { data: subData } = await supabase.from("shift_submissions")
       .select("submitted_at")
       .eq("employee_id", employee.id)
-      .eq("target_month", nextMonth)
+      .eq("target_month", _nextRealMonthStr)
       .maybeSingle();
     setNextSubmission(subData ? { submitted_at: subData.submitted_at } : null);
 
@@ -218,7 +222,7 @@ export default function AttendanceTab({ employee }: { employee: any }) {
     setLoading(false);
   }, [employee, yr, mo]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { loadData(true); }, [loadData]);
 
   /* ── 日付リスト ── */
   const allDays = useMemo(() => {
@@ -547,6 +551,8 @@ export default function AttendanceTab({ employee }: { employee: any }) {
           if (employee?.employee_code === "WC001") return null;
           // 翌月の出勤簿を表示中のときだけボタンを出す
           if (yr !== nextRealYear || mo !== nextRealMonth) return null;
+          // 確定済みなら非表示
+          if (shiftConf) return null;
           const label =
             submitted ? `${nextRealMonth}月 提出済み ✓` :
             submissionLocked ? `${nextRealMonth}月 締切済み` :
