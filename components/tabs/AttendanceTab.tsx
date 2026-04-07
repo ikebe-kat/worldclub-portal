@@ -508,9 +508,11 @@ export default function AttendanceTab({ employee }: { employee: any }) {
           <button onClick={() => go(1)} style={{ width: 30, height: 30, border: `1px solid ${T.border}`, borderRadius: "6px", backgroundColor: "#fff", cursor: "pointer", fontSize: 13, color: T.textSec }}>▶</button>
         </div>
         {(() => {
+          // 翌月の出勤簿を表示中のときだけボタンを出す
+          if (yr !== nextRealYear || mo !== nextRealMonth) return null;
           const label =
             submitted ? `${nextRealMonth}月 提出済み ✓` :
-            submissionLocked ? "締切済み" :
+            submissionLocked ? `${nextRealMonth}月 締切済み` :
             `${nextRealMonth}月のシフト希望を提出`;
           const disabled = submitted || submissionLocked || submitting;
           return (
