@@ -168,10 +168,10 @@ export default function ShiftSub({ employee }: { employee: any }) {
   /* ── セルラベル ── */
   const cellLabel = (state: string) => {
     switch (state) {
-      case "approved":  return "休";
-      case "pending":   return "申";
+      case "approved":  return "公休";
+      case "pending":   return "申請";
       case "returned":  return "戻";
-      case "yukyu":     return "有";
+      case "yukyu":     return "有給";
       default:          return "";
     }
   };
@@ -227,6 +227,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
       attendance_date: ds,
       type: "shift_koukyuu",
       status: "approved",
+      reason: "公休（全日）",
       approved_by: employee.id,
       approver_id: employee.id,
       approved_at: new Date().toISOString(),
@@ -440,7 +441,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
                       ...thStyle,
                       backgroundColor: isSun ? C.sunday : isSat ? C.saturday : C.koukyuu,
                       color: isSun ? "#DC2626" : isSat ? "#2563EB" : "#fff",
-                      minWidth: 28,
+                      minWidth: 38,
                     }}>
                       <div>{d}</div>
                       <div style={{ fontSize: 9, fontWeight: 400 }}>{DOW[dow]}</div>
@@ -603,5 +604,5 @@ const tdNameStyle: React.CSSProperties = {
 const tdCellStyle: React.CSSProperties = {
   padding: "6px 2px", textAlign: "center", fontSize: 10, fontWeight: 700,
   borderRight: `1px solid ${T.borderLight}`, borderBottom: `1px solid ${T.border}`,
-  minWidth: 28, userSelect: "none",
+  minWidth: 38, userSelect: "none",
 };

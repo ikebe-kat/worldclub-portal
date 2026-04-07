@@ -341,6 +341,7 @@ export default function AttendanceTab({ employee }: { employee: any }) {
         attendance_date: modalDay.dateStr,
         type: "shift_koukyuu",
         status: "pending",
+        reason: "公休（全日）",
         request_comment: note || null,
       });
       setSaving(false);
