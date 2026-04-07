@@ -1289,13 +1289,17 @@ export default function AdminTab({ employee }: { employee: any }) {
   const myCode = employee?.employee_code || "";
   const isOwner = OWNER_CODES.includes(myCode);
   const isSuper = SUPER_CODES.includes(myCode);
+  // ワールドクラブの管理者（小川）
+  const isWcOwner = myCode === "WC001";
   const visibleTabs = ALL_SUB_TABS.filter(t => {
+    // シフト管理はWC001も閲覧可
+    if (t.id === "shift") return isOwner || isWcOwner;
     if (t.visibleTo === "owner_only") return isOwner;
     if (t.visibleTo === "owner_or_kondo") return isOwner;
     if (t.visibleTo === "super_only") return isOwner || isSuper;
     return true;
   });
-  const defaultTab = isOwner ? "notifications" : "individual";
+  const defaultTab = isWcOwner ? "shift" : isOwner ? "notifications" : "individual";
   const [sub, setSub] = useState<SubTab>(defaultTab);
   return (
     <div style={{ padding: "16px 12px", maxWidth: 960, margin: "0 auto" }}>

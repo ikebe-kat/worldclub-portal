@@ -324,6 +324,31 @@ export default function AttendanceTab({ employee }: { employee: any }) {
     }
 
     setSaving(true);
+
+    // ── 公休（全日）はleave_requestsへpending申請として保存 ──
+    if (previewReason === "公休（全日）") {
+      // 既存の申請があれば削除（再申請）
+      await supabase.from("leave_requests")
+        .delete()
+        .eq("employee_id", employee.id)
+        .eq("attendance_date", modalDay.dateStr)
+        .eq("type", "shift_koukyuu");
+
+      const { error: reqErr } = await supabase.from("leave_requests").insert({
+        company_id: employee.company_id,
+        store_id: employee.store_id,
+        employee_id: employee.id,
+        attendance_date: modalDay.dateStr,
+        type: "shift_koukyuu",
+        status: "pending",
+        request_comment: note || null,
+      });
+      setSaving(false);
+      if (reqErr) { showAlert("申請に失敗しました: " + reqErr.message); return; }
+      setModalDay(null); loadData();
+      return;
+    }
+
     const { error } = await supabase.from("attendance_daily").upsert({
       employee_id: employee.id, company_id: employee.company_id,
       attendance_date: modalDay.dateStr, day_of_week: DOW[modalDay.dow],
