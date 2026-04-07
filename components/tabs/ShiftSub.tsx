@@ -18,13 +18,14 @@ const VISIBLE_CODES = Array.from({ length: 16 }, (_, i) => `WC${String(i + 1).pa
 
 /* ── 色定義 ── */
 const C = {
-  koukyuu:   "#1a4b24",   // 緑 = 公休（確定）
-  pending:   "#EAB308",   // 黄 = 公休（申請中）
-  yukyu:     "#3B82F6",   // 青 = 有給
-  returned:  "#EF4444",   // 赤 = 差し戻し
-  workday:   "#fff",      // 白 = 出勤
-  saturday:  "#EBF5FB",   // 土曜列背景
-  sunday:    "#FDEDEC",   // 日曜列背景
+  koukyuu:       "#1a4b24",   // 緑 = 公休（確定）
+  pending:       "#EAB308",   // 黄 = 公休（申請中）
+  yukyu:         "#1d4ed8",   // 濃青 = 有給（確定）
+  yukyuPending:  "#93c5fd",   // 薄青 = 有給（申請中）
+  returned:      "#EF4444",   // 赤 = 差し戻し
+  workday:       "#fff",      // 白 = 出勤
+  saturday:      "#EBF5FB",   // 土曜列背景
+  sunday:        "#FDEDEC",   // 日曜列背景
 } as const;
 
 interface Emp {
@@ -40,7 +41,13 @@ interface LeaveReq {
   attendance_date: string;
   type: string;
   status: string;
+  reject_reason?: string | null;
 }
+
+type CellState =
+  | "approved" | "pending" | "returned"
+  | "yukyu" | "yukyu_pending" | "yukyu_returned"
+  | "workday";
 
 interface AttRow {
   employee_id: string;
@@ -87,11 +94,11 @@ export default function ShiftSub({ employee }: { employee: any }) {
       .eq("is_active", true)
       .order("employee_code");
 
-    // leave_requests（当月）
+    // leave_requests（当月：公休＋有給）
     const { data: reqs } = await supabase.from("leave_requests")
-      .select("id, employee_id, attendance_date, type, status")
+      .select("id, employee_id, attendance_date, type, status, reject_reason")
       .eq("company_id", COMPANY_ID)
-      .eq("type", "shift_koukyuu")
+      .in("type", ["shift_koukyuu", "yukyu"])
       .gte("attendance_date", monthStart)
       .lte("attendance_date", monthEnd);
 
@@ -129,18 +136,24 @@ export default function ShiftSub({ employee }: { employee: any }) {
   };
 
   /* ── セル状態判定 ── */
-  const getCellState = (empId: string, day: number): "approved" | "pending" | "returned" | "yukyu" | "workday" => {
+  const getCellState = (empId: string, day: number): CellState => {
     const ds = dateStr(yr, mo, day);
 
-    // leave_requests（優先）
-    const req = leaveReqs.find(r => r.employee_id === empId && r.attendance_date === ds);
-    if (req) {
-      if (req.status === "approved") return "approved";
-      if (req.status === "pending") return "pending";
-      if (req.status === "returned") return "returned";
+    // leave_requests（type別に優先順位：yukyu→shift_koukyuu）
+    const yukyuReq = leaveReqs.find(r => r.employee_id === empId && r.attendance_date === ds && r.type === "yukyu");
+    if (yukyuReq) {
+      if (yukyuReq.status === "approved") return "yukyu";
+      if (yukyuReq.status === "pending")  return "yukyu_pending";
+      if (yukyuReq.status === "returned") return "yukyu_returned";
+    }
+    const koukyuReq = leaveReqs.find(r => r.employee_id === empId && r.attendance_date === ds && r.type === "shift_koukyuu");
+    if (koukyuReq) {
+      if (koukyuReq.status === "approved") return "approved";
+      if (koukyuReq.status === "pending")  return "pending";
+      if (koukyuReq.status === "returned") return "returned";
     }
 
-    // ④ attendance_daily（公休・有給を反映）
+    // attendance_daily（確定後の表示）
     const att = attData.find(a => a.employee_id === empId && a.attendance_date === ds);
     if (att?.reason?.includes("有給")) return "yukyu";
     if (att?.reason === "公休" || att?.reason === "公休（全日）") return "approved";
@@ -151,11 +164,13 @@ export default function ShiftSub({ employee }: { employee: any }) {
   /* ── セルの背景色 ── */
   const cellBg = (state: string) => {
     switch (state) {
-      case "approved":  return C.koukyuu;
-      case "pending":   return C.pending;
-      case "returned":  return C.returned;
-      case "yukyu":     return C.yukyu;
-      default:          return C.workday;
+      case "approved":       return C.koukyuu;
+      case "pending":        return C.pending;
+      case "returned":       return C.returned;
+      case "yukyu":          return C.yukyu;
+      case "yukyu_pending":  return C.yukyuPending;
+      case "yukyu_returned": return C.returned;
+      default:               return C.workday;
     }
   };
 
@@ -168,11 +183,13 @@ export default function ShiftSub({ employee }: { employee: any }) {
   /* ── セルラベル ── */
   const cellLabel = (state: string) => {
     switch (state) {
-      case "approved":  return "公休";
-      case "pending":   return "申請";
-      case "returned":  return "戻";
-      case "yukyu":     return "有給";
-      default:          return "";
+      case "approved":       return "公休";
+      case "pending":        return "申請";
+      case "returned":       return "戻";
+      case "yukyu":          return "有給";
+      case "yukyu_pending":  return "有申";
+      case "yukyu_returned": return "戻";
+      default:               return "";
     }
   };
 
@@ -184,17 +201,19 @@ export default function ShiftSub({ employee }: { employee: any }) {
     const ds = dateStr(yr, mo, day);
     const state = getCellState(emp.id, day);
 
-    if (state === "yukyu") return; // 有給は変更不可
+    // 有給確定済みは変更不可
+    if (state === "yukyu") return;
 
-    if (state === "pending") {
-      // 申請中→承認/差し戻しポップアップ
-      handlePendingTap(emp, day);
+    // 申請中（公休 or 有給）→ 承認/差し戻しダイアログ
+    if (state === "pending" || state === "yukyu_pending") {
+      handlePendingTap(emp, day, state === "yukyu_pending" ? "yukyu" : "shift_koukyuu");
       return;
     }
 
-    if (state === "returned") {
-      // 差し戻し済み→削除してworkdayに戻す
-      const req = leaveReqs.find(r => r.employee_id === emp.id && r.attendance_date === ds);
+    // 差し戻し済み → 削除して workday に戻す
+    if (state === "returned" || state === "yukyu_returned") {
+      const targetType = state === "yukyu_returned" ? "yukyu" : "shift_koukyuu";
+      const req = leaveReqs.find(r => r.employee_id === emp.id && r.attendance_date === ds && r.type === targetType);
       if (req) {
         await supabase.from("leave_requests").delete().eq("id", req.id);
         loadData();
@@ -204,7 +223,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
 
     if (state === "approved") {
       // 確定公休→管理者がOFFにする（leave_requestsから削除）
-      const req = leaveReqs.find(r => r.employee_id === emp.id && r.attendance_date === ds);
+      const req = leaveReqs.find(r => r.employee_id === emp.id && r.attendance_date === ds && r.type === "shift_koukyuu");
       if (req) {
         await supabase.from("leave_requests").delete().eq("id", req.id);
         loadData();
@@ -247,13 +266,15 @@ export default function ShiftSub({ employee }: { employee: any }) {
   };
 
   /* ── 申請の承認/差し戻しダイアログ ── */
-  const [pendingDialog, setPendingDialog] = useState<{ emp: Emp; day: number; reqId: string } | null>(null);
+  const [pendingDialog, setPendingDialog] = useState<{ emp: Emp; day: number; reqId: string; reqType: string } | null>(null);
+  const [rejectReasonInput, setRejectReasonInput] = useState("");
 
-  const handlePendingTap = (emp: Emp, day: number) => {
+  const handlePendingTap = (emp: Emp, day: number, reqType: string) => {
     const ds = dateStr(yr, mo, day);
-    const req = leaveReqs.find(r => r.employee_id === emp.id && r.attendance_date === ds && r.status === "pending");
+    const req = leaveReqs.find(r => r.employee_id === emp.id && r.attendance_date === ds && r.status === "pending" && r.type === reqType);
     if (req) {
-      setPendingDialog({ emp, day, reqId: req.id });
+      setRejectReasonInput("");
+      setPendingDialog({ emp, day, reqId: req.id, reqType });
     }
   };
 
@@ -262,6 +283,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
     await supabase.from("leave_requests").update({
       status: "approved",
       approved_by: employee.id,
+      approver_id: employee.id,
       approved_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }).eq("id", pendingDialog.reqId);
@@ -271,10 +293,18 @@ export default function ShiftSub({ employee }: { employee: any }) {
 
   const returnPending = async () => {
     if (!pendingDialog) return;
+    if (!rejectReasonInput.trim()) {
+      setDialog({ message: "差し戻し理由を入力してください", mode: "alert", onOk: () => setDialog(null) });
+      return;
+    }
     await supabase.from("leave_requests").update({
       status: "returned",
+      reject_reason: rejectReasonInput.trim(),
       updated_at: new Date().toISOString(),
     }).eq("id", pendingDialog.reqId);
+
+    const isYukyu = pendingDialog.reqType === "yukyu";
+    const category = isYukyu ? "有給申請" : "公休申請";
 
     // プッシュ通知送信
     fetch(PUSH_URL, {
@@ -284,7 +314,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
         type: "request_processed",
         payload: {
           employee_id: pendingDialog.emp.id,
-          category: `公休申請（${mo}/${pendingDialog.day}）`,
+          category: `${category}（${mo}/${pendingDialog.day}）：${rejectReasonInput.trim()}`,
           status: "差し戻し",
         },
       }),
@@ -322,19 +352,21 @@ export default function ShiftSub({ employee }: { employee: any }) {
         for (const emp of employees) {
           for (let d = 1; d <= days; d++) {
             const state = getCellState(emp.id, d);
-            if (state === "approved") {
-              const ds = dateStr(yr, mo, d);
-              const dow = DOW[dowOf(yr, mo, d)];
-              upserts.push({
-                company_id: COMPANY_ID,
-                employee_id: emp.id,
-                store_id: STORE_ID,
-                attendance_date: ds,
-                day_of_week: dow,
-                reason: "公休（全日）",
-                updated_at: new Date().toISOString(),
-              });
-            }
+            if (state !== "approved" && state !== "yukyu") continue;
+            const ds = dateStr(yr, mo, d);
+            const dow = DOW[dowOf(yr, mo, d)];
+            // 確定済みでないもののみ転記（attendance_daily由来は既に書かれている）
+            const fromAtt = attData.find(a => a.employee_id === emp.id && a.attendance_date === ds);
+            if (fromAtt) continue;
+            upserts.push({
+              company_id: COMPANY_ID,
+              employee_id: emp.id,
+              store_id: STORE_ID,
+              attendance_date: ds,
+              day_of_week: dow,
+              reason: state === "yukyu" ? "有給（全日）" : "公休（全日）",
+              updated_at: new Date().toISOString(),
+            });
           }
         }
 
@@ -438,7 +470,8 @@ export default function ShiftSub({ employee }: { employee: any }) {
         {[
           { color: C.koukyuu, label: "公休（確定）" },
           { color: C.pending, label: "公休（申請中）" },
-          { color: C.yukyu, label: "有給" },
+          { color: C.yukyu, label: "有給（確定）" },
+          { color: C.yukyuPending, label: "有給（申請中）" },
           { color: C.returned, label: "差し戻し" },
           { color: "#E5E7EB", label: "出勤", textColor: T.textMuted },
         ].map((item) => (
@@ -578,9 +611,20 @@ export default function ShiftSub({ employee }: { employee: any }) {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ fontSize: 14, color: T.text, textAlign: "center", marginBottom: 20, lineHeight: "22px" }}>
-              {surname(pendingDialog.emp.full_name)}の{mo}/{pendingDialog.day}の公休申請
+            <div style={{ fontSize: 14, color: T.text, textAlign: "center", marginBottom: 14, lineHeight: "22px" }}>
+              {surname(pendingDialog.emp.full_name)}の{mo}/{pendingDialog.day}の{pendingDialog.reqType === "yukyu" ? "有給申請" : "公休申請"}
             </div>
+            <textarea
+              value={rejectReasonInput}
+              onChange={(e) => setRejectReasonInput(e.target.value)}
+              placeholder="差し戻し理由（差し戻す場合は必須）"
+              style={{
+                width: "100%", padding: "8px 10px", borderRadius: 4,
+                border: `1px solid ${T.border}`, fontSize: 13,
+                resize: "vertical", minHeight: 56, marginBottom: 14,
+                boxSizing: "border-box", fontFamily: "inherit",
+              }}
+            />
             <div style={{ display: "flex", gap: 10 }}>
               <button
                 onClick={returnPending}

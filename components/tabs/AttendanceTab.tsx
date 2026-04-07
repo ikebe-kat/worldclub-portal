@@ -137,23 +137,29 @@ export default function AttendanceTab({ employee }: { employee: any }) {
       .from("attendance_daily").select("attendance_date, punch_in, punch_out, reason, actual_hours, over_under")
       .eq("employee_id", employee.id).gte("attendance_date", from).lte("attendance_date", to).order("attendance_date");
 
-    // leave_requests（申請中／差し戻し）を取得して出勤簿に反映
+    // leave_requests（申請中／差し戻しのみ）を取得して出勤簿に反映
+    // approved は確定後 attendance_daily に書かれてから表示する
     const { data: lrData } = await supabase
       .from("leave_requests")
-      .select("attendance_date, status, reason")
+      .select("attendance_date, status, type, reject_reason")
       .eq("employee_id", employee.id)
-      .eq("type", "shift_koukyuu")
+      .in("type", ["shift_koukyuu", "yukyu"])
+      .in("status", ["pending", "returned"])
       .gte("attendance_date", from)
       .lte("attendance_date", to);
 
     const merged = [...(attData ?? [])];
     (lrData ?? []).forEach((lr: any) => {
-      const existing = merged.find(m => m.attendance_date === lr.attendance_date);
-      const lrLabel =
-        lr.status === "pending"  ? "公休申請中" :
-        lr.status === "returned" ? "公休差し戻し" :
-        lr.status === "approved" ? "公休（全日）" : null;
+      const isYukyu = lr.type === "yukyu";
+      let lrLabel: string | null = null;
+      if (lr.status === "pending") {
+        lrLabel = isYukyu ? "有給申請中" : "公休申請中";
+      } else if (lr.status === "returned") {
+        const reason = lr.reject_reason ? `（${lr.reject_reason}）` : "";
+        lrLabel = isYukyu ? `有給差し戻し${reason}` : `公休差し戻し${reason}`;
+      }
       if (!lrLabel) return;
+      const existing = merged.find(m => m.attendance_date === lr.attendance_date);
       if (existing) {
         if (!existing.reason) existing.reason = lrLabel;
       } else {
@@ -384,28 +390,29 @@ export default function AttendanceTab({ employee }: { employee: any }) {
 
     setSaving(true);
 
-    // ── 公休（全日）はleave_requestsへpending申請として保存 ──
-    if (previewReason === "公休（全日）") {
+    // ── 公休（全日）/ 有給（全日）は leave_requests へ pending 申請として保存 ──
+    if (previewReason === "公休（全日）" || previewReason === "有給（全日）") {
       if (isKoukyuLocked(modalDay.dateStr)) {
         setSaving(false);
-        showAlert("この月の公休申請は締切済みです");
+        showAlert("この月の申請は締切済みです");
         return;
       }
+      const reqType = previewReason === "公休（全日）" ? "shift_koukyuu" : "yukyu";
       // 既存の申請があれば削除（再申請）
       await supabase.from("leave_requests")
         .delete()
         .eq("employee_id", employee.id)
         .eq("attendance_date", modalDay.dateStr)
-        .eq("type", "shift_koukyuu");
+        .eq("type", reqType);
 
       const { error: reqErr } = await supabase.from("leave_requests").insert({
         company_id: employee.company_id,
         store_id: employee.store_id,
         employee_id: employee.id,
         attendance_date: modalDay.dateStr,
-        type: "shift_koukyuu",
+        type: reqType,
         status: "pending",
-        reason: "公休（全日）",
+        reason: previewReason,
         request_comment: note || null,
       });
       setSaving(false);
@@ -601,9 +608,10 @@ export default function AttendanceTab({ employee }: { employee: any }) {
                 <button onClick={cancelReason} disabled={saving} style={{ flex: 1, padding: "12px", borderRadius: "6px", border: `1px solid ${T.danger}`, backgroundColor: "#fff", color: T.danger, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>{saving ? "..." : "取消"}</button>
               )}
               {(() => {
-                const locked = previewReason === "公休（全日）" && modalDay && isKoukyuLocked(modalDay.dateStr);
+                const isShinsei = previewReason === "公休（全日）" || previewReason === "有給（全日）";
+                const locked = isShinsei && modalDay && isKoukyuLocked(modalDay.dateStr);
                 const disabled = saving || !previewReason || locked;
-                const label = locked ? "締切済み" : saving ? (previewReason === "公休（全日）" ? "申請中..." : "登録中...") : (previewReason === "公休（全日）" ? "申請" : "登録");
+                const label = locked ? "締切済み" : saving ? (isShinsei ? "申請中..." : "登録中...") : (isShinsei ? "申請" : "登録");
                 return (
                   <button onClick={submitReason} disabled={disabled} style={{ flex: 1, padding: "12px", borderRadius: "6px", border: "none", backgroundColor: disabled ? T.border : T.primary, color: disabled ? T.textMuted : "#fff", fontSize: 14, fontWeight: 600, cursor: disabled ? "default" : "pointer" }}>{label}</button>
                 );
