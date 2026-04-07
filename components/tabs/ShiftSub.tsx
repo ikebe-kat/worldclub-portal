@@ -76,6 +76,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
   const [leaveReqs, setLeaveReqs] = useState<LeaveReq[]>([]);
   const [attData, setAttData] = useState<AttRow[]>([]);
   const [submittedIds, setSubmittedIds] = useState<Set<string>>(new Set());
+  const [shiftConfirmedAt, setShiftConfirmedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [confirming, setConfirming] = useState(false);
   const [dialog, setDialog] = useState<{ message: string; mode: "alert" | "confirm"; confirmLabel?: string; confirmColor?: string; onOk: () => void } | null>(null);
@@ -122,10 +123,35 @@ export default function ShiftSub({ employee }: { employee: any }) {
       .eq("target_month", targetMonth);
     const submitted = new Set<string>((subs || []).map((s: any) => s.employee_id));
 
+    // shift_confirmations（当月確定状態）
+    const { data: confRow } = await supabase.from("shift_confirmations")
+      .select("confirmed_at")
+      .eq("company_id", COMPANY_ID)
+      .eq("target_month", targetMonth)
+      .maybeSingle();
+    let confirmedAt: string | null = confRow?.confirmed_at ?? null;
+
+    // 自動確定：表示中の月の1日を過ぎていれば自動でshift_confirmationsを作成
+    if (!confirmedAt) {
+      const today = new Date();
+      const firstDay = new Date(yr, mo - 1, 1);
+      if (today >= firstDay) {
+        const nowIso = new Date().toISOString();
+        const { error: autoErr } = await supabase.from("shift_confirmations").insert({
+          company_id: COMPANY_ID,
+          confirmed_by: employee.id,
+          target_month: targetMonth,
+          confirmed_at: nowIso,
+        });
+        if (!autoErr) confirmedAt = nowIso;
+      }
+    }
+
     setEmployees(filteredEmps);
     setLeaveReqs(reqs || []);
     setAttData(att || []);
     setSubmittedIds(submitted);
+    setShiftConfirmedAt(confirmedAt);
     setLoading(false);
   }, [yr, mo, days]);
 
@@ -393,6 +419,69 @@ export default function ShiftSub({ employee }: { employee: any }) {
     setToast("保存しました");
   };
 
+  /* ── 修正ボタン処理（確定解除） ── */
+  const handleUnconfirm = async () => {
+    setDialog({
+      message: `${yr}年${mo}月のシフト確定を解除しますか？\n確定済みの公休・有給を申請に戻します。`,
+      mode: "confirm",
+      confirmLabel: "修正する",
+      confirmColor: C.returned,
+      onOk: async () => {
+        setDialog(null);
+        setConfirming(true);
+
+        const monthStart = dateStr(yr, mo, 1);
+        const monthEnd = dateStr(yr, mo, days);
+
+        // attendance_daily から当月の公休/有給を取得
+        const { data: rows } = await supabase.from("attendance_daily")
+          .select("id, employee_id, attendance_date, reason")
+          .eq("company_id", COMPANY_ID)
+          .gte("attendance_date", monthStart)
+          .lte("attendance_date", monthEnd)
+          .or("reason.eq.公休（全日）,reason.like.%有給%");
+
+        for (const row of rows || []) {
+          const reasonStr = row.reason as string;
+          const reqType = reasonStr.includes("有給") ? "yukyu" : "shift_koukyuu";
+          // 既存の leave_requests レコードを削除して再 insert
+          await supabase.from("leave_requests")
+            .delete()
+            .eq("employee_id", row.employee_id)
+            .eq("attendance_date", row.attendance_date)
+            .eq("type", reqType);
+          await supabase.from("leave_requests").insert({
+            company_id: COMPANY_ID,
+            store_id: STORE_ID,
+            employee_id: row.employee_id,
+            attendance_date: row.attendance_date,
+            type: reqType,
+            status: "approved",
+            reason: reasonStr,
+            approved_by: employee.id,
+            approver_id: employee.id,
+            approved_at: new Date().toISOString(),
+          });
+          // attendance_daily の reason をクリア
+          await supabase.from("attendance_daily")
+            .update({ reason: null, updated_at: new Date().toISOString() })
+            .eq("id", row.id);
+        }
+
+        // shift_confirmations を削除
+        const targetMonth = `${yr}-${String(mo).padStart(2, "0")}`;
+        await supabase.from("shift_confirmations")
+          .delete()
+          .eq("company_id", COMPANY_ID)
+          .eq("target_month", targetMonth);
+
+        setConfirming(false);
+        setShiftConfirmedAt(null);
+        loadData();
+      },
+    });
+  };
+
   /* ── 確定ボタン処理 ── */
   const handleConfirm = async () => {
     // 提出済み従業員に未承認(pending)が残っていたら確定不可
@@ -512,18 +601,33 @@ export default function ShiftSub({ employee }: { employee: any }) {
           >
             下書き保存
           </button>
-          <button
-            onClick={handleConfirm}
-            disabled={confirming}
-            style={{
-              padding: "8px 20px", borderRadius: 4, border: "none",
-              backgroundColor: C.koukyuu, color: "#fff",
-              fontSize: 13, fontWeight: 700, cursor: confirming ? "not-allowed" : "pointer",
-              opacity: confirming ? 0.6 : 1,
-            }}
-          >
-            {confirming ? "処理中..." : "確定"}
-          </button>
+          {shiftConfirmedAt ? (
+            <button
+              onClick={handleUnconfirm}
+              disabled={confirming}
+              style={{
+                padding: "8px 20px", borderRadius: 4, border: "none",
+                backgroundColor: C.returned, color: "#fff",
+                fontSize: 13, fontWeight: 700, cursor: confirming ? "not-allowed" : "pointer",
+                opacity: confirming ? 0.6 : 1,
+              }}
+            >
+              {confirming ? "処理中..." : "修正する"}
+            </button>
+          ) : (
+            <button
+              onClick={handleConfirm}
+              disabled={confirming}
+              style={{
+                padding: "8px 20px", borderRadius: 4, border: "none",
+                backgroundColor: C.koukyuu, color: "#fff",
+                fontSize: 13, fontWeight: 700, cursor: confirming ? "not-allowed" : "pointer",
+                opacity: confirming ? 0.6 : 1,
+              }}
+            >
+              {confirming ? "処理中..." : "確定"}
+            </button>
+          )}
         </div>
       </div>
 

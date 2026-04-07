@@ -141,9 +141,10 @@ export default function AttendanceTab({ employee }: { employee: any }) {
 
     // leave_requests（申請中／差し戻し／承認待ち）を取得して出勤簿に反映
     // approved は確定ボタン押下までは「確定待ち」として表示
+    // checked（差し戻し確認済み）は表示しない
     const { data: lrData } = await supabase
       .from("leave_requests")
-      .select("attendance_date, status, type, reject_reason")
+      .select("id, attendance_date, status, type, reject_reason")
       .eq("employee_id", employee.id)
       .in("type", ["shift_koukyuu", "yukyu"])
       .in("status", ["pending", "returned", "approved"])
@@ -164,10 +165,12 @@ export default function AttendanceTab({ employee }: { employee: any }) {
       }
       if (!lrLabel) return;
       const existing = merged.find(m => m.attendance_date === lr.attendance_date);
+      const lrMeta = lr.status === "returned" ? { returned_lr_id: lr.id } : {};
       if (existing) {
         if (!existing.reason) existing.reason = lrLabel;
+        Object.assign(existing, lrMeta);
       } else {
-        merged.push({ attendance_date: lr.attendance_date, punch_in: null, punch_out: null, reason: lrLabel, actual_hours: null, over_under: null });
+        merged.push({ attendance_date: lr.attendance_date, punch_in: null, punch_out: null, reason: lrLabel, actual_hours: null, over_under: null, ...lrMeta });
       }
     });
     setRows(merged);
@@ -232,6 +235,7 @@ export default function AttendanceTab({ employee }: { employee: any }) {
         wm: rec?.actual_hours ? Math.round(Number(rec.actual_hours) * 60) : 0,
         diff: rec?.over_under ? Math.round(Number(rec.over_under) * 60) : 0,
         off: holidays.includes(dateStr),
+        returnedLrId: (rec as any)?.returned_lr_id ?? null,
       });
     }
     return days;
@@ -267,7 +271,22 @@ export default function AttendanceTab({ employee }: { employee: any }) {
   const submitted = !!nextSubmission;
 
   const handleShiftSubmit = async () => {
-    if (submitting || submitted || submissionLocked) return;
+    if (submitting) return;
+    if (submissionLocked && !submitted) return;
+    if (submitted) {
+      // 既提出 → 修正確認
+      showConfirm("提出済みです。修正しますか？", async () => {
+        setSubmitting(true);
+        const { error } = await supabase.from("shift_submissions")
+          .delete()
+          .eq("employee_id", employee.id)
+          .eq("target_month", nextRealMonthStr);
+        setSubmitting(false);
+        if (error) { showAlert("取消に失敗しました: " + error.message); return; }
+        setNextSubmission(null);
+      }, "修正");
+      return;
+    }
     setSubmitting(true);
     const { error } = await supabase.from("shift_submissions").insert({
       company_id: employee.company_id,
@@ -474,6 +493,15 @@ export default function AttendanceTab({ employee }: { employee: any }) {
     else { showAlert("登録に失敗しました: " + error.message); }
   };
 
+  /* ── 差し戻し確認 ── */
+  const handleCheckReturned = async (lrId: string) => {
+    const { error } = await supabase.from("leave_requests")
+      .update({ status: "checked", updated_at: new Date().toISOString() })
+      .eq("id", lrId);
+    if (error) { showAlert("確認に失敗しました: " + error.message); return; }
+    loadData();
+  };
+
   /* ── 事由取消 ── */
   const cancelReason = () => {
     if (!modalDay) return;
@@ -523,7 +551,7 @@ export default function AttendanceTab({ employee }: { employee: any }) {
             submitted ? `${nextRealMonth}月 提出済み ✓` :
             submissionLocked ? `${nextRealMonth}月 締切済み` :
             `${nextRealMonth}月のシフト希望を提出`;
-          const disabled = submitted || submissionLocked || submitting;
+          const disabled = submitting || (submissionLocked && !submitted);
           return (
             <button
               onClick={handleShiftSubmit}
@@ -598,7 +626,26 @@ export default function AttendanceTab({ employee }: { employee: any }) {
                     <td style={{ padding: "7px 4px", textAlign: "center", color: dc, width: 20 }}>{DOW[row.dow]}</td>
                     <td style={{ padding: "7px 4px", color: T.text, width: 44 }}>{row.pi ?? <span style={{ color: T.textPH }}>—</span>}</td>
                     <td style={{ padding: "7px 4px", color: T.text, width: 44 }}>{row.po ?? <span style={{ color: T.textPH }}>—</span>}</td>
-                    <td style={{ padding: "7px 4px" }}><ReasonBadges reason={displayReason(row.reason, employee?.employee_code || "") ?? (row.off ? "休日" : null)} /></td>
+                    <td style={{ padding: "7px 4px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+                        <ReasonBadges reason={displayReason(row.reason, employee?.employee_code || "") ?? (row.off ? "休日" : null)} />
+                        {(row as any).returnedLrId && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleCheckReturned((row as any).returnedLrId); }}
+                            title="確認済みにする"
+                            style={{
+                              width: 22, height: 22, borderRadius: "50%",
+                              border: `1px solid ${T.primary}`, backgroundColor: "#fff",
+                              color: T.primary, fontSize: 12, fontWeight: 700,
+                              cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                              padding: 0,
+                            }}
+                          >
+                            ✓
+                          </button>
+                        )}
+                      </div>
+                    </td>
                     {!isMobile && (
                       <td style={{ padding: "7px 4px", color: T.text, width: 56, whiteSpace: "nowrap" }}>{row.wm > 0 ? fmtMin(row.wm) : <span style={{ color: T.textPH }}>—</span>}</td>
                     )}
