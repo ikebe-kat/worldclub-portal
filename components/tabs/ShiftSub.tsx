@@ -147,16 +147,13 @@ export default function ShiftSub({ employee }: { employee: any }) {
     setResubmittedIds(resubmitted);
     setShiftConfirmedAt(confirmedAt);
 
-    // 有給申請（pending yukyu）当月＋翌月
-    const [nyr, nmo] = stepMonth(yr, mo, 1);
-    const nextEnd = new Date(nyr, nmo, 0).getDate();
-    const nextMonthEnd = `${nyr}-${String(nmo).padStart(2, "0")}-${String(nextEnd).padStart(2, "0")}`;
+    // 有給申請（pending）当月のみ（確定後の急遽申請）
     const { data: yReqs } = await supabase.from("leave_requests")
       .select("id, employee_id, attendance_date, type, status, reject_reason, request_comment, created_at")
       .eq("company_id", COMPANY_ID)
       .in("type", ["yukyu", "shift_koukyuu"])
       .gte("attendance_date", monthStart)
-      .lte("attendance_date", nextMonthEnd)
+      .lte("attendance_date", monthEnd)
       .in("status", ["pending"])
       .order("attendance_date");
     setYukyuReqs(yReqs || []);
