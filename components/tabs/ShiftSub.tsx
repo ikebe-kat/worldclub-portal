@@ -905,7 +905,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
       {loading ? (
         <div style={{ textAlign: "center", padding: 40, color: T.textSec }}>読み込み中...</div>
       ) : (
-        <div ref={tableRef} style={{ height: "calc(100vh - 200px)", overflowY: "auto", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+        <div ref={tableRef} style={{ height: "calc(100vh - 160px)", overflowY: "auto", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <table style={{
             borderCollapse: "collapse", fontSize: 9, minWidth: "100%",
             backgroundColor: "#fff",
@@ -949,19 +949,17 @@ export default function ShiftSub({ employee }: { employee: any }) {
                       backgroundColor: "#fff",
                       borderTop: isPartBorder ? `3px solid ${C.koukyuu}` : `1px solid ${T.border}`,
                     }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 4, lineHeight: 1 }}>
-                        <span style={{ fontSize: 15, fontWeight: 600, color: T.text }}>
-                          {surname(emp.full_name)}
-                        </span>
-                        <span style={{ fontSize: 11, color: T.textMuted }}>
-                          {emp.employment_type === "正社員" ? "社" : "P"}
-                        </span>
-                        <span style={{
-                          fontSize: 11, fontWeight: 600,
-                          color: resubmittedIds.has(emp.id) ? "#F97316" : submittedIds.has(emp.id) ? C.koukyuu : T.textMuted,
-                        }}>
-                          {resubmittedIds.has(emp.id) ? "再" : submittedIds.has(emp.id) ? "済" : "未"}
-                        </span>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: T.text, lineHeight: 1.1 }}>
+                        {surname(emp.full_name)}
+                      </div>
+                      <div style={{ fontSize: 10, color: T.textMuted, lineHeight: 1.1 }}>
+                        {emp.employment_type === "正社員" ? "社" : "P"}
+                      </div>
+                      <div style={{
+                        fontSize: 10, fontWeight: 600, lineHeight: 1.1,
+                        color: resubmittedIds.has(emp.id) ? "#F97316" : submittedIds.has(emp.id) ? C.koukyuu : T.textMuted,
+                      }}>
+                        {resubmittedIds.has(emp.id) ? "再提出" : submittedIds.has(emp.id) ? "提出済" : "未提出"}
                       </div>
                     </td>
                     {Array.from({ length: days }, (_, i) => {
