@@ -928,10 +928,10 @@ export default function ShiftSub({ employee }: { employee: any }) {
                       ...thStyle,
                       backgroundColor: isSun ? C.sunday : isSat ? C.saturday : C.koukyuu,
                       color: isSun ? "#DC2626" : isSat ? "#2563EB" : "#fff",
-                      minWidth: 36,
+                      minWidth: 44,
                     }}>
                       <div style={{ lineHeight: 1 }}>{d}</div>
-                      <div style={{ fontSize: 8, fontWeight: 400, lineHeight: 1 }}>{DOW[dow]}</div>
+                      <div style={{ fontSize: 9, fontWeight: 400, lineHeight: 1 }}>{DOW[dow]}</div>
                     </th>
                   );
                 })}
@@ -950,14 +950,14 @@ export default function ShiftSub({ employee }: { employee: any }) {
                       borderTop: isPartBorder ? `3px solid ${C.koukyuu}` : `1px solid ${T.border}`,
                     }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 4, lineHeight: 1 }}>
-                        <span style={{ fontSize: 10, fontWeight: 600, color: T.text }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: T.text }}>
                           {surname(emp.full_name)}
                         </span>
-                        <span style={{ fontSize: 8, color: T.textMuted }}>
+                        <span style={{ fontSize: 10, color: T.textMuted }}>
                           {emp.employment_type === "正社員" ? "社" : "P"}
                         </span>
                         <span style={{
-                          fontSize: 8, fontWeight: 600,
+                          fontSize: 10, fontWeight: 600,
                           color: resubmittedIds.has(emp.id) ? "#F97316" : submittedIds.has(emp.id) ? C.koukyuu : T.textMuted,
                         }}>
                           {resubmittedIds.has(emp.id) ? "再" : submittedIds.has(emp.id) ? "済" : "未"}
@@ -1112,7 +1112,7 @@ const navBtn: React.CSSProperties = {
 };
 
 const thStyle: React.CSSProperties = {
-  padding: "2px 1px", textAlign: "center", fontSize: 9, fontWeight: 600,
+  padding: "2px 1px", textAlign: "center", fontSize: 11, fontWeight: 600,
   borderBottom: `1px solid ${T.border}`, whiteSpace: "nowrap", lineHeight: 1,
 };
 
@@ -1124,5 +1124,5 @@ const tdNameStyle: React.CSSProperties = {
 const tdCellStyle: React.CSSProperties = {
   padding: "1px 1px", textAlign: "center", fontSize: 9, fontWeight: 700,
   borderRight: `1px solid ${T.borderLight}`, borderBottom: `1px solid ${T.border}`,
-  minWidth: 36, userSelect: "none", lineHeight: 1,
+  minWidth: 44, userSelect: "none", lineHeight: 1,
 };
