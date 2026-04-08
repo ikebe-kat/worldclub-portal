@@ -150,7 +150,7 @@ export default function AttendanceTab({ employee }: { employee: any }) {
       .select("id, attendance_date, status, type, reject_reason")
       .eq("employee_id", employee.id)
       .in("type", ["shift_koukyuu", "yukyu"])
-      .in("status", ["pending", "returned", "approved"])
+      .in("status", ["pending", "returned"])
       .gte("attendance_date", from)
       .lte("attendance_date", to);
 
@@ -160,8 +160,6 @@ export default function AttendanceTab({ employee }: { employee: any }) {
       let lrLabel: string | null = null;
       if (lr.status === "pending") {
         lrLabel = isYukyu ? "有給申請中" : "公休申請中";
-      } else if (lr.status === "approved") {
-        lrLabel = isYukyu ? "有給確定待ち" : "公休確定待ち";
       } else if (lr.status === "returned") {
         const reason = lr.reject_reason ? `（${lr.reject_reason}）` : "";
         lrLabel = isYukyu ? `有給差し戻し${reason}` : `公休差し戻し${reason}`;

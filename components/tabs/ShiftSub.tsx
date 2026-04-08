@@ -605,6 +605,17 @@ export default function ShiftSub({ employee }: { employee: any }) {
           }
         }
 
+        // 確定済みの leave_requests（approved）は不要なので当月分を削除
+        const _monthStart = dateStr(yr, mo, 1);
+        const _monthEnd = dateStr(yr, mo, days);
+        await supabase.from("leave_requests")
+          .delete()
+          .eq("company_id", COMPANY_ID)
+          .in("type", ["shift_koukyuu", "yukyu"])
+          .eq("status", "approved")
+          .gte("attendance_date", _monthStart)
+          .lte("attendance_date", _monthEnd);
+
         // shift_confirmations: 既存があれば revision+1 で UPDATE、なければ revision=0 で INSERT
         const targetMonth = `${yr}-${String(mo).padStart(2, "0")}`;
         const { data: existConf } = await supabase.from("shift_confirmations")
