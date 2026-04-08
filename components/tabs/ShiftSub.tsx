@@ -907,7 +907,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
       ) : (
         <div ref={tableRef} style={{ height: "calc(100vh - 160px)", overflowY: "auto", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <table style={{
-            borderCollapse: "collapse", fontSize: 9, minWidth: "100%",
+            borderCollapse: "collapse", fontSize: 11, minWidth: "100%",
             backgroundColor: "#fff",
           }}>
             <thead>
@@ -928,7 +928,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
                       ...thStyle,
                       backgroundColor: isSun ? C.sunday : isSat ? C.saturday : C.koukyuu,
                       color: isSun ? "#DC2626" : isSat ? "#2563EB" : "#fff",
-                      minWidth: 48,
+                      minWidth: 50,
                     }}>
                       <div style={{ lineHeight: 1 }}>{d}</div>
                       <div style={{ fontSize: 10, fontWeight: 400, lineHeight: 1 }}>{DOW[dow]}</div>
@@ -950,15 +950,15 @@ export default function ShiftSub({ employee }: { employee: any }) {
                       borderTop: isPartBorder ? `3px solid ${C.koukyuu}` : `1px solid ${T.border}`,
                     }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: T.text, lineHeight: 1 }}>
+                        <span style={{ fontSize: 16, fontWeight: 600, color: T.text, lineHeight: 1 }}>
                           {surname(emp.full_name)}
                         </span>
                         <span style={{ display: "flex", flexDirection: "column", gap: 1, lineHeight: 1 }}>
-                          <span style={{ fontSize: 9, color: T.textMuted, lineHeight: 1 }}>
+                          <span style={{ fontSize: 11, color: T.textMuted, lineHeight: 1 }}>
                             {emp.employment_type === "正社員" ? "社" : "P"}
                           </span>
                           <span style={{
-                            fontSize: 9, fontWeight: 600, lineHeight: 1,
+                            fontSize: 11, fontWeight: 600, lineHeight: 1,
                             color: resubmittedIds.has(emp.id) ? "#F97316" : submittedIds.has(emp.id) ? C.koukyuu : T.textMuted,
                           }}>
                             {resubmittedIds.has(emp.id) ? "再" : submittedIds.has(emp.id) ? "済" : "未"}
@@ -1119,12 +1119,12 @@ const thStyle: React.CSSProperties = {
 };
 
 const tdNameStyle: React.CSSProperties = {
-  padding: "1px 6px", borderRight: `1px solid ${T.border}`,
+  padding: "3px 8px", borderRight: `1px solid ${T.border}`,
   borderBottom: `1px solid ${T.border}`, whiteSpace: "nowrap", lineHeight: 1,
 };
 
 const tdCellStyle: React.CSSProperties = {
   padding: "1px 1px", textAlign: "center", fontSize: 11, fontWeight: 700,
   borderRight: `1px solid ${T.borderLight}`, borderBottom: `1px solid ${T.border}`,
-  minWidth: 48, userSelect: "none", lineHeight: 1,
+  minWidth: 50, userSelect: "none", lineHeight: 1,
 };
