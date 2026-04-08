@@ -949,17 +949,21 @@ export default function ShiftSub({ employee }: { employee: any }) {
                       backgroundColor: "#fff",
                       borderTop: isPartBorder ? `3px solid ${C.koukyuu}` : `1px solid ${T.border}`,
                     }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: T.text, lineHeight: 1 }}>
-                        {surname(emp.full_name)}
-                      </div>
-                      <div style={{ fontSize: 10, color: T.textMuted, lineHeight: 1 }}>
-                        {emp.employment_type === "正社員" ? "社" : "P"}
-                      </div>
-                      <div style={{
-                        fontSize: 10, fontWeight: 600, lineHeight: 1,
-                        color: resubmittedIds.has(emp.id) ? "#F97316" : submittedIds.has(emp.id) ? C.koukyuu : T.textMuted,
-                      }}>
-                        {resubmittedIds.has(emp.id) ? "再提出" : submittedIds.has(emp.id) ? "提出済" : "未提出"}
+                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: T.text, lineHeight: 1 }}>
+                          {surname(emp.full_name)}
+                        </span>
+                        <span style={{ display: "flex", flexDirection: "column", gap: 1, lineHeight: 1 }}>
+                          <span style={{ fontSize: 9, color: T.textMuted, lineHeight: 1 }}>
+                            {emp.employment_type === "正社員" ? "社" : "P"}
+                          </span>
+                          <span style={{
+                            fontSize: 9, fontWeight: 600, lineHeight: 1,
+                            color: resubmittedIds.has(emp.id) ? "#F97316" : submittedIds.has(emp.id) ? C.koukyuu : T.textMuted,
+                          }}>
+                            {resubmittedIds.has(emp.id) ? "再" : submittedIds.has(emp.id) ? "済" : "未"}
+                          </span>
+                        </span>
                       </div>
                     </td>
                     {Array.from({ length: days }, (_, i) => {
