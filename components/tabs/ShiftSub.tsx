@@ -211,8 +211,42 @@ export default function ShiftSub({ employee }: { employee: any }) {
         () => { loadData(); }
       )
       .on("postgres_changes",
-        { event: "*", schema: "public", table: "leave_requests", filter: `company_id=eq.${COMPANY_ID}` },
-        () => { loadData(); }
+        { event: "INSERT", schema: "public", table: "leave_requests", filter: `company_id=eq.${COMPANY_ID}` },
+        (payload: any) => {
+          const row = payload?.new;
+          if (!row) return;
+          const inMonth = row.attendance_date >= dateStr(yr, mo, 1) && row.attendance_date <= dateStr(yr, mo, days);
+          if (inMonth && (row.type === "shift_koukyuu" || row.type === "yukyu")) {
+            setLeaveReqs(prev => prev.some(r => r.id === row.id) ? prev : [...prev, row]);
+          }
+          if (row.status === "pending" && (row.type === "yukyu" || row.type === "shift_koukyuu")) {
+            setYukyuReqs(prev => prev.some(r => r.id === row.id) ? prev : [...prev, row]);
+          }
+        }
+      )
+      .on("postgres_changes",
+        { event: "UPDATE", schema: "public", table: "leave_requests", filter: `company_id=eq.${COMPANY_ID}` },
+        (payload: any) => {
+          const row = payload?.new;
+          if (!row) return;
+          setLeaveReqs(prev => prev.map(r => r.id === row.id ? { ...r, ...row } : r));
+          if (row.status === "pending") {
+            setYukyuReqs(prev => prev.some(r => r.id === row.id)
+              ? prev.map(r => r.id === row.id ? { ...r, ...row } : r)
+              : [...prev, row]);
+          } else {
+            setYukyuReqs(prev => prev.filter(r => r.id !== row.id));
+          }
+        }
+      )
+      .on("postgres_changes",
+        { event: "DELETE", schema: "public", table: "leave_requests", filter: `company_id=eq.${COMPANY_ID}` },
+        (payload: any) => {
+          const oldRow = payload?.old;
+          if (!oldRow) return;
+          setLeaveReqs(prev => prev.filter(r => r.id !== oldRow.id));
+          setYukyuReqs(prev => prev.filter(r => r.id !== oldRow.id));
+        }
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -244,7 +278,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
     }
     const att = attData.find(a => a.employee_id === empId && a.attendance_date === ds);
     if (att?.reason?.includes("有給")) return "yukyu";
-    if (att?.reason === "公休" || att?.reason === "公休（全日）") return "approved";
+    if (att?.reason === "公休（全日）") return "approved";
     return "workday";
   };
 
@@ -507,6 +541,14 @@ export default function ShiftSub({ employee }: { employee: any }) {
         setDialog(null);
         setConfirming(true);
 
+        // タブを閉じようとしたら警告
+        const beforeUnload = (e: BeforeUnloadEvent) => {
+          e.preventDefault();
+          e.returnValue = "シフト確定解除処理中です。ページを閉じると不整合が発生する可能性があります。";
+          return e.returnValue;
+        };
+        window.addEventListener("beforeunload", beforeUnload);
+
         const monthStart = dateStr(yr, mo, 1);
         const monthEnd = dateStr(yr, mo, days);
 
@@ -553,6 +595,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
           .eq("target_month", targetMonth);
         if (updErr) console.error("[ShiftSub] unconfirm update error:", updErr);
 
+        window.removeEventListener("beforeunload", beforeUnload);
         setShiftConfirmedAt(null);
         setConfirming(false);
         await loadData();

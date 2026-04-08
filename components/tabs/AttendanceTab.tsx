@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { T, DOW, stepMonth, fmtMin, displayReason, displayChipLabel, isKoukyuPart } from "@/lib/constants";
 import { ReasonBadges } from "@/components/ui";
@@ -239,8 +239,16 @@ export default function AttendanceTab({ employee }: { employee: any }) {
     const filter = `company_id=eq.${employee.company_id}`;
     const channel = supabase
       .channel(`attendance_realtime_${employee.id}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "shift_confirmations", filter }, () => loadData())
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "shift_confirmations", filter }, () => loadData())
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "shift_confirmations", filter }, (payload: any) => {
+        const tm = payload?.new?.target_month;
+        const cm = `${yr}-${String(mo).padStart(2, "0")}`;
+        if (tm === cm) loadData();
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "shift_confirmations", filter }, (payload: any) => {
+        const tm = payload?.new?.target_month;
+        const cm = `${yr}-${String(mo).padStart(2, "0")}`;
+        if (tm === cm) loadData();
+      })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "leave_requests", filter }, (payload: any) => {
         if (payload?.new?.employee_id === employee.id && payload?.new?.status === "returned") loadData();
       })
@@ -254,7 +262,7 @@ export default function AttendanceTab({ employee }: { employee: any }) {
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [employee?.company_id, employee?.id, loadData]);
+  }, [employee?.company_id, employee?.id, yr, mo, loadData]);
 
   /* ── 日付リスト ── */
   const allDays = useMemo(() => {
@@ -306,7 +314,11 @@ export default function AttendanceTab({ employee }: { employee: any }) {
   const submissionLocked = today.getDate() >= 26;
   const submitted = !!nextSubmission;
 
+  const lastOgawaNotifyRef = useRef<number>(0);
   const notifyOgawa = async () => {
+    const now = Date.now();
+    if (now - lastOgawaNotifyRef.current < 3000) return;
+    lastOgawaNotifyRef.current = now;
     try {
       const { data: ogawa } = await supabase.from("employees")
         .select("id")
