@@ -152,9 +152,9 @@ export default function ShiftSub({ employee }: { employee: any }) {
     const nextEnd = new Date(nyr, nmo, 0).getDate();
     const nextMonthEnd = `${nyr}-${String(nmo).padStart(2, "0")}-${String(nextEnd).padStart(2, "0")}`;
     const { data: yReqs } = await supabase.from("leave_requests")
-      .select("id, employee_id, attendance_date, status, reject_reason, request_comment, created_at")
+      .select("id, employee_id, attendance_date, type, status, reject_reason, request_comment, created_at")
       .eq("company_id", COMPANY_ID)
-      .eq("type", "yukyu")
+      .in("type", ["yukyu", "shift_koukyuu"])
       .gte("attendance_date", monthStart)
       .lte("attendance_date", nextMonthEnd)
       .in("status", ["pending"])
@@ -650,12 +650,13 @@ export default function ShiftSub({ employee }: { employee: any }) {
 
   const approveYukyu = async (req: any) => {
     const dow = DOW[new Date(req.attendance_date).getDay()];
+    const reasonLabel = req.type === "yukyu" ? "有給（全日）" : "公休（全日）";
     const { error: upErr } = await supabase.from("attendance_daily").upsert({
       company_id: COMPANY_ID,
       employee_id: req.employee_id,
       attendance_date: req.attendance_date,
       day_of_week: dow,
-      reason: "有給（全日）",
+      reason: reasonLabel,
       updated_at: new Date().toISOString(),
     }, { onConflict: "employee_id,attendance_date" });
     if (upErr) {
@@ -749,6 +750,13 @@ export default function ShiftSub({ employee }: { employee: any }) {
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>
                       {empNameById(req.employee_id)}　{req.attendance_date}
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, padding: "2px 6px", borderRadius: 3,
+                        color: "#fff",
+                        backgroundColor: req.type === "yukyu" ? C.yukyu : C.koukyuu,
+                      }}>
+                        {req.type === "yukyu" ? "有給" : "公休"}
+                      </span>
                     </div>
                     {req.request_comment && (
                       <div style={{ fontSize: 11, color: T.textSec, marginTop: 4 }}>{req.request_comment}</div>
