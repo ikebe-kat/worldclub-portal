@@ -684,7 +684,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
   };
 
   const approveYukyu = async (req: any) => {
-    const dow = DOW[new Date(req.attendance_date).getDay()];
+    const dow = DOW[new Date(req.attendance_date + "T00:00:00").getDay()];
     const reasonLabel = req.type === "yukyu" ? "有給（全日）" : "公休（全日）";
     const { error: upErr } = await supabase.from("attendance_daily").upsert({
       company_id: COMPANY_ID,
