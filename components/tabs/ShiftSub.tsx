@@ -189,7 +189,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
     setYukyuReqs(yReqs);
 
     setLoading(false);
-  }, [yr, mo, days, employee.id]);
+  }, [yr, mo, days, employee?.id]);
 
   useEffect(() => { loadData(true); }, [loadData]);
 
@@ -307,9 +307,22 @@ export default function ShiftSub({ employee }: { employee: any }) {
   const pendingCount = leaveReqs.filter(r => r.status === "pending").length;
 
   /* ── ⑦ セルタップ処理（空きセル→直接公休insert） ── */
+  const tappingRef = useRef<Set<string>>(new Set());
   const handleCellTap = async (emp: Emp, day: number) => {
     // 未提出者は操作不可（ただしWC001は例外）
     if (!submittedIds.has(emp.id) && !exemptIds.has(emp.id)) return;
+
+    const tapKey = `${emp.id}_${day}`;
+    if (tappingRef.current.has(tapKey)) return;
+    tappingRef.current.add(tapKey);
+    try {
+      await handleCellTapInner(emp, day);
+    } finally {
+      tappingRef.current.delete(tapKey);
+    }
+  };
+
+  const handleCellTapInner = async (emp: Emp, day: number) => {
 
     const ds = dateStr(yr, mo, day);
     const state = getCellState(emp.id, day);
@@ -447,23 +460,6 @@ export default function ShiftSub({ employee }: { employee: any }) {
       setPendingDialog(null);
       return;
     }
-
-    const isYukyu = pendingDialog.reqType === "yukyu";
-    const category = isYukyu ? "有給申請" : "公休申請";
-
-    // プッシュ通知送信
-    fetch(PUSH_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type: "request_processed",
-        payload: {
-          employee_id: pendingDialog.emp.id,
-          category: `${category}（${mo}/${pendingDialog.day}）：${reasonText}`,
-          status: "差し戻し",
-        },
-      }),
-    }).catch(() => {});
 
     // シフト差し戻し通知
     fetch(PUSH_URL, {
