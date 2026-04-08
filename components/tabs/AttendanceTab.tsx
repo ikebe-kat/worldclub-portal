@@ -78,6 +78,7 @@ export default function AttendanceTab({ employee }: { employee: any }) {
   const [shiftConf, setShiftConf] = useState<{ confirmed_at: string } | null>(null);
   const [nextShiftConf, setNextShiftConf] = useState<{ confirmed_at: string } | null>(null);
   const [nextSubmission, setNextSubmission] = useState<{ submitted_at: string } | null>(null);
+  const [resubmitMode, setResubmitMode] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [scheduledMin, setScheduledMin] = useState<number>(0);
   const [kibouQuota, setKibouQuota] = useState<number>(0);
@@ -276,35 +277,7 @@ export default function AttendanceTab({ employee }: { employee: any }) {
   const submissionLocked = today.getDate() >= 26;
   const submitted = !!nextSubmission;
 
-  const handleShiftSubmit = async () => {
-    if (submitting) return;
-    if (submissionLocked && !submitted) return;
-    if (submitted) {
-      // 既提出 → 修正確認
-      showConfirm("提出済みです。修正しますか？", async () => {
-        setSubmitting(true);
-        const { error } = await supabase.from("shift_submissions")
-          .delete()
-          .eq("employee_id", employee.id)
-          .eq("target_month", nextRealMonthStr);
-        setSubmitting(false);
-        if (error) { showAlert("取消に失敗しました: " + error.message); return; }
-        setNextSubmission(null);
-      }, "修正");
-      return;
-    }
-    setSubmitting(true);
-    const { error } = await supabase.from("shift_submissions").insert({
-      company_id: employee.company_id,
-      employee_id: employee.id,
-      target_month: nextRealMonthStr,
-      submitted_at: new Date().toISOString(),
-    });
-    setSubmitting(false);
-    if (error) { showAlert("提出に失敗しました: " + error.message); return; }
-    setNextSubmission({ submitted_at: new Date().toISOString() });
-
-    // 小川（WC001）にシフト提出通知
+  const notifyOgawa = async () => {
     try {
       const { data: ogawa } = await supabase.from("employees")
         .select("id")
@@ -327,6 +300,50 @@ export default function AttendanceTab({ employee }: { employee: any }) {
         }).catch(() => {});
       }
     } catch {}
+  };
+
+  const handleShiftSubmit = async () => {
+    if (submitting) return;
+    if (submissionLocked && !submitted) return;
+
+    // 提出済み & 再提出モードでない → 修正確認ダイアログ
+    if (submitted && !resubmitMode) {
+      showConfirm("提出済みです。修正しますか？", () => {
+        setResubmitMode(true);
+      }, "はい");
+      return;
+    }
+
+    // 再提出モード → submitted_at のみ UPDATE（created_at は維持）
+    if (submitted && resubmitMode) {
+      setSubmitting(true);
+      const newAt = new Date().toISOString();
+      const { error } = await supabase.from("shift_submissions")
+        .update({ submitted_at: newAt })
+        .eq("employee_id", employee.id)
+        .eq("target_month", nextRealMonthStr);
+      setSubmitting(false);
+      if (error) { showAlert("再提出に失敗しました: " + error.message); return; }
+      setNextSubmission({ submitted_at: newAt });
+      setResubmitMode(false);
+      notifyOgawa();
+      return;
+    }
+
+    // 新規提出
+    setSubmitting(true);
+    const nowIso = new Date().toISOString();
+    const { error } = await supabase.from("shift_submissions").insert({
+      company_id: employee.company_id,
+      employee_id: employee.id,
+      target_month: nextRealMonthStr,
+      created_at: nowIso,
+      submitted_at: nowIso,
+    });
+    setSubmitting(false);
+    if (error) { showAlert("提出に失敗しました: " + error.message); return; }
+    setNextSubmission({ submitted_at: nowIso });
+    notifyOgawa();
   };
 
   /* ── 公休申請の締切判定 ── */
@@ -580,9 +597,10 @@ export default function AttendanceTab({ employee }: { employee: any }) {
           // 確定済みなら非表示
           if (shiftConf) return null;
           const label =
-            submitted ? `${nextRealMonth}月 提出済み ✓` :
+            submitted && resubmitMode ? `${nextRealMonth}月 再提出する` :
+            submitted ? `${nextRealMonth}月 シフト提出済み✓` :
             submissionLocked ? `${nextRealMonth}月 締切済み` :
-            `${nextRealMonth}月のシフト希望を提出`;
+            `${nextRealMonth}月のシフトを提出する`;
           const disabled = submitting || (submissionLocked && !submitted);
           return (
             <button

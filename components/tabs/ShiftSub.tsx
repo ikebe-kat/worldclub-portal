@@ -76,6 +76,10 @@ export default function ShiftSub({ employee }: { employee: any }) {
   const [leaveReqs, setLeaveReqs] = useState<LeaveReq[]>([]);
   const [attData, setAttData] = useState<AttRow[]>([]);
   const [submittedIds, setSubmittedIds] = useState<Set<string>>(new Set());
+  const [resubmittedIds, setResubmittedIds] = useState<Set<string>>(new Set());
+  const [activeTab, setActiveTab] = useState<"shift" | "yukyu">("shift");
+  const [yukyuReqs, setYukyuReqs] = useState<any[]>([]);
+  const [yukyuReturnInput, setYukyuReturnInput] = useState<{ id: string; reason: string } | null>(null);
   const [shiftConfirmedAt, setShiftConfirmedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [confirming, setConfirming] = useState(false);
@@ -118,10 +122,15 @@ export default function ShiftSub({ employee }: { employee: any }) {
     // shift_submissions（当月分の提出有無）
     const targetMonth = `${yr}-${String(mo).padStart(2, "0")}`;
     const { data: subs } = await supabase.from("shift_submissions")
-      .select("employee_id")
+      .select("employee_id, created_at, submitted_at")
       .eq("company_id", COMPANY_ID)
       .eq("target_month", targetMonth);
     const submitted = new Set<string>((subs || []).map((s: any) => s.employee_id));
+    const resubmitted = new Set<string>(
+      (subs || [])
+        .filter((s: any) => s.created_at && s.submitted_at && new Date(s.submitted_at).getTime() > new Date(s.created_at).getTime() + 1000)
+        .map((s: any) => s.employee_id)
+    );
 
     // shift_confirmations（当月確定状態）
     const { data: confRow } = await supabase.from("shift_confirmations")
@@ -151,9 +160,25 @@ export default function ShiftSub({ employee }: { employee: any }) {
     setLeaveReqs(reqs || []);
     setAttData(att || []);
     setSubmittedIds(submitted);
+    setResubmittedIds(resubmitted);
     setShiftConfirmedAt(confirmedAt);
+
+    // 有給申請（pending yukyu）当月＋翌月
+    const [nyr, nmo] = stepMonth(yr, mo, 1);
+    const nextEnd = new Date(nyr, nmo, 0).getDate();
+    const nextMonthEnd = `${nyr}-${String(nmo).padStart(2, "0")}-${String(nextEnd).padStart(2, "0")}`;
+    const { data: yReqs } = await supabase.from("leave_requests")
+      .select("id, employee_id, attendance_date, status, reject_reason, request_comment, created_at")
+      .eq("company_id", COMPANY_ID)
+      .eq("type", "yukyu")
+      .gte("attendance_date", monthStart)
+      .lte("attendance_date", nextMonthEnd)
+      .in("status", ["pending"])
+      .order("attendance_date");
+    setYukyuReqs(yReqs || []);
+
     setLoading(false);
-  }, [yr, mo, days]);
+  }, [yr, mo, days, employee.id]);
 
   useEffect(() => { loadData(true); }, [loadData]);
 
@@ -428,9 +453,13 @@ export default function ShiftSub({ employee }: { employee: any }) {
     return () => clearTimeout(t);
   }, [toast]);
 
-  /* ── 下書き保存（leave_requestsはセルタップ時に既に保存済み） ── */
+  /* ── 下書き保存（セルタップ時に既にDB保存済み） ── */
   const handleDraftSave = () => {
-    setToast("保存しました");
+    setDialog({
+      message: "編集内容はすでに保存されています。",
+      mode: "alert",
+      onOk: () => setDialog(null),
+    });
   };
 
   /* ── 修正ボタン処理（確定解除） ── */
@@ -593,8 +622,195 @@ export default function ShiftSub({ employee }: { employee: any }) {
   /* ── レンダリング ── */
   const tableRef = useRef<HTMLDivElement>(null);
 
+  /* ── 有給申請：承認/差し戻し ── */
+  const empNameById = (id: string) => {
+    const e = employees.find(x => x.id === id);
+    return e ? surname(e.full_name) : "—";
+  };
+
+  const approveYukyu = async (req: any) => {
+    const dow = DOW[new Date(req.attendance_date).getDay()];
+    const { error: upErr } = await supabase.from("attendance_daily").upsert({
+      company_id: COMPANY_ID,
+      employee_id: req.employee_id,
+      attendance_date: req.attendance_date,
+      day_of_week: dow,
+      reason: "有給（全日）",
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "employee_id,attendance_date" });
+    if (upErr) {
+      setDialog({ message: `承認に失敗\n${upErr.message}`, mode: "alert", onOk: () => setDialog(null) });
+      return;
+    }
+    await supabase.from("leave_requests").update({
+      status: "approved",
+      approved_by: employee.id,
+      approver_id: employee.id,
+      approved_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq("id", req.id);
+    fetch(PUSH_URL, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "request_processed",
+        payload: { employee_id: req.employee_id, category: `有給申請（${req.attendance_date}）`, status: "承認" },
+      }),
+    }).catch(() => {});
+    loadData();
+  };
+
+  const rejectYukyu = async () => {
+    if (!yukyuReturnInput) return;
+    if (!yukyuReturnInput.reason.trim()) {
+      setDialog({ message: "差し戻し理由を入力してください", mode: "alert", onOk: () => setDialog(null) });
+      return;
+    }
+    const req = yukyuReqs.find(r => r.id === yukyuReturnInput.id);
+    const { error } = await supabase.from("leave_requests").update({
+      status: "returned",
+      reject_reason: yukyuReturnInput.reason.trim(),
+      updated_at: new Date().toISOString(),
+    }).eq("id", yukyuReturnInput.id);
+    if (error) {
+      setDialog({ message: `差し戻しに失敗\n${error.message}`, mode: "alert", onOk: () => setDialog(null) });
+      return;
+    }
+    if (req) {
+      fetch(PUSH_URL, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "request_processed",
+          payload: { employee_id: req.employee_id, category: `有給申請（${req.attendance_date}）：${yukyuReturnInput.reason.trim()}`, status: "差し戻し" },
+        }),
+      }).catch(() => {});
+    }
+    setYukyuReturnInput(null);
+    loadData();
+  };
+
+  const isOgawa = employee?.employee_code === "WC001";
+
   return (
     <div>
+      {/* ── サブタブ ── */}
+      <div style={{ display: "flex", gap: 4, marginBottom: 12, borderBottom: `1px solid ${T.border}` }}>
+        {[
+          { key: "shift", label: "シフト管理" },
+          { key: "yukyu", label: `有給申請${yukyuReqs.length > 0 ? `(${yukyuReqs.length})` : ""}` },
+        ].map(t => (
+          <button
+            key={t.key}
+            onClick={() => setActiveTab(t.key as any)}
+            style={{
+              padding: "8px 16px", border: "none", cursor: "pointer",
+              backgroundColor: "transparent",
+              borderBottom: activeTab === t.key ? `2px solid ${C.koukyuu}` : "2px solid transparent",
+              color: activeTab === t.key ? C.koukyuu : T.textSec,
+              fontSize: 13, fontWeight: 700,
+            }}
+          >{t.label}</button>
+        ))}
+      </div>
+
+      {activeTab === "yukyu" ? (
+        <div>
+          <div style={{ fontSize: 12, color: T.textSec, marginBottom: 10 }}>
+            シフト確定後の急遽有給申請（当月＋翌月）
+          </div>
+          {yukyuReqs.length === 0 ? (
+            <div style={{ textAlign: "center", padding: 40, color: T.textMuted }}>申請はありません</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {yukyuReqs.map(req => (
+                <div key={req.id} style={{
+                  padding: 12, border: `1px solid ${T.border}`, borderRadius: 6,
+                  backgroundColor: "#fff", display: "flex", alignItems: "center", gap: 12,
+                }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>
+                      {empNameById(req.employee_id)}　{req.attendance_date}
+                    </div>
+                    {req.request_comment && (
+                      <div style={{ fontSize: 11, color: T.textSec, marginTop: 4 }}>{req.request_comment}</div>
+                    )}
+                  </div>
+                  {isOgawa && (
+                    <>
+                      <button
+                        onClick={() => setYukyuReturnInput({ id: req.id, reason: "" })}
+                        style={{
+                          padding: "6px 12px", borderRadius: 4,
+                          border: `1px solid ${C.returned}`, backgroundColor: "#fff",
+                          color: C.returned, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                        }}
+                      >差し戻し</button>
+                      <button
+                        onClick={() => approveYukyu(req)}
+                        style={{
+                          padding: "6px 12px", borderRadius: 4, border: "none",
+                          backgroundColor: C.yukyu, color: "#fff",
+                          fontSize: 12, fontWeight: 700, cursor: "pointer",
+                        }}
+                      >承認</button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {yukyuReturnInput && (
+            <div
+              style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000 }}
+              onClick={() => setYukyuReturnInput(null)}
+            >
+              <div
+                style={{ backgroundColor: "#fff", borderRadius: 8, padding: "24px 20px", width: "100%", maxWidth: 320 }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div style={{ fontSize: 14, color: T.text, textAlign: "center", marginBottom: 14 }}>
+                  差し戻し理由を入力
+                </div>
+                <textarea
+                  value={yukyuReturnInput.reason}
+                  onChange={(e) => setYukyuReturnInput({ ...yukyuReturnInput, reason: e.target.value })}
+                  placeholder="差し戻し理由"
+                  style={{
+                    width: "100%", padding: "8px 10px", borderRadius: 4,
+                    border: `1px solid ${T.border}`, fontSize: 13,
+                    resize: "vertical", minHeight: 56, marginBottom: 14,
+                    boxSizing: "border-box", fontFamily: "inherit",
+                  }}
+                />
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button onClick={() => setYukyuReturnInput(null)} style={{
+                    flex: 1, padding: 12, borderRadius: 4,
+                    border: `1px solid ${T.border}`, backgroundColor: "#fff",
+                    color: T.textSec, fontSize: 14, fontWeight: 600, cursor: "pointer",
+                  }}>キャンセル</button>
+                  <button onClick={rejectYukyu} style={{
+                    flex: 1, padding: 12, borderRadius: 4, border: "none",
+                    backgroundColor: C.returned, color: "#fff",
+                    fontSize: 14, fontWeight: 600, cursor: "pointer",
+                  }}>差し戻し</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {dialog && (
+            <Dialog
+              message={dialog.message}
+              mode={dialog.mode}
+              confirmLabel={dialog.confirmLabel}
+              confirmColor={dialog.confirmColor}
+              onOk={dialog.onOk}
+              onCancel={() => setDialog(null)}
+            />
+          )}
+        </div>
+      ) : (
+      <>
       {/* ── ヘッダー：月選択 + 未承認バッジ + 確定ボタン ── */}
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -738,9 +954,9 @@ export default function ShiftSub({ employee }: { employee: any }) {
                       </div>
                       <div style={{
                         fontSize: 9, fontWeight: 600,
-                        color: submittedIds.has(emp.id) ? C.koukyuu : T.textMuted,
+                        color: resubmittedIds.has(emp.id) ? "#F97316" : submittedIds.has(emp.id) ? C.koukyuu : T.textMuted,
                       }}>
-                        {submittedIds.has(emp.id) ? "提出済" : "未提出"}
+                        {resubmittedIds.has(emp.id) ? "再提出あり" : submittedIds.has(emp.id) ? "提出済" : "未提出"}
                       </div>
                     </td>
                     {Array.from({ length: days }, (_, i) => {
@@ -750,7 +966,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
                       const isSun = dow === 0;
                       const isSat = dow === 6;
 
-                      let bg = cellBg(state);
+                      let bg: string = cellBg(state);
                       if (state === "workday") {
                         bg = isSun ? C.sunday : isSat ? C.saturday : "#fff";
                       }
@@ -875,6 +1091,8 @@ export default function ShiftSub({ employee }: { employee: any }) {
           onOk={dialog.onOk}
           onCancel={() => setDialog(null)}
         />
+      )}
+      </>
       )}
     </div>
   );
