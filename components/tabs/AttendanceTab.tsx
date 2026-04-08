@@ -644,12 +644,12 @@ export default function AttendanceTab({ employee }: { employee: any }) {
         })()}
       </div>
 
-      {/* シフト確定バナー（過去月は非表示） */}
+      {/* シフト確定バナー（未来月のみ表示） */}
       {shiftConf && (() => {
         const _now = new Date();
         const curYr = _now.getFullYear();
         const curMo = _now.getMonth() + 1;
-        if (yr < curYr || (yr === curYr && mo < curMo)) return null;
+        if (!(yr > curYr || (yr === curYr && mo > curMo))) return null;
         const d = new Date(shiftConf.confirmed_at);
         const ts = `${d.getMonth() + 1}月${d.getDate()}日 ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
         const isRev = !!shiftConf.is_modified;
