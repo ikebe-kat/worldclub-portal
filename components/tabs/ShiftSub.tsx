@@ -905,7 +905,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
       {loading ? (
         <div style={{ textAlign: "center", padding: 40, color: T.textSec }}>読み込み中...</div>
       ) : (
-        <div ref={tableRef} style={{ height: "calc(100vh - 160px)", overflowY: "auto", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+        <div ref={tableRef} style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <table style={{
             borderCollapse: "collapse", fontSize: 11, minWidth: "100%",
             backgroundColor: "#fff",
