@@ -295,10 +295,10 @@ export default function ShiftSub({ employee }: { employee: any }) {
     switch (state) {
       case "approved":       return "公休";
       case "pending":        return "申請";
-      case "returned":       return "戻";
+      case "returned":       return "差戻";
       case "yukyu":          return "有給";
       case "yukyu_pending":  return "有申";
-      case "yukyu_returned": return "戻";
+      case "yukyu_returned": return "差戻";
       default:               return "";
     }
   };
@@ -462,6 +462,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
     }
 
     // シフト差し戻し通知
+    const ds = dateStr(yr, mo, pendingDialog.day);
     fetch(PUSH_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -470,7 +471,9 @@ export default function ShiftSub({ employee }: { employee: any }) {
         payload: {
           company_id: COMPANY_ID,
           employee_id: pendingDialog.emp.id,
-          target_month: `${yr}-${String(mo).padStart(2, "0")}`,
+          attendance_date: ds,
+          leave_type: pendingDialog.reqType,
+          reject_reason: reasonText,
         },
       }),
     }).catch(() => {});
@@ -717,7 +720,11 @@ export default function ShiftSub({ employee }: { employee: any }) {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         type: "request_processed",
-        payload: { employee_id: req.employee_id, category: `有給申請（${req.attendance_date}）`, status: "承認" },
+        payload: {
+          employee_id: req.employee_id,
+          title: "有給申請 承認",
+          body: `${req.attendance_date}の有給申請が承認されました`,
+        },
       }),
     }).catch(() => {});
     loadData();
@@ -743,8 +750,14 @@ export default function ShiftSub({ employee }: { employee: any }) {
       fetch(PUSH_URL, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type: "request_processed",
-          payload: { employee_id: req.employee_id, category: `有給申請（${req.attendance_date}）：${yukyuReturnInput.reason.trim()}`, status: "差し戻し" },
+          type: "shift_returned",
+          payload: {
+            company_id: COMPANY_ID,
+            employee_id: req.employee_id,
+            attendance_date: req.attendance_date,
+            leave_type: req.type,
+            reject_reason: yukyuReturnInput.reason.trim(),
+          },
         }),
       }).catch(() => {});
     }
