@@ -238,6 +238,14 @@ export default function AttendanceTab({ employee }: { employee: any }) {
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "leave_requests", filter }, (payload: any) => {
         if (payload?.new?.status === "returned") loadData();
       })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "attendance_daily", filter }, (payload: any) => {
+        const r = payload?.new?.reason;
+        if (r === "公休（全日）" || r === "有給（全日）") loadData();
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "attendance_daily", filter }, (payload: any) => {
+        const r = payload?.new?.reason;
+        if (r === "公休（全日）" || r === "有給（全日）") loadData();
+      })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [employee?.company_id, employee?.id, loadData]);

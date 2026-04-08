@@ -58,6 +58,13 @@ interface AttRow {
 /* 苗字を取得 */
 const surname = (name: string) => (name || "").split(/\s+/)[0] || name;
 
+/* 日付を「M月D日」形式に変換 */
+const formatJpDate = (iso: string): string => {
+  const m = iso?.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return iso;
+  return `${parseInt(m[2], 10)}月${parseInt(m[3], 10)}日`;
+};
+
 /* 月の日数 */
 const daysInMonth = (yr: number, mo: number) => new Date(yr, mo, 0).getDate();
 
@@ -221,8 +228,8 @@ export default function ShiftSub({ employee }: { employee: any }) {
   /* ── 提出チェックを免除する従業員ID集合（WC001=小川は直接編集可） ── */
   const exemptIds = new Set(employees.filter(e => e.employee_code === "WC001").map(e => e.id));
 
-  /* ── 内部用：submittedIdsチェックなしの状態判定（確定処理用） ── */
-  const getCellStateRaw = (empId: string, day: number): CellState => {
+  /* ── セル状態判定（共通） ── */
+  const computeCellState = (empId: string, day: number): CellState => {
     const ds = dateStr(yr, mo, day);
     const yukyuReq = leaveReqs.find(r => r.employee_id === empId && r.attendance_date === ds && r.type === "yukyu");
     if (yukyuReq) {
@@ -242,33 +249,13 @@ export default function ShiftSub({ employee }: { employee: any }) {
     return "workday";
   };
 
-  /* ── セル状態判定 ── */
+  /* ── 確定処理用：提出チェックなし ── */
+  const getCellStateRaw = (empId: string, day: number): CellState => computeCellState(empId, day);
+
+  /* ── 表示用：未提出者は空白 ── */
   const getCellState = (empId: string, day: number): CellState => {
-    // 提出していない従業員のセルは空白（ただしWC001は例外）
     if (!submittedIds.has(empId) && !exemptIds.has(empId)) return "workday";
-
-    const ds = dateStr(yr, mo, day);
-
-    // leave_requests（type別に優先順位：yukyu→shift_koukyuu）
-    const yukyuReq = leaveReqs.find(r => r.employee_id === empId && r.attendance_date === ds && r.type === "yukyu");
-    if (yukyuReq) {
-      if (yukyuReq.status === "approved") return "yukyu";
-      if (yukyuReq.status === "pending")  return "yukyu_pending";
-      if (yukyuReq.status === "returned") return "yukyu_returned";
-    }
-    const koukyuReq = leaveReqs.find(r => r.employee_id === empId && r.attendance_date === ds && r.type === "shift_koukyuu");
-    if (koukyuReq) {
-      if (koukyuReq.status === "approved") return "approved";
-      if (koukyuReq.status === "pending")  return "pending";
-      if (koukyuReq.status === "returned") return "returned";
-    }
-
-    // attendance_daily（確定後の表示）
-    const att = attData.find(a => a.employee_id === empId && a.attendance_date === ds);
-    if (att?.reason?.includes("有給")) return "yukyu";
-    if (att?.reason === "公休" || att?.reason === "公休（全日）") return "approved";
-
-    return "workday";
+    return computeCellState(empId, day);
   };
 
   /* ── セルの背景色 ── */
@@ -442,6 +429,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
     }
     const reqId = pendingDialog.reqId;
     const reasonText = rejectReasonInput.trim();
+    const prevLeaveReqs = leaveReqs;
     setLeaveReqs(prev => prev.map(r => r.id === reqId ? { ...r, status: "returned", reject_reason: reasonText } : r));
 
     const { error: updErr } = await supabase.from("leave_requests").update({
@@ -452,6 +440,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
 
     if (updErr) {
       console.error("[ShiftSub] returnPending update error:", updErr);
+      setLeaveReqs(prevLeaveReqs); // ロールバック
       setDialog({
         message: `差し戻しに失敗しました\n${updErr.message}`,
         mode: "alert",
@@ -716,14 +705,16 @@ export default function ShiftSub({ employee }: { employee: any }) {
       approved_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }).eq("id", req.id);
+    const isYukyu = req.type === "yukyu";
+    const kindLabel = isYukyu ? "有給" : "公休";
     fetch(PUSH_URL, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         type: "request_processed",
         payload: {
           employee_id: req.employee_id,
-          title: "有給申請 承認",
-          body: `${req.attendance_date}の有給申請が承認されました`,
+          title: `${kindLabel}申請 承認`,
+          body: `${formatJpDate(req.attendance_date)}の${kindLabel}申請が承認されました`,
         },
       }),
     }).catch(() => {});
