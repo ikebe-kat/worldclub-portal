@@ -147,13 +147,15 @@ export default function ShiftSub({ employee }: { employee: any }) {
     setResubmittedIds(resubmitted);
     setShiftConfirmedAt(confirmedAt);
 
-    // 有給申請（pending）当月のみ（確定後の急遽申請）
+    // 有給申請（pending）：表示中の当月のみ（yr/mo）
+    const yukyuStart = dateStr(yr, mo, 1);
+    const yukyuEnd = dateStr(yr, mo, daysInMonth(yr, mo));
     const { data: yReqs } = await supabase.from("leave_requests")
       .select("id, employee_id, attendance_date, type, status, reject_reason, request_comment, created_at")
       .eq("company_id", COMPANY_ID)
       .in("type", ["yukyu", "shift_koukyuu"])
-      .gte("attendance_date", monthStart)
-      .lte("attendance_date", monthEnd)
+      .gte("attendance_date", yukyuStart)
+      .lte("attendance_date", yukyuEnd)
       .in("status", ["pending"])
       .order("attendance_date");
     setYukyuReqs(yReqs || []);
@@ -732,8 +734,15 @@ export default function ShiftSub({ employee }: { employee: any }) {
 
       {activeTab === "yukyu" ? (
         <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <button onClick={() => stepMo(-1)} style={navBtn}>&lt;</button>
+            <span style={{ fontSize: 16, fontWeight: 700, color: T.text, minWidth: 120, textAlign: "center" }}>
+              {yr}年{mo}月
+            </span>
+            <button onClick={() => stepMo(1)} style={navBtn}>&gt;</button>
+          </div>
           <div style={{ fontSize: 12, color: T.textSec, marginBottom: 10 }}>
-            シフト確定後の急遽有給申請（当月＋翌月）
+            シフト確定後の急遽申請（{yr}年{mo}月）
           </div>
           {yukyuReqs.length === 0 ? (
             <div style={{ textAlign: "center", padding: 40, color: T.textMuted }}>申請はありません</div>
