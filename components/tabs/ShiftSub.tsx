@@ -905,7 +905,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
       {loading ? (
         <div style={{ textAlign: "center", padding: 40, color: T.textSec }}>読み込み中...</div>
       ) : (
-        <div ref={tableRef} style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+        <div ref={tableRef} style={{ height: "calc(100vh - 200px)", overflowY: "auto", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <table style={{
             borderCollapse: "collapse", fontSize: 9, minWidth: "100%",
             backgroundColor: "#fff",
@@ -928,10 +928,10 @@ export default function ShiftSub({ employee }: { employee: any }) {
                       ...thStyle,
                       backgroundColor: isSun ? C.sunday : isSat ? C.saturday : C.koukyuu,
                       color: isSun ? "#DC2626" : isSat ? "#2563EB" : "#fff",
-                      minWidth: 44,
+                      minWidth: 48,
                     }}>
                       <div style={{ lineHeight: 1 }}>{d}</div>
-                      <div style={{ fontSize: 9, fontWeight: 400, lineHeight: 1 }}>{DOW[dow]}</div>
+                      <div style={{ fontSize: 10, fontWeight: 400, lineHeight: 1 }}>{DOW[dow]}</div>
                     </th>
                   );
                 })}
@@ -950,14 +950,14 @@ export default function ShiftSub({ employee }: { employee: any }) {
                       borderTop: isPartBorder ? `3px solid ${C.koukyuu}` : `1px solid ${T.border}`,
                     }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 4, lineHeight: 1 }}>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: T.text }}>
+                        <span style={{ fontSize: 15, fontWeight: 600, color: T.text }}>
                           {surname(emp.full_name)}
                         </span>
-                        <span style={{ fontSize: 10, color: T.textMuted }}>
+                        <span style={{ fontSize: 11, color: T.textMuted }}>
                           {emp.employment_type === "正社員" ? "社" : "P"}
                         </span>
                         <span style={{
-                          fontSize: 10, fontWeight: 600,
+                          fontSize: 11, fontWeight: 600,
                           color: resubmittedIds.has(emp.id) ? "#F97316" : submittedIds.has(emp.id) ? C.koukyuu : T.textMuted,
                         }}>
                           {resubmittedIds.has(emp.id) ? "再" : submittedIds.has(emp.id) ? "済" : "未"}
@@ -1112,7 +1112,7 @@ const navBtn: React.CSSProperties = {
 };
 
 const thStyle: React.CSSProperties = {
-  padding: "2px 1px", textAlign: "center", fontSize: 11, fontWeight: 600,
+  padding: "2px 1px", textAlign: "center", fontSize: 13, fontWeight: 600,
   borderBottom: `1px solid ${T.border}`, whiteSpace: "nowrap", lineHeight: 1,
 };
 
@@ -1122,7 +1122,7 @@ const tdNameStyle: React.CSSProperties = {
 };
 
 const tdCellStyle: React.CSSProperties = {
-  padding: "1px 1px", textAlign: "center", fontSize: 9, fontWeight: 700,
+  padding: "1px 1px", textAlign: "center", fontSize: 11, fontWeight: 700,
   borderRight: `1px solid ${T.borderLight}`, borderBottom: `1px solid ${T.border}`,
-  minWidth: 44, userSelect: "none", lineHeight: 1,
+  minWidth: 48, userSelect: "none", lineHeight: 1,
 };
