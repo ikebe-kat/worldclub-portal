@@ -134,27 +134,11 @@ export default function ShiftSub({ employee }: { employee: any }) {
 
     // shift_confirmations（当月確定状態）
     const { data: confRow } = await supabase.from("shift_confirmations")
-      .select("confirmed_at")
+      .select("confirmed_at, revision")
       .eq("company_id", COMPANY_ID)
       .eq("target_month", targetMonth)
       .maybeSingle();
     let confirmedAt: string | null = confRow?.confirmed_at ?? null;
-
-    // 自動確定：表示中の月の1日を過ぎていれば自動でshift_confirmationsを作成
-    if (!confirmedAt) {
-      const today = new Date();
-      const firstDay = new Date(yr, mo - 1, 1);
-      if (today >= firstDay) {
-        const nowIso = new Date().toISOString();
-        const { error: autoErr } = await supabase.from("shift_confirmations").insert({
-          company_id: COMPANY_ID,
-          confirmed_by: employee.id,
-          target_month: targetMonth,
-          confirmed_at: nowIso,
-        });
-        if (!autoErr) confirmedAt = nowIso;
-      }
-    }
 
     setEmployees(filteredEmps);
     setLeaveReqs(reqs || []);
@@ -511,10 +495,11 @@ export default function ShiftSub({ employee }: { employee: any }) {
             .eq("id", row.id);
         }
 
-        // shift_confirmations を削除
+        // shift_confirmations は削除せず confirmed_at を null にして「未確定」状態に戻す
+        // （revision は維持して、再確定時に +1 する）
         const targetMonth = `${yr}-${String(mo).padStart(2, "0")}`;
         await supabase.from("shift_confirmations")
-          .delete()
+          .update({ confirmed_at: null })
           .eq("company_id", COMPANY_ID)
           .eq("target_month", targetMonth);
 
@@ -576,16 +561,34 @@ export default function ShiftSub({ employee }: { employee: any }) {
           }
         }
 
-        // shift_confirmations に確定記録を upsert
+        // shift_confirmations: 既存があれば revision+1 で UPDATE、なければ revision=0 で INSERT
         const targetMonth = `${yr}-${String(mo).padStart(2, "0")}`;
-        await supabase.from("shift_confirmations").delete()
-          .eq("company_id", COMPANY_ID).eq("target_month", targetMonth);
-        const { error: confErr } = await supabase.from("shift_confirmations").insert({
-          company_id: COMPANY_ID,
-          confirmed_by: employee.id,
-          target_month: targetMonth,
-          confirmed_at: new Date().toISOString(),
-        });
+        const { data: existConf } = await supabase.from("shift_confirmations")
+          .select("id, revision")
+          .eq("company_id", COMPANY_ID)
+          .eq("target_month", targetMonth)
+          .maybeSingle();
+
+        let confErr: any = null;
+        if (existConf) {
+          const { error } = await supabase.from("shift_confirmations")
+            .update({
+              confirmed_by: employee.id,
+              confirmed_at: new Date().toISOString(),
+              revision: (existConf.revision ?? 0) + 1,
+            })
+            .eq("id", existConf.id);
+          confErr = error;
+        } else {
+          const { error } = await supabase.from("shift_confirmations").insert({
+            company_id: COMPANY_ID,
+            confirmed_by: employee.id,
+            target_month: targetMonth,
+            confirmed_at: new Date().toISOString(),
+            revision: 0,
+          });
+          confErr = error;
+        }
 
         setConfirming(false);
         if (confErr) {
