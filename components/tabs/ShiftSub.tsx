@@ -949,14 +949,14 @@ export default function ShiftSub({ employee }: { employee: any }) {
                       backgroundColor: "#fff",
                       borderTop: isPartBorder ? `3px solid ${C.koukyuu}` : `1px solid ${T.border}`,
                     }}>
-                      <div style={{ fontSize: 15, fontWeight: 600, color: T.text, lineHeight: 1.1 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: T.text, lineHeight: 1 }}>
                         {surname(emp.full_name)}
                       </div>
-                      <div style={{ fontSize: 10, color: T.textMuted, lineHeight: 1.1 }}>
+                      <div style={{ fontSize: 10, color: T.textMuted, lineHeight: 1 }}>
                         {emp.employment_type === "正社員" ? "社" : "P"}
                       </div>
                       <div style={{
-                        fontSize: 10, fontWeight: 600, lineHeight: 1.1,
+                        fontSize: 10, fontWeight: 600, lineHeight: 1,
                         color: resubmittedIds.has(emp.id) ? "#F97316" : submittedIds.has(emp.id) ? C.koukyuu : T.textMuted,
                       }}>
                         {resubmittedIds.has(emp.id) ? "再提出" : submittedIds.has(emp.id) ? "提出済" : "未提出"}
