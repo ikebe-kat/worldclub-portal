@@ -907,7 +907,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
       ) : (
         <div ref={tableRef} style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <table style={{
-            borderCollapse: "collapse", fontSize: 11, minWidth: "100%",
+            borderCollapse: "collapse", fontSize: 9, minWidth: "100%",
             backgroundColor: "#fff",
           }}>
             <thead>
@@ -928,10 +928,10 @@ export default function ShiftSub({ employee }: { employee: any }) {
                       ...thStyle,
                       backgroundColor: isSun ? C.sunday : isSat ? C.saturday : C.koukyuu,
                       color: isSun ? "#DC2626" : isSat ? "#2563EB" : "#fff",
-                      minWidth: 38,
+                      minWidth: 26,
                     }}>
                       <div>{d}</div>
-                      <div style={{ fontSize: 9, fontWeight: 400 }}>{DOW[dow]}</div>
+                      <div style={{ fontSize: 8, fontWeight: 400 }}>{DOW[dow]}</div>
                     </th>
                   );
                 })}
@@ -949,14 +949,14 @@ export default function ShiftSub({ employee }: { employee: any }) {
                       backgroundColor: "#fff",
                       borderTop: isPartBorder ? `3px solid ${C.koukyuu}` : `1px solid ${T.border}`,
                     }}>
-                      <div style={{ fontSize: 11, fontWeight: 600, color: T.text }}>
+                      <div style={{ fontSize: 9, fontWeight: 600, color: T.text }}>
                         {surname(emp.full_name)}
                       </div>
-                      <div style={{ fontSize: 9, color: T.textMuted }}>
+                      <div style={{ fontSize: 8, color: T.textMuted }}>
                         {emp.employment_type === "正社員" ? "社" : "P"}
                       </div>
                       <div style={{
-                        fontSize: 9, fontWeight: 600,
+                        fontSize: 8, fontWeight: 600,
                         color: resubmittedIds.has(emp.id) ? "#F97316" : submittedIds.has(emp.id) ? C.koukyuu : T.textMuted,
                       }}>
                         {resubmittedIds.has(emp.id) ? "再提出あり" : submittedIds.has(emp.id) ? "提出済" : "未提出"}
@@ -1110,17 +1110,17 @@ const navBtn: React.CSSProperties = {
 };
 
 const thStyle: React.CSSProperties = {
-  padding: "6px 2px", textAlign: "center", fontSize: 11, fontWeight: 600,
-  borderBottom: `1px solid ${T.border}`, whiteSpace: "nowrap",
+  padding: "3px 1px", textAlign: "center", fontSize: 9, fontWeight: 600,
+  borderBottom: `1px solid ${T.border}`, whiteSpace: "nowrap", lineHeight: 1.1,
 };
 
 const tdNameStyle: React.CSSProperties = {
-  padding: "6px 8px", borderRight: `1px solid ${T.border}`,
-  borderBottom: `1px solid ${T.border}`, whiteSpace: "nowrap",
+  padding: "2px 6px", borderRight: `1px solid ${T.border}`,
+  borderBottom: `1px solid ${T.border}`, whiteSpace: "nowrap", lineHeight: 1.15,
 };
 
 const tdCellStyle: React.CSSProperties = {
-  padding: "6px 2px", textAlign: "center", fontSize: 10, fontWeight: 700,
+  padding: "2px 1px", textAlign: "center", fontSize: 9, fontWeight: 700,
   borderRight: `1px solid ${T.borderLight}`, borderBottom: `1px solid ${T.border}`,
-  minWidth: 38, userSelect: "none",
+  minWidth: 26, userSelect: "none", lineHeight: 1.1,
 };
