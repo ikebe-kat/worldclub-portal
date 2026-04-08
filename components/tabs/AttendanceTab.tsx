@@ -236,7 +236,7 @@ export default function AttendanceTab({ employee }: { employee: any }) {
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "shift_confirmations", filter }, () => loadData())
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "shift_confirmations", filter }, () => loadData())
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "leave_requests", filter }, (payload: any) => {
-        if (payload?.new?.status === "returned") loadData();
+        if (payload?.new?.employee_id === employee.id && payload?.new?.status === "returned") loadData();
       })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "attendance_daily", filter }, (payload: any) => {
         const r = payload?.new?.reason;
@@ -644,8 +644,12 @@ export default function AttendanceTab({ employee }: { employee: any }) {
         })()}
       </div>
 
-      {/* シフト確定バナー */}
+      {/* シフト確定バナー（過去月は非表示） */}
       {shiftConf && (() => {
+        const _now = new Date();
+        const curYr = _now.getFullYear();
+        const curMo = _now.getMonth() + 1;
+        if (yr < curYr || (yr === curYr && mo < curMo)) return null;
         const d = new Date(shiftConf.confirmed_at);
         const ts = `${d.getMonth() + 1}月${d.getDate()}日 ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
         const isRev = !!shiftConf.is_modified;

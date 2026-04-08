@@ -201,19 +201,17 @@ export default function ShiftSub({ employee }: { employee: any }) {
 
   useEffect(() => { loadData(true); }, [loadData]);
 
-  /* ── shift_submissions のリアルタイム購読（提出/再提出を即時反映） ── */
+  /* ── shift_submissions / leave_requests のリアルタイム購読 ── */
   useEffect(() => {
     const targetMonth = `${yr}-${String(mo).padStart(2, "0")}`;
     const channel = supabase
-      .channel(`shift_submissions_${targetMonth}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "shift_submissions",
-          filter: `company_id=eq.${COMPANY_ID}`,
-        },
+      .channel(`shiftsub_${targetMonth}`)
+      .on("postgres_changes",
+        { event: "*", schema: "public", table: "shift_submissions", filter: `company_id=eq.${COMPANY_ID}` },
+        () => { loadData(); }
+      )
+      .on("postgres_changes",
+        { event: "*", schema: "public", table: "leave_requests", filter: `company_id=eq.${COMPANY_ID}` },
         () => { loadData(); }
       )
       .subscribe();
@@ -405,9 +403,12 @@ export default function ShiftSub({ employee }: { employee: any }) {
     }
   };
 
+  const processingReqRef = useRef<Set<string>>(new Set());
   const approvePending = async () => {
     if (!pendingDialog) return;
     const reqId = pendingDialog.reqId;
+    if (processingReqRef.current.has(reqId)) return;
+    processingReqRef.current.add(reqId);
     setLeaveReqs(prev => prev.map(r => r.id === reqId ? { ...r, status: "approved", reject_reason: null } : r));
     setPendingDialog(null);
     supabase.from("leave_requests").update({
@@ -419,12 +420,17 @@ export default function ShiftSub({ employee }: { employee: any }) {
       updated_at: new Date().toISOString(),
     }).eq("id", reqId).then(({ error }) => {
       if (error) { console.error(error); loadData(); }
+      processingReqRef.current.delete(reqId);
     });
   };
 
   const returnPending = async () => {
     if (!pendingDialog) return;
+    const _reqId = pendingDialog.reqId;
+    if (processingReqRef.current.has(_reqId)) return;
+    processingReqRef.current.add(_reqId);
     if (!rejectReasonInput.trim()) {
+      processingReqRef.current.delete(_reqId);
       setDialog({ message: "差し戻し理由を入力してください", mode: "alert", onOk: () => setDialog(null) });
       return;
     }
@@ -442,6 +448,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
     if (updErr) {
       console.error("[ShiftSub] returnPending update error:", updErr);
       setLeaveReqs(prevLeaveReqs); // ロールバック
+      processingReqRef.current.delete(_reqId);
       setDialog({
         message: `差し戻しに失敗しました\n${updErr.message}`,
         mode: "alert",
@@ -450,6 +457,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
       setPendingDialog(null);
       return;
     }
+    processingReqRef.current.delete(_reqId);
 
     // シフト差し戻し通知
     const ds = dateStr(yr, mo, pendingDialog.day);
@@ -684,6 +692,8 @@ export default function ShiftSub({ employee }: { employee: any }) {
   };
 
   const approveYukyu = async (req: any) => {
+    if (processingReqRef.current.has(req.id)) return;
+    processingReqRef.current.add(req.id);
     const dow = DOW[new Date(req.attendance_date + "T00:00:00").getDay()];
     const reasonLabel = req.type === "yukyu" ? "有給（全日）" : "公休（全日）";
 
@@ -696,9 +706,11 @@ export default function ShiftSub({ employee }: { employee: any }) {
       .maybeSingle();
     if (existing?.reason && existing.reason !== reasonLabel) {
       setOverwriteConfirm({ req, existingReason: existing.reason });
+      processingReqRef.current.delete(req.id);
       return;
     }
     await doApproveYukyu(req, reasonLabel, dow);
+    processingReqRef.current.delete(req.id);
   };
 
   const [overwriteConfirm, setOverwriteConfirm] = useState<{ req: any; existingReason: string } | null>(null);
@@ -742,7 +754,10 @@ export default function ShiftSub({ employee }: { employee: any }) {
 
   const rejectYukyu = async () => {
     if (!yukyuReturnInput) return;
+    if (processingReqRef.current.has(yukyuReturnInput.id)) return;
+    processingReqRef.current.add(yukyuReturnInput.id);
     if (!yukyuReturnInput.reason.trim()) {
+      processingReqRef.current.delete(yukyuReturnInput.id);
       setDialog({ message: "差し戻し理由を入力してください", mode: "alert", onOk: () => setDialog(null) });
       return;
     }
@@ -753,9 +768,11 @@ export default function ShiftSub({ employee }: { employee: any }) {
       updated_at: new Date().toISOString(),
     }).eq("id", yukyuReturnInput.id);
     if (error) {
+      processingReqRef.current.delete(yukyuReturnInput.id);
       setDialog({ message: `差し戻しに失敗\n${error.message}`, mode: "alert", onOk: () => setDialog(null) });
       return;
     }
+    processingReqRef.current.delete(yukyuReturnInput.id);
     if (req) {
       fetch(PUSH_URL, {
         method: "POST", headers: { "Content-Type": "application/json" },
