@@ -166,7 +166,24 @@ export default function ShiftSub({ employee }: { employee: any }) {
 
   useEffect(() => { loadData(true); }, [loadData]);
 
-  /* ── リアルタイム購読は応答性のため無効化（楽観的更新で即時反映） ── */
+  /* ── shift_submissions のリアルタイム購読（提出/再提出を即時反映） ── */
+  useEffect(() => {
+    const targetMonth = `${yr}-${String(mo).padStart(2, "0")}`;
+    const channel = supabase
+      .channel(`shift_submissions_${targetMonth}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "shift_submissions",
+          filter: `company_id=eq.${COMPANY_ID}`,
+        },
+        () => { loadData(); }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [yr, mo, loadData]);
 
   /* ── 月切替 ── */
   const stepMo = (dir: 1 | -1) => {
