@@ -86,6 +86,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
   const [resubmittedIds, setResubmittedIds] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<"shift" | "yukyu">("shift");
   const [yukyuReqs, setYukyuReqs] = useState<any[]>([]);
+  const [yukyuTargetMonthSet, setYukyuTargetMonthSet] = useState<Set<string>>(new Set());
   const [yukyuReturnInput, setYukyuReturnInput] = useState<{ id: string; reason: string } | null>(null);
   const [shiftConfirmedAt, setShiftConfirmedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -195,6 +196,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
       return targetMonthSet.has(ms);
     });
     setYukyuReqs(yReqs);
+    setYukyuTargetMonthSet(targetMonthSet);
 
     setLoading(false);
   }, [yr, mo, days, employee?.id]);
@@ -219,7 +221,8 @@ export default function ShiftSub({ employee }: { employee: any }) {
           if (inMonth && (row.type === "shift_koukyuu" || row.type === "yukyu")) {
             setLeaveReqs(prev => prev.some(r => r.id === row.id) ? prev : [...prev, row]);
           }
-          if (row.status === "pending" && (row.type === "yukyu" || row.type === "shift_koukyuu")) {
+          const ms = row.attendance_date?.slice(0, 7);
+          if (row.status === "pending" && (row.type === "yukyu" || row.type === "shift_koukyuu") && yukyuTargetMonthSet.has(ms)) {
             setYukyuReqs(prev => prev.some(r => r.id === row.id) ? prev : [...prev, row]);
           }
         }
@@ -230,7 +233,8 @@ export default function ShiftSub({ employee }: { employee: any }) {
           const row = payload?.new;
           if (!row) return;
           setLeaveReqs(prev => prev.map(r => r.id === row.id ? { ...r, ...row } : r));
-          if (row.status === "pending") {
+          const ms = row.attendance_date?.slice(0, 7);
+          if (row.status === "pending" && yukyuTargetMonthSet.has(ms)) {
             setYukyuReqs(prev => prev.some(r => r.id === row.id)
               ? prev.map(r => r.id === row.id ? { ...r, ...row } : r)
               : [...prev, row]);
@@ -250,7 +254,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [yr, mo, loadData]);
+  }, [yr, mo, loadData, yukyuTargetMonthSet]);
 
   /* ── 月切替 ── */
   const stepMo = (dir: 1 | -1) => {
@@ -443,19 +447,21 @@ export default function ShiftSub({ employee }: { employee: any }) {
     const reqId = pendingDialog.reqId;
     if (processingReqRef.current.has(reqId)) return;
     processingReqRef.current.add(reqId);
-    setLeaveReqs(prev => prev.map(r => r.id === reqId ? { ...r, status: "approved", reject_reason: null } : r));
-    setPendingDialog(null);
-    supabase.from("leave_requests").update({
-      status: "approved",
-      reject_reason: null,
-      approved_by: employee.id,
-      approver_id: employee.id,
-      approved_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }).eq("id", reqId).then(({ error }) => {
+    try {
+      setLeaveReqs(prev => prev.map(r => r.id === reqId ? { ...r, status: "approved", reject_reason: null } : r));
+      setPendingDialog(null);
+      const { error } = await supabase.from("leave_requests").update({
+        status: "approved",
+        reject_reason: null,
+        approved_by: employee.id,
+        approver_id: employee.id,
+        approved_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }).eq("id", reqId);
       if (error) { console.error(error); loadData(); }
+    } finally {
       processingReqRef.current.delete(reqId);
-    });
+    }
   };
 
   const returnPending = async () => {
@@ -463,54 +469,55 @@ export default function ShiftSub({ employee }: { employee: any }) {
     const _reqId = pendingDialog.reqId;
     if (processingReqRef.current.has(_reqId)) return;
     processingReqRef.current.add(_reqId);
-    if (!rejectReasonInput.trim()) {
-      processingReqRef.current.delete(_reqId);
-      setDialog({ message: "差し戻し理由を入力してください", mode: "alert", onOk: () => setDialog(null) });
-      return;
-    }
-    const reqId = pendingDialog.reqId;
-    const reasonText = rejectReasonInput.trim();
-    const prevLeaveReqs = leaveReqs;
-    setLeaveReqs(prev => prev.map(r => r.id === reqId ? { ...r, status: "returned", reject_reason: reasonText } : r));
+    try {
+      if (!rejectReasonInput.trim()) {
+        setDialog({ message: "差し戻し理由を入力してください", mode: "alert", onOk: () => setDialog(null) });
+        return;
+      }
+      const reqId = pendingDialog.reqId;
+      const reasonText = rejectReasonInput.trim();
+      const prevLeaveReqs = leaveReqs;
+      setLeaveReqs(prev => prev.map(r => r.id === reqId ? { ...r, status: "returned", reject_reason: reasonText } : r));
 
-    const { error: updErr } = await supabase.from("leave_requests").update({
-      status: "returned",
-      reject_reason: reasonText,
-      updated_at: new Date().toISOString(),
-    }).eq("id", reqId);
+      const { error: updErr } = await supabase.from("leave_requests").update({
+        status: "returned",
+        reject_reason: reasonText,
+        updated_at: new Date().toISOString(),
+      }).eq("id", reqId);
 
-    if (updErr) {
-      console.error("[ShiftSub] returnPending update error:", updErr);
-      setLeaveReqs(prevLeaveReqs); // ロールバック
-      processingReqRef.current.delete(_reqId);
-      setDialog({
-        message: `差し戻しに失敗しました\n${updErr.message}`,
-        mode: "alert",
-        onOk: () => { setDialog(null); loadData(); },
-      });
+      if (updErr) {
+        console.error("[ShiftSub] returnPending update error:", updErr);
+        setLeaveReqs(prevLeaveReqs); // ロールバック
+        setDialog({
+          message: `差し戻しに失敗しました\n${updErr.message}`,
+          mode: "alert",
+          onOk: () => { setDialog(null); loadData(); },
+        });
+        setPendingDialog(null);
+        return;
+      }
+
+      // シフト差し戻し通知
+      const ds = dateStr(yr, mo, pendingDialog.day);
+      fetch(PUSH_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "shift_returned",
+          payload: {
+            company_id: COMPANY_ID,
+            employee_id: pendingDialog.emp.id,
+            attendance_date: ds,
+            leave_type: pendingDialog.reqType,
+            reject_reason: reasonText,
+          },
+        }),
+      }).catch(() => {});
+
       setPendingDialog(null);
-      return;
+    } finally {
+      processingReqRef.current.delete(_reqId);
     }
-    processingReqRef.current.delete(_reqId);
-
-    // シフト差し戻し通知
-    const ds = dateStr(yr, mo, pendingDialog.day);
-    fetch(PUSH_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type: "shift_returned",
-        payload: {
-          company_id: COMPANY_ID,
-          employee_id: pendingDialog.emp.id,
-          attendance_date: ds,
-          leave_type: pendingDialog.reqType,
-          reject_reason: reasonText,
-        },
-      }),
-    }).catch(() => {});
-
-    setPendingDialog(null);
   };
 
   /* ── トースト表示 ── */
@@ -627,6 +634,14 @@ export default function ShiftSub({ employee }: { employee: any }) {
         setDialog(null);
         setConfirming(true);
 
+        // タブを閉じようとしたら警告
+        const beforeUnload = (e: BeforeUnloadEvent) => {
+          e.preventDefault();
+          e.returnValue = "シフト確定処理中です。ページを閉じると不整合が発生する可能性があります。";
+          return e.returnValue;
+        };
+        window.addEventListener("beforeunload", beforeUnload);
+
         // 提出フィルタを無視して全従業員の approved/yukyu を attendance_daily に転記
         const upserts: any[] = [];
         for (const emp of employees) {
@@ -693,6 +708,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
           confErr = error;
         }
 
+        window.removeEventListener("beforeunload", beforeUnload);
         setConfirming(false);
         if (confErr) {
           setDialog({ message: `確定記録の保存に失敗\n${confErr.message}`, mode: "alert", onOk: () => { setDialog(null); loadData(); } });
@@ -726,7 +742,6 @@ export default function ShiftSub({ employee }: { employee: any }) {
   const seishaCount = sortedEmps.filter(e => e.employment_type === "正社員").length;
 
   /* ── レンダリング ── */
-  const tableRef = useRef<HTMLDivElement>(null);
 
   /* ── 有給申請：承認/差し戻し ── */
   const empNameById = (id: string) => {
@@ -737,23 +752,25 @@ export default function ShiftSub({ employee }: { employee: any }) {
   const approveYukyu = async (req: any) => {
     if (processingReqRef.current.has(req.id)) return;
     processingReqRef.current.add(req.id);
-    const dow = DOW[new Date(req.attendance_date + "T00:00:00").getDay()];
-    const reasonLabel = req.type === "yukyu" ? "有給（全日）" : "公休（全日）";
+    try {
+      const dow = DOW[new Date(req.attendance_date + "T00:00:00").getDay()];
+      const reasonLabel = req.type === "yukyu" ? "有給（全日）" : "公休（全日）";
 
-    // 既存 attendance_daily の reason をチェック → 上書き確認
-    const { data: existing } = await supabase.from("attendance_daily")
-      .select("reason")
-      .eq("company_id", COMPANY_ID)
-      .eq("employee_id", req.employee_id)
-      .eq("attendance_date", req.attendance_date)
-      .maybeSingle();
-    if (existing?.reason && existing.reason !== reasonLabel) {
-      setOverwriteConfirm({ req, existingReason: existing.reason });
+      // 既存 attendance_daily の reason をチェック → 上書き確認
+      const { data: existing } = await supabase.from("attendance_daily")
+        .select("reason")
+        .eq("company_id", COMPANY_ID)
+        .eq("employee_id", req.employee_id)
+        .eq("attendance_date", req.attendance_date)
+        .maybeSingle();
+      if (existing?.reason && existing.reason !== reasonLabel) {
+        setOverwriteConfirm({ req, existingReason: existing.reason });
+        return;
+      }
+      await doApproveYukyu(req, reasonLabel, dow);
+    } finally {
       processingReqRef.current.delete(req.id);
-      return;
     }
-    await doApproveYukyu(req, reasonLabel, dow);
-    processingReqRef.current.delete(req.id);
   };
 
   const [overwriteConfirm, setOverwriteConfirm] = useState<{ req: any; existingReason: string } | null>(null);
@@ -797,42 +814,44 @@ export default function ShiftSub({ employee }: { employee: any }) {
 
   const rejectYukyu = async () => {
     if (!yukyuReturnInput) return;
-    if (processingReqRef.current.has(yukyuReturnInput.id)) return;
-    processingReqRef.current.add(yukyuReturnInput.id);
-    if (!yukyuReturnInput.reason.trim()) {
-      processingReqRef.current.delete(yukyuReturnInput.id);
-      setDialog({ message: "差し戻し理由を入力してください", mode: "alert", onOk: () => setDialog(null) });
-      return;
+    const _id = yukyuReturnInput.id;
+    if (processingReqRef.current.has(_id)) return;
+    processingReqRef.current.add(_id);
+    try {
+      if (!yukyuReturnInput.reason.trim()) {
+        setDialog({ message: "差し戻し理由を入力してください", mode: "alert", onOk: () => setDialog(null) });
+        return;
+      }
+      const req = yukyuReqs.find(r => r.id === _id);
+      const { error } = await supabase.from("leave_requests").update({
+        status: "returned",
+        reject_reason: yukyuReturnInput.reason.trim(),
+        updated_at: new Date().toISOString(),
+      }).eq("id", _id);
+      if (error) {
+        setDialog({ message: `差し戻しに失敗\n${error.message}`, mode: "alert", onOk: () => setDialog(null) });
+        return;
+      }
+      if (req) {
+        fetch(PUSH_URL, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "shift_returned",
+            payload: {
+              company_id: COMPANY_ID,
+              employee_id: req.employee_id,
+              attendance_date: req.attendance_date,
+              leave_type: req.type,
+              reject_reason: yukyuReturnInput.reason.trim(),
+            },
+          }),
+        }).catch(() => {});
+      }
+      setYukyuReturnInput(null);
+      loadData();
+    } finally {
+      processingReqRef.current.delete(_id);
     }
-    const req = yukyuReqs.find(r => r.id === yukyuReturnInput.id);
-    const { error } = await supabase.from("leave_requests").update({
-      status: "returned",
-      reject_reason: yukyuReturnInput.reason.trim(),
-      updated_at: new Date().toISOString(),
-    }).eq("id", yukyuReturnInput.id);
-    if (error) {
-      processingReqRef.current.delete(yukyuReturnInput.id);
-      setDialog({ message: `差し戻しに失敗\n${error.message}`, mode: "alert", onOk: () => setDialog(null) });
-      return;
-    }
-    processingReqRef.current.delete(yukyuReturnInput.id);
-    if (req) {
-      fetch(PUSH_URL, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "shift_returned",
-          payload: {
-            company_id: COMPANY_ID,
-            employee_id: req.employee_id,
-            attendance_date: req.attendance_date,
-            leave_type: req.type,
-            reject_reason: yukyuReturnInput.reason.trim(),
-          },
-        }),
-      }).catch(() => {});
-    }
-    setYukyuReturnInput(null);
-    loadData();
   };
 
   const isOgawa = employee?.employee_code === "WC001";
@@ -973,10 +992,16 @@ export default function ShiftSub({ employee }: { employee: any }) {
               confirmColor={C.returned}
               onOk={async () => {
                 const { req } = overwriteConfirm;
-                const dow = DOW[new Date(req.attendance_date + "T00:00:00").getDay()];
-                const reasonLabel = req.type === "yukyu" ? "有給（全日）" : "公休（全日）";
-                setOverwriteConfirm(null);
-                await doApproveYukyu(req, reasonLabel, dow);
+                if (processingReqRef.current.has(req.id)) return;
+                processingReqRef.current.add(req.id);
+                try {
+                  const dow = DOW[new Date(req.attendance_date + "T00:00:00").getDay()];
+                  const reasonLabel = req.type === "yukyu" ? "有給（全日）" : "公休（全日）";
+                  setOverwriteConfirm(null);
+                  await doApproveYukyu(req, reasonLabel, dow);
+                } finally {
+                  processingReqRef.current.delete(req.id);
+                }
               }}
               onCancel={() => setOverwriteConfirm(null)}
             />
@@ -1075,7 +1100,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
       {loading ? (
         <div style={{ textAlign: "center", padding: 40, color: T.textSec }}>読み込み中...</div>
       ) : (
-        <div ref={tableRef} style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+        <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <table style={{
             borderCollapse: "collapse", fontSize: 11, minWidth: "100%",
             backgroundColor: "#fff",
