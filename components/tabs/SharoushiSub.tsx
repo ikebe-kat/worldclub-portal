@@ -67,7 +67,7 @@ export default function SharoushiSub({ employee }: { employee: any }) {
       setProgress("従業員データ取得中...");
       const { data: empRaw, error: empErr } = await supabase.from("employees")
         .select("id, employee_code, full_name, employment_type, store_id, holiday_calendar")
-        .eq("company_id", employee.company_id).eq("is_active", true).order("employee_code");
+        .eq("company_id", employee.company_id).or("is_active.is.null,is_active.eq.true").order("employee_code");
       if (empErr) throw empErr;
       if (!empRaw?.length) { setDialogMsg("従業員データがありません"); return; }
 
