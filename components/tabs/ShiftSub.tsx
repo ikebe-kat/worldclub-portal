@@ -147,20 +147,46 @@ export default function ShiftSub({ employee }: { employee: any }) {
     setResubmittedIds(resubmitted);
     setShiftConfirmedAt(confirmedAt);
 
-    // 有給申請（pending）：表示中の月（yr/mo）が確定済みの場合のみ取得
-    if (confirmedAt) {
-      const { data: yReqs } = await supabase.from("leave_requests")
-        .select("id, employee_id, attendance_date, type, status, reject_reason, request_comment, created_at")
-        .eq("company_id", COMPANY_ID)
-        .in("type", ["yukyu", "shift_koukyuu"])
-        .gte("attendance_date", monthStart)
-        .lte("attendance_date", monthEnd)
-        .in("status", ["pending"])
-        .order("attendance_date");
-      setYukyuReqs(yReqs || []);
-    } else {
-      setYukyuReqs([]);
+    // 有給申請（pending）：今日の月＋確定済みの翌月以降
+    const _today = new Date();
+    const todayYr = _today.getFullYear();
+    const todayMo = _today.getMonth() + 1;
+    const todayMonthStr = `${todayYr}-${String(todayMo).padStart(2, "0")}`;
+    const todayMonthStart = dateStr(todayYr, todayMo, 1);
+
+    // 確定済みの月一覧（今日の月より未来）
+    const { data: futureConfs } = await supabase.from("shift_confirmations")
+      .select("target_month")
+      .eq("company_id", COMPANY_ID)
+      .not("confirmed_at", "is", null)
+      .gt("target_month", todayMonthStr);
+    const targetMonthSet = new Set<string>([
+      todayMonthStr,
+      ...((futureConfs || []).map((c: any) => c.target_month) as string[]),
+    ]);
+
+    // 候補月の中で最も未来の月末まで取得
+    let maxYr = todayYr, maxMo = todayMo;
+    for (const ms of targetMonthSet) {
+      const [y, m] = ms.split("-").map(Number);
+      if (y > maxYr || (y === maxYr && m > maxMo)) { maxYr = y; maxMo = m; }
     }
+    const maxMonthEnd = dateStr(maxYr, maxMo, daysInMonth(maxYr, maxMo));
+
+    const { data: yReqsRaw } = await supabase.from("leave_requests")
+      .select("id, employee_id, attendance_date, type, status, reject_reason, request_comment, created_at")
+      .eq("company_id", COMPANY_ID)
+      .in("type", ["yukyu", "shift_koukyuu"])
+      .gte("attendance_date", todayMonthStart)
+      .lte("attendance_date", maxMonthEnd)
+      .in("status", ["pending"])
+      .order("attendance_date");
+
+    const yReqs = (yReqsRaw || []).filter((r: any) => {
+      const ms = r.attendance_date.slice(0, 7);
+      return targetMonthSet.has(ms);
+    });
+    setYukyuReqs(yReqs);
 
     setLoading(false);
   }, [yr, mo, days, employee.id]);
@@ -736,19 +762,10 @@ export default function ShiftSub({ employee }: { employee: any }) {
 
       {activeTab === "yukyu" ? (
         <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-            <button onClick={() => stepMo(-1)} style={navBtn}>&lt;</button>
-            <span style={{ fontSize: 16, fontWeight: 700, color: T.text, minWidth: 120, textAlign: "center" }}>
-              {yr}年{mo}月
-            </span>
-            <button onClick={() => stepMo(1)} style={navBtn}>&gt;</button>
-          </div>
           <div style={{ fontSize: 12, color: T.textSec, marginBottom: 10 }}>
-            シフト確定後の急遽申請（{yr}年{mo}月）
+            シフト確定後の急遽申請
           </div>
-          {!shiftConfirmedAt ? (
-            <div style={{ textAlign: "center", padding: 40, color: T.textMuted }}>この月はまだ確定していません</div>
-          ) : yukyuReqs.length === 0 ? (
+          {yukyuReqs.length === 0 ? (
             <div style={{ textAlign: "center", padding: 40, color: T.textMuted }}>申請はありません</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
