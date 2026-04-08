@@ -227,15 +227,14 @@ export default function AttendanceTab({ employee }: { employee: any }) {
 
   useEffect(() => { loadData(true); }, [loadData]);
 
-  /* ── リアルタイム購読：確定/承認/差し戻しを出勤簿に即時反映 ── */
+  /* ── リアルタイム購読：シフト確定時のみ出勤簿に反映 ── */
   useEffect(() => {
     if (!employee?.company_id) return;
     const filter = `company_id=eq.${employee.company_id}`;
     const channel = supabase
       .channel(`attendance_realtime_${employee.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "attendance_daily", filter }, () => loadData())
-      .on("postgres_changes", { event: "*", schema: "public", table: "shift_confirmations", filter }, () => loadData())
-      .on("postgres_changes", { event: "*", schema: "public", table: "leave_requests", filter }, () => loadData())
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "shift_confirmations", filter }, () => loadData())
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "shift_confirmations", filter }, () => loadData())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [employee?.company_id, employee?.id, loadData]);
