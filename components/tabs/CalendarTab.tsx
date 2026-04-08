@@ -7,7 +7,7 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import { T, DOW, PALETTE, CAL_GROUPS, stepMonth, displayReason, calendarDisplayName } from "@/lib/constants";
 import { useSmoothSwipe } from "@/hooks/useSmoothSwipe";
 import { supabase } from "@/lib/supabase";
-import { getPermLevel, canShowCalendarGroupSelect, getDefaultCalendarGroup, canChooseTargetCalendar, canDeleteEvent, storeIdToCalGroup, getAllowedCalGroups } from "@/lib/permissions";
+import { getPermLevel, canShowCalendarGroupSelect, getDefaultCalendarGroup, canChooseTargetCalendar, canDeleteEvent, storeIdToCalGroup, getAllowedCalGroups, canViewJimuCalendar } from "@/lib/permissions";
 import Dialog from "@/components/ui/Dialog";
 
 // ── 型定義 ──────────────────────────────
@@ -104,6 +104,7 @@ const ReasonBadges = ({ reason }: { reason: string }) => {
 interface AddModalProps {
   employee: any;
   perm: "super" | "admin" | "employee";
+  empCode: string;
   myCalGroup: string;
   allowedGroups: string[] | null;
   onClose: () => void;
@@ -113,7 +114,7 @@ interface AddModalProps {
   editEvent?: CustomEvent | null;
 }
 
-const AddEventModal = ({ employee, perm, myCalGroup, allowedGroups, onClose, onSaved, defaultDate, defaultTargetCal, editEvent }: AddModalProps) => {
+const AddEventModal = ({ employee, perm, empCode, myCalGroup, allowedGroups, onClose, onSaved, defaultDate, defaultTargetCal, editEvent }: AddModalProps) => {
   const todayStr = toLocalDate(new Date());
   const isEdit = !!editEvent;
   const [title, setTitle] = useState(isEdit ? editEvent!.title : "");
@@ -266,7 +267,7 @@ const AddEventModal = ({ employee, perm, myCalGroup, allowedGroups, onClose, onS
           </div>
           <div>
             <label style={{ fontSize: 12, color: T.textSec, display: "block", marginBottom: 4 }}>対象</label>
-            {canChooseTargetCalendar(perm) ? (
+            {canChooseTargetCalendar(perm, empCode) ? (
               <select value={CAL_GROUPS.find((g) => g.id === targetCalendar)?.label || "全店舗"}
                 onChange={(e) => setTargetCalendar(calMap[e.target.value] || "all")}
                 style={{ width: "100%", padding: "9px 10px", borderRadius: "6px", border: `1px solid ${T.border}`, fontSize: 13 }}>
@@ -413,9 +414,12 @@ export default function CalendarTab({ employee }: { employee: any }) {
   }, [yr, mo]);
 
   // ── 日ごとのイベント取得 ──────────────────────
+  const isJimu = canViewJimuCalendar(empCode);
   const getEventsForDay = useCallback((day: number) => {
     const results: (CustomEvent & { _startDay: number; _endDay: number })[] = [];
     for (const ev of customEvents) {
+      // 業務部イベントは W02/W49/W67 のみ閲覧可
+      if (ev.target_calendar === "jimu" && !isJimu) continue;
       if (group !== "all" && ev.target_calendar !== "all" && ev.target_calendar !== group) continue;
       const spans = expandRepeats(ev, yr, mo);
       for (const span of spans) {
@@ -426,7 +430,7 @@ export default function CalendarTab({ employee }: { employee: any }) {
       }
     }
     return results;
-  }, [customEvents, yr, mo, group]);
+  }, [customEvents, yr, mo, group, isJimu]);
 
   const getAttForDay = useCallback((day: number) => {
     const dateStr = `${yr}-${String(mo).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
@@ -693,6 +697,7 @@ export default function CalendarTab({ employee }: { employee: any }) {
         <AddEventModal
           employee={employee}
           perm={perm}
+          empCode={empCode}
           myCalGroup={myCalGroup}
           allowedGroups={allowedGroups}
           onClose={() => { setModal(false); setEditTarget(null); }}

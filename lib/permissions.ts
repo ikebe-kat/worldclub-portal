@@ -19,27 +19,31 @@ export function getPermLevel(role: string | null): PermLevel {
 // カレンダー権限
 // ══════════════════════════════════════════
 
-const GYOMU_DEPTS = ["人事", "経理", "人事総務", "経理財務"];
+export const JIMU_CODES = ["W02", "W49", "W67"];
 
-export function storeIdToCalGroup(storeId: string | null, department?: string | null): string {
+export function canViewJimuCalendar(employeeCode?: string | null): boolean {
+  return !!employeeCode && JIMU_CODES.includes(employeeCode);
+}
+
+export function storeIdToCalGroup(_storeId: string | null, _department?: string | null): string {
   return "all";
 }
 
-export function canShowCalendarGroupSelect(perm: PermLevel, employeeCode?: string): boolean {
-  return perm !== "employee";
+export function canShowCalendarGroupSelect(_perm: PermLevel, employeeCode?: string): boolean {
+  return canViewJimuCalendar(employeeCode);
 }
 
-export function getAllowedCalGroups(perm: PermLevel, employeeCode?: string): string[] | null {
-  if (perm !== "employee") return null;
-  return null;
+export function getAllowedCalGroups(_perm: PermLevel, employeeCode?: string): string[] | null {
+  if (canViewJimuCalendar(employeeCode)) return ["all", "jimu"];
+  return ["all"];
 }
 
-export function getDefaultCalendarGroup(perm: PermLevel, storeId: string | null, department?: string | null, employeeCode?: string): string {
+export function getDefaultCalendarGroup(_perm: PermLevel, _storeId: string | null, _department?: string | null, _employeeCode?: string): string {
   return "all";
 }
 
-export function canChooseTargetCalendar(perm: PermLevel): boolean {
-  return perm !== "employee";
+export function canChooseTargetCalendar(_perm: PermLevel, employeeCode?: string): boolean {
+  return canViewJimuCalendar(employeeCode);
 }
 
 export function canDeleteEvent(
