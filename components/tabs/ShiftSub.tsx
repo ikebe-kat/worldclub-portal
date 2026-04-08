@@ -1086,9 +1086,9 @@ export default function ShiftSub({ employee }: { employee: any }) {
                           </span>
                           <span style={{
                             fontSize: 11, fontWeight: 600, lineHeight: 1,
-                            color: resubmittedIds.has(emp.id) ? "#F97316" : submittedIds.has(emp.id) ? C.koukyuu : T.textMuted,
+                            color: emp.employee_code === "WC001" ? T.textMuted : resubmittedIds.has(emp.id) ? "#F97316" : submittedIds.has(emp.id) ? C.koukyuu : T.textMuted,
                           }}>
-                            {resubmittedIds.has(emp.id) ? "再" : submittedIds.has(emp.id) ? "済" : "未"}
+                            {emp.employee_code === "WC001" ? "責任者" : resubmittedIds.has(emp.id) ? "再" : submittedIds.has(emp.id) ? "済" : "未"}
                           </span>
                         </span>
                       </div>

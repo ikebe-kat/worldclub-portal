@@ -80,6 +80,12 @@ export default function AttendanceTab({ employee }: { employee: any }) {
   const [nextSubmission, setNextSubmission] = useState<{ submitted_at: string } | null>(null);
   const [resubmitMode, setResubmitMode] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2000);
+    return () => clearTimeout(t);
+  }, [toast]);
   const [scheduledMin, setScheduledMin] = useState<number>(0);
   const [kibouQuota, setKibouQuota] = useState<number>(0);
   const [loading, setLoading] = useState(true);
@@ -349,6 +355,7 @@ export default function AttendanceTab({ employee }: { employee: any }) {
       if (error) { showAlert("再提出に失敗しました: " + error.message); return; }
       setNextSubmission({ submitted_at: newAt });
       setResubmitMode(false);
+      setToast("再提出しました");
       notifyOgawa();
       return;
     }
@@ -825,6 +832,15 @@ export default function AttendanceTab({ employee }: { employee: any }) {
           onOk={dialog.onOk}
           onCancel={() => setDialog(null)}
         />
+      )}
+
+      {toast && (
+        <div style={{
+          position: "fixed", bottom: 32, left: "50%", transform: "translateX(-50%)",
+          backgroundColor: T.primary, color: "#fff", padding: "10px 24px",
+          borderRadius: 4, fontSize: 13, fontWeight: 600,
+          boxShadow: "0 4px 12px rgba(0,0,0,0.15)", zIndex: 3000,
+        }}>{toast}</div>
       )}
 
       <style>{`@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}`}</style>
