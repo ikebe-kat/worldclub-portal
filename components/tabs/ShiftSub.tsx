@@ -151,7 +151,8 @@ export default function ShiftSub({ employee }: { employee: any }) {
     setLeaveReqs(reqs || []);
     setAttData(att || []);
     setSubmittedIds(submitted);
-    setResubmittedIds(resubmitted);
+    // 確定済み月では再提出バッジを非表示
+    setResubmittedIds(confirmedAt ? new Set() : resubmitted);
     setShiftConfirmedAt(confirmedAt);
 
     // 有給申請（pending）：今日の月＋確定済みの翌月以降
@@ -536,13 +537,13 @@ export default function ShiftSub({ employee }: { employee: any }) {
             .eq("id", row.id);
         }
 
-        // shift_confirmations を削除（confirmed_at が NOT NULL 制約のケースに対応）
+        // shift_confirmations: confirmed_at=null + is_modified=true（再確定時の橙バナー用フラグ保持）
         const targetMonth = `${yr}-${String(mo).padStart(2, "0")}`;
-        const { error: delErr } = await supabase.from("shift_confirmations")
-          .delete()
+        const { error: updErr } = await supabase.from("shift_confirmations")
+          .update({ confirmed_at: null, is_modified: true })
           .eq("company_id", COMPANY_ID)
           .eq("target_month", targetMonth);
-        if (delErr) console.error("[ShiftSub] unconfirm delete error:", delErr);
+        if (updErr) console.error("[ShiftSub] unconfirm update error:", updErr);
 
         setShiftConfirmedAt(null);
         setConfirming(false);
@@ -613,10 +614,10 @@ export default function ShiftSub({ employee }: { employee: any }) {
           .gte("attendance_date", _monthStart)
           .lte("attendance_date", _monthEnd);
 
-        // shift_confirmations: 既存があれば revision+1 で UPDATE、なければ revision=0 で INSERT
+        // shift_confirmations: 既存行があれば UPDATE（is_modified は維持）、なければ INSERT（is_modified=false）
         const targetMonth = `${yr}-${String(mo).padStart(2, "0")}`;
         const { data: existConf } = await supabase.from("shift_confirmations")
-          .select("id, revision")
+          .select("id")
           .eq("company_id", COMPANY_ID)
           .eq("target_month", targetMonth)
           .maybeSingle();
@@ -627,7 +628,6 @@ export default function ShiftSub({ employee }: { employee: any }) {
             .update({
               confirmed_by: employee.id,
               confirmed_at: new Date().toISOString(),
-              revision: (existConf.revision ?? 0) + 1,
             })
             .eq("id", existConf.id);
           confErr = error;
@@ -637,7 +637,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
             confirmed_by: employee.id,
             target_month: targetMonth,
             confirmed_at: new Date().toISOString(),
-            revision: 0,
+            is_modified: false,
           });
           confErr = error;
         }
@@ -686,6 +686,25 @@ export default function ShiftSub({ employee }: { employee: any }) {
   const approveYukyu = async (req: any) => {
     const dow = DOW[new Date(req.attendance_date + "T00:00:00").getDay()];
     const reasonLabel = req.type === "yukyu" ? "有給（全日）" : "公休（全日）";
+
+    // 既存 attendance_daily の reason をチェック → 上書き確認
+    const { data: existing } = await supabase.from("attendance_daily")
+      .select("reason")
+      .eq("company_id", COMPANY_ID)
+      .eq("employee_id", req.employee_id)
+      .eq("attendance_date", req.attendance_date)
+      .maybeSingle();
+    if (existing?.reason && existing.reason !== reasonLabel) {
+      setOverwriteConfirm({ req, existingReason: existing.reason });
+      return;
+    }
+    await doApproveYukyu(req, reasonLabel, dow);
+  };
+
+  const [overwriteConfirm, setOverwriteConfirm] = useState<{ req: any; existingReason: string } | null>(null);
+
+  const doApproveYukyu = async (req: any, reasonLabel: string, dow: string) => {
+
     const { error: upErr } = await supabase.from("attendance_daily").upsert({
       company_id: COMPANY_ID,
       employee_id: req.employee_id,
@@ -883,6 +902,23 @@ export default function ShiftSub({ employee }: { employee: any }) {
               confirmColor={dialog.confirmColor}
               onOk={dialog.onOk}
               onCancel={() => setDialog(null)}
+            />
+          )}
+
+          {overwriteConfirm && (
+            <Dialog
+              message={`${formatJpDate(overwriteConfirm.req.attendance_date)}には既に「${overwriteConfirm.existingReason}」が登録されています。\n上書きしますか？`}
+              mode="confirm"
+              confirmLabel="上書き"
+              confirmColor={C.returned}
+              onOk={async () => {
+                const { req } = overwriteConfirm;
+                const dow = DOW[new Date(req.attendance_date + "T00:00:00").getDay()];
+                const reasonLabel = req.type === "yukyu" ? "有給（全日）" : "公休（全日）";
+                setOverwriteConfirm(null);
+                await doApproveYukyu(req, reasonLabel, dow);
+              }}
+              onCancel={() => setOverwriteConfirm(null)}
             />
           )}
         </div>

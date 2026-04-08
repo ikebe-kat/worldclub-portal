@@ -75,8 +75,8 @@ export default function AttendanceTab({ employee }: { employee: any }) {
   const [mo, setMo] = useState(now.getMonth() + 1);
   const [rows, setRows] = useState<any[]>([]);
   const [holidays, setHolidays] = useState<string[]>([]);
-  const [shiftConf, setShiftConf] = useState<{ confirmed_at: string; revision: number } | null>(null);
-  const [nextShiftConf, setNextShiftConf] = useState<{ confirmed_at: string; revision: number } | null>(null);
+  const [shiftConf, setShiftConf] = useState<{ confirmed_at: string; is_modified: boolean } | null>(null);
+  const [nextShiftConf, setNextShiftConf] = useState<{ confirmed_at: string; is_modified: boolean } | null>(null);
   const [nextSubmission, setNextSubmission] = useState<{ submitted_at: string } | null>(null);
   const [resubmitMode, setResubmitMode] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -183,13 +183,13 @@ export default function AttendanceTab({ employee }: { employee: any }) {
     const [nyr, nmo] = stepMonth(yr, mo, 1);
     const nextMonth = `${nyr}-${String(nmo).padStart(2, "0")}`;
     const { data: confs } = await supabase.from("shift_confirmations")
-      .select("target_month, confirmed_at, revision")
+      .select("target_month, confirmed_at, is_modified")
       .eq("company_id", employee.company_id)
       .in("target_month", [curMonth, nextMonth]);
     const cur = (confs || []).find((c: any) => c.target_month === curMonth && c.confirmed_at);
     const nxt = (confs || []).find((c: any) => c.target_month === nextMonth && c.confirmed_at);
-    setShiftConf(cur ? { confirmed_at: cur.confirmed_at, revision: cur.revision ?? 0 } : null);
-    setNextShiftConf(nxt ? { confirmed_at: nxt.confirmed_at, revision: nxt.revision ?? 0 } : null);
+    setShiftConf(cur ? { confirmed_at: cur.confirmed_at, is_modified: !!cur.is_modified } : null);
+    setNextShiftConf(nxt ? { confirmed_at: nxt.confirmed_at, is_modified: !!nxt.is_modified } : null);
 
     // shift_submissions（実日付の翌月分の提出有無）
     const _today = new Date();
@@ -648,7 +648,7 @@ export default function AttendanceTab({ employee }: { employee: any }) {
       {shiftConf && (() => {
         const d = new Date(shiftConf.confirmed_at);
         const ts = `${d.getMonth() + 1}月${d.getDate()}日 ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-        const isRev = (shiftConf.revision ?? 0) >= 1;
+        const isRev = !!shiftConf.is_modified;
         const txt = isRev ? `シフトが修正されました ${ts}` : `✓ シフトが確定しました ${ts}`;
         return (
           <div style={{
