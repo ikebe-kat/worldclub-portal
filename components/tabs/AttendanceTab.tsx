@@ -168,7 +168,9 @@ export default function AttendanceTab({ employee }: { employee: any }) {
       const existing = merged.find(m => m.attendance_date === lr.attendance_date);
       const lrMeta = lr.status === "returned" ? { returned_lr_id: lr.id } : {};
       if (existing) {
-        if (!existing.reason) existing.reason = lrLabel;
+        // 差し戻しは attendance_daily の既存 reason より優先表示
+        if (lr.status === "returned") existing.reason = lrLabel;
+        else if (!existing.reason) existing.reason = lrLabel;
         Object.assign(existing, lrMeta);
       } else {
         merged.push({ attendance_date: lr.attendance_date, punch_in: null, punch_out: null, reason: lrLabel, actual_hours: null, over_under: null, ...lrMeta });
@@ -233,8 +235,8 @@ export default function AttendanceTab({ employee }: { employee: any }) {
       .channel(`attendance_realtime_${employee.id}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "shift_confirmations", filter }, () => loadData())
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "shift_confirmations", filter }, () => loadData())
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "leave_requests", filter: "status=eq.returned" }, (payload: any) => {
-        if (payload?.new?.company_id === employee.company_id) loadData();
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "leave_requests", filter }, (payload: any) => {
+        if (payload?.new?.status === "returned") loadData();
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };

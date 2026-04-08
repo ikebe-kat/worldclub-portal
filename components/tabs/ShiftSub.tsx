@@ -548,17 +548,17 @@ export default function ShiftSub({ employee }: { employee: any }) {
             .eq("id", row.id);
         }
 
-        // shift_confirmations は削除せず confirmed_at を null にして「未確定」状態に戻す
-        // （revision は維持して、再確定時に +1 する）
+        // shift_confirmations を削除（confirmed_at が NOT NULL 制約のケースに対応）
         const targetMonth = `${yr}-${String(mo).padStart(2, "0")}`;
-        await supabase.from("shift_confirmations")
-          .update({ confirmed_at: null })
+        const { error: delErr } = await supabase.from("shift_confirmations")
+          .delete()
           .eq("company_id", COMPANY_ID)
           .eq("target_month", targetMonth);
+        if (delErr) console.error("[ShiftSub] unconfirm delete error:", delErr);
 
-        setConfirming(false);
         setShiftConfirmedAt(null);
-        loadData();
+        setConfirming(false);
+        await loadData();
       },
     });
   };
