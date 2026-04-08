@@ -65,7 +65,8 @@ export const ReasonBadges = ({ reason }: ReasonBadgesProps) => {
         const t = p.trim();
         let bg: string = T.textMuted;
         if      (t.startsWith("公休差し戻し") || t.startsWith("有給差し戻し")) bg = T.holidayRed;
-        else if (t === "公休申請中" || t === "有給申請中")              bg = T.kibouYellow;
+        else if (t === "公休申請中")                                    bg = T.kibouYellow;
+        else if (t === "有給申請中")                                    bg = "#BFDBFE";
         else if (t === "公休確定待ち")                                  bg = T.primary;
         else if (t === "有給確定待ち")                                  bg = T.yukyuBlue;
         else if (t.includes("有給"))                                    bg = T.yukyuBlue;

@@ -13,8 +13,8 @@ const STORE_ID   = "06027f43-fa49-4b2e-8009-903456b0ce33";
 
 const PUSH_URL = "https://pktqlbpdjemmomfanvgt.supabase.co/functions/v1/send-push";
 
-/* ⑤ 表示対象の従業員コード（WC001〜WC016のみ、本部メンバー除外） */
-const VISIBLE_CODES = Array.from({ length: 16 }, (_, i) => `WC${String(i + 1).padStart(3, "0")}`);
+/* ⑤ 表示対象：employee_code が "WC" で始まる従業員（本部メンバー W02/W49/W67 等は除外） */
+const isVisibleCode = (code: string) => /^WC\d+$/.test(code || "");
 
 /* ── 色定義 ── */
 const C = {
@@ -116,8 +116,8 @@ export default function ShiftSub({ employee }: { employee: any }) {
       .lte("attendance_date", monthEnd)
       .not("reason", "is", null);
 
-    // ⑤ WC001〜WC016のみフィルタ
-    const filteredEmps = (emps || []).filter(e => VISIBLE_CODES.includes(e.employee_code));
+    // ⑤ WCxxx のみフィルタ（本部メンバー除外）
+    const filteredEmps = (emps || []).filter(e => isVisibleCode(e.employee_code));
 
     // shift_submissions（当月分の提出有無）
     const targetMonth = `${yr}-${String(mo).padStart(2, "0")}`;
