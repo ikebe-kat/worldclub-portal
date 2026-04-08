@@ -7,6 +7,8 @@ import { useSmoothSwipe } from "@/hooks/useSmoothSwipe";
 import type { MonthlySummary } from "@/lib/types";
 import Dialog from "@/components/ui/Dialog";
 
+const PUSH_URL = "https://pktqlbpdjemmomfanvgt.supabase.co/functions/v1/send-push";
+
 /* ── 小部品 ── */
 const SC = ({ l, v, u, c }: { l: string; v: string | number; u?: string; c?: string }) => (
   <div style={{ backgroundColor: "#fff", padding: "12px 6px", borderRadius: "6px", border: `1px solid ${T.border}`, textAlign: "center" }}>
@@ -301,6 +303,30 @@ export default function AttendanceTab({ employee }: { employee: any }) {
     setSubmitting(false);
     if (error) { showAlert("提出に失敗しました: " + error.message); return; }
     setNextSubmission({ submitted_at: new Date().toISOString() });
+
+    // 小川（WC001）にシフト提出通知
+    try {
+      const { data: ogawa } = await supabase.from("employees")
+        .select("id")
+        .eq("company_id", employee.company_id)
+        .eq("employee_code", "WC001")
+        .maybeSingle();
+      if (ogawa?.id) {
+        fetch(PUSH_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "shift_submitted",
+            payload: {
+              company_id: employee.company_id,
+              employee_id: ogawa.id,
+              employee_name: employee.full_name,
+              target_month: nextRealMonthStr,
+            },
+          }),
+        }).catch(() => {});
+      }
+    } catch {}
   };
 
   /* ── 公休申請の締切判定 ── */

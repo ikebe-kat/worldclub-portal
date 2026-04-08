@@ -403,6 +403,20 @@ export default function ShiftSub({ employee }: { employee: any }) {
       }),
     }).catch(() => {});
 
+    // シフト差し戻し通知
+    fetch(PUSH_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "shift_returned",
+        payload: {
+          company_id: COMPANY_ID,
+          employee_id: pendingDialog.emp.id,
+          target_month: `${yr}-${String(mo).padStart(2, "0")}`,
+        },
+      }),
+    }).catch(() => {});
+
     setPendingDialog(null);
   };
 
@@ -548,6 +562,18 @@ export default function ShiftSub({ employee }: { employee: any }) {
         if (confErr) {
           setDialog({ message: `確定記録の保存に失敗\n${confErr.message}`, mode: "alert", onOk: () => { setDialog(null); loadData(); } });
         } else {
+          // シフト確定通知（全従業員）
+          fetch(PUSH_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "shift_confirmed",
+              payload: {
+                company_id: COMPANY_ID,
+                target_month: targetMonth,
+              },
+            }),
+          }).catch(() => {});
           setDialog({ message: `${upserts.length}件の公休を登録し、シフトを確定しました。`, mode: "alert", onOk: () => { setDialog(null); loadData(); } });
         }
       },
