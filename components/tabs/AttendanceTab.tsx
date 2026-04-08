@@ -233,7 +233,9 @@ export default function AttendanceTab({ employee }: { employee: any }) {
       .channel(`attendance_realtime_${employee.id}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "shift_confirmations", filter }, () => loadData())
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "shift_confirmations", filter }, () => loadData())
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "leave_requests", filter }, () => loadData())
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "leave_requests", filter: "status=eq.returned" }, (payload: any) => {
+        if (payload?.new?.company_id === employee.company_id) loadData();
+      })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [employee?.company_id, employee?.id, loadData]);

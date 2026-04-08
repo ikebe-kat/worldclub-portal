@@ -323,8 +323,16 @@ export default function ShiftSub({ employee }: { employee: any }) {
       return;
     }
 
-    // 差し戻し済みは何もしない（赤いまま残す）
+    // 差し戻し（赤）タップ → leave_requests を削除して空白に戻す
     if (state === "returned" || state === "yukyu_returned") {
+      const reqType = state === "yukyu_returned" ? "yukyu" : "shift_koukyuu";
+      const req = leaveReqs.find(r => r.employee_id === emp.id && r.attendance_date === ds && r.type === reqType && r.status === "returned");
+      if (req) {
+        setLeaveReqs(prev => prev.filter(r => r.id !== req.id));
+        supabase.from("leave_requests").delete().eq("id", req.id).then(({ error }) => {
+          if (error) { console.error(error); loadData(); }
+        });
+      }
       return;
     }
 
@@ -348,12 +356,13 @@ export default function ShiftSub({ employee }: { employee: any }) {
       { id: tempId, employee_id: emp.id, attendance_date: ds, type: "shift_koukyuu", status: "approved", reject_reason: null },
     ]);
 
-    // 既存レコードを削除してから insert
+    // 既存の approved レコードのみ削除（pending/returned は保持）
     await supabase.from("leave_requests")
       .delete()
       .eq("employee_id", emp.id)
       .eq("attendance_date", ds)
-      .eq("type", "shift_koukyuu");
+      .eq("type", "shift_koukyuu")
+      .eq("status", "approved");
 
     const { data, error } = await supabase.from("leave_requests").insert({
       company_id: COMPANY_ID,
@@ -748,6 +757,8 @@ export default function ShiftSub({ employee }: { employee: any }) {
   };
 
   const isOgawa = employee?.employee_code === "WC001";
+  const YUKYU_VIEWERS = ["WC001", "W02", "W49", "W67"];
+  const canViewYukyu = YUKYU_VIEWERS.includes(employee?.employee_code || "");
 
   return (
     <div>
@@ -755,7 +766,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
       <div style={{ display: "flex", gap: 4, marginBottom: 12, borderBottom: `1px solid ${T.border}` }}>
         {[
           { key: "shift", label: "シフト管理" },
-          { key: "yukyu", label: `有給申請${yukyuReqs.length > 0 ? `(${yukyuReqs.length})` : ""}` },
+          ...(canViewYukyu ? [{ key: "yukyu", label: `有給申請${yukyuReqs.length > 0 ? `(${yukyuReqs.length})` : ""}` }] : []),
         ].map(t => (
           <button
             key={t.key}
@@ -771,7 +782,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
         ))}
       </div>
 
-      {activeTab === "yukyu" ? (
+      {activeTab === "yukyu" && canViewYukyu ? (
         <div>
           <div style={{ fontSize: 12, color: T.textSec, marginBottom: 10 }}>
             シフト確定後の急遽申請
