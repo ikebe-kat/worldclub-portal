@@ -93,11 +93,11 @@ export default function ShiftSub({ employee }: { employee: any }) {
     const monthStart = dateStr(yr, mo, 1);
     const monthEnd = dateStr(yr, mo, days);
 
-    // 従業員一覧（is_active=true）
+    // 従業員一覧（is_active=true または NULL）
     const { data: emps } = await supabase.from("employees")
       .select("id, employee_code, full_name, employment_type")
       .eq("company_id", COMPANY_ID)
-      .eq("is_active", true)
+      .or("is_active.is.null,is_active.eq.true")
       .order("employee_code");
 
     // leave_requests（当月：公休＋有給）
