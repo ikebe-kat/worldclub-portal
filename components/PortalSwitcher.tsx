@@ -130,6 +130,7 @@ export default function PortalSwitcher({ employee }: { employee: any }) {
         }}
         className="portal-switcher-pc"
       >
+        <div style={{ minHeight: 100, flexShrink: 0 }} />
         {portals.map((p) => (
           <button
             key={p.key}
@@ -246,7 +247,7 @@ export default function PortalSwitcher({ employee }: { employee: any }) {
         .portal-switcher-pc { display: none !important; }
         .portal-switcher-sp { display: block; }
         @media (min-width: 769px) {
-          .portal-switcher-pc { display: flex !important; padding-top: 100px !important; }
+          .portal-switcher-pc { display: flex !important; }
           .portal-switcher-sp { display: none !important; }
         }
       `}</style>
