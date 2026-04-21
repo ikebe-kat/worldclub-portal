@@ -145,8 +145,7 @@ export default function HomePage() {
 
   const handleLogout = () => {
     localStorage.removeItem("employee");
-    localStorage.setItem("portal_last", "kat");
-    window.location.href = "https://kat-kintai-app.vercel.app";
+    window.location.href = "https://kat-kintai-app.vercel.app/?logout=true";
   };
 
   if (!employee) return null;
