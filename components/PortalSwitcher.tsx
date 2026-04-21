@@ -91,7 +91,7 @@ export default function PortalSwitcher({ employee }: { employee: any }) {
   const navigate = (item: PortalItem) => {
     if (item.current) return;
     if (item.key === "dashboard") {
-      window.location.href = item.url;
+      window.location.href = item.url + "?ec=" + encodeURIComponent(employeeCode);
       return;
     }
     if (item.url.startsWith("http")) {
