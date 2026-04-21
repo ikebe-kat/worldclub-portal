@@ -12,6 +12,7 @@ import RosterTab     from "@/components/tabs/RosterTab";
 import DocumentsTab  from "@/components/tabs/DocumentsTab";
 import AdminTab      from "@/components/tabs/AdminTab";
 import PushPermission from "@/components/PushPermission";
+import PortalSwitcher from "@/components/PortalSwitcher";
 
 type TabId = "punch" | "attendance" | "calendar" | "roster" | "documents" | "admin";
 
@@ -196,7 +197,6 @@ export default function HomePage() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{employee.full_name}</span>
-          {employee.portal_group_id && <button onClick={() => { window.location.href = "https://kat-kintai-app.vercel.app/portal"; }} style={{ padding: "4px 12px", borderRadius: "4px", border: "1px solid #1a4b24", backgroundColor: "#fff", color: "#1a4b24", fontSize: 11, cursor: "pointer", fontWeight: 600 }}>会社切替</button>}
           <button
             onClick={handleLogout}
             style={{
@@ -244,6 +244,7 @@ export default function HomePage() {
       </main>
 
       <PushPermission employeeId={employee.id} />
+      <PortalSwitcher employee={employee} />
     </div>
   );
 }
