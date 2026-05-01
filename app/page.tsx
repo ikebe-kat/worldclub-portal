@@ -20,7 +20,7 @@ export default function LoginPage() {
         try {
           const { data, error } = await supabase
             .from('employees')
-            .select('id, employee_code, full_name, full_name_kana, department, position, store_id, company_id, pin, holiday_calendar, holiday_pattern, work_pattern_code, requires_punch, role, portal_group_id, stores(store_name)')
+            .select('id, employee_code, full_name, full_name_kana, department, position, store_id, company_id, holiday_calendar, holiday_pattern, work_pattern_code, requires_punch, role, portal_group_id, stores(store_name)')
             .eq('portal_group_id', portalToken)
             .eq('company_id', COMPANY_ID)
             .maybeSingle();
@@ -60,19 +60,26 @@ export default function LoginPage() {
 
     const { data, error: dbError } = await supabase
       .from('employees')
-      .select('id, employee_code, full_name, full_name_kana, department, position, store_id, company_id, pin, holiday_calendar, holiday_pattern, work_pattern_code, requires_punch, role, portal_group_id, stores(store_name)')
+      .select('id, employee_code, full_name, full_name_kana, department, position, store_id, company_id, holiday_calendar, holiday_pattern, work_pattern_code, requires_punch, role, portal_group_id, stores(store_name)')
       .eq('employee_code', code)
       .eq('company_id', COMPANY_ID)
       .maybeSingle()
 
-    setLoading(false)
-
     if (dbError || !data) {
+      setLoading(false)
       setError('社員CDが見つかりません')
       return
     }
 
-    if (data.pin !== pin) {
+    const { data: pinRow, error: pinError } = await supabase
+      .from('employee_pins')
+      .select('pin')
+      .eq('employee_id', data.id)
+      .maybeSingle()
+
+    setLoading(false)
+
+    if (pinError || !pinRow || pinRow.pin !== pin) {
       setError('PINが正しくありません')
       return
     }
