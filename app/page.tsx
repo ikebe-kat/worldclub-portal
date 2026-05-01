@@ -17,17 +17,26 @@ export default function LoginPage() {
     if (portalToken) {
       setPortalLoading(true);
       (async () => {
-        const { data } = await supabase
-          .from('employees')
-          .select('id, employee_code, full_name, full_name_kana, department, position, store_id, company_id, pin, holiday_calendar, holiday_pattern, work_pattern_code, requires_punch, role, portal_group_id, stores(store_name)')
-          .eq('portal_group_id', portalToken)
-          .eq('company_id', COMPANY_ID)
-          .maybeSingle();
-        if (data) {
-          const empData = { ...data, store_name: (data as any).stores?.store_name || "" };
-          delete (empData as any).stores;
-          localStorage.setItem('employee', JSON.stringify(empData));
-          router.push('/home');
+        try {
+          const { data, error } = await supabase
+            .from('employees')
+            .select('id, employee_code, full_name, full_name_kana, department, position, store_id, company_id, pin, holiday_calendar, holiday_pattern, work_pattern_code, requires_punch, role, portal_group_id, stores(store_name)')
+            .eq('portal_group_id', portalToken)
+            .eq('company_id', COMPANY_ID)
+            .maybeSingle();
+          if (error) throw error;
+          if (data) {
+            const empData = { ...data, store_name: (data as any).stores?.store_name || "" };
+            delete (empData as any).stores;
+            localStorage.setItem('employee', JSON.stringify(empData));
+            router.push('/home');
+            return;
+          }
+          setError('ポータルトークンが無効です');
+        } catch (e: any) {
+          setError(e?.message || '読み込みエラーが発生しました');
+        } finally {
+          setPortalLoading(false);
         }
       })();
       return;
