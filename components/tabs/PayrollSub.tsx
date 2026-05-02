@@ -15,6 +15,7 @@ interface Setting {
   employment_type: "正社員" | "パート" | "その他";
   base_salary: number; fixed_overtime: number;
   position_allowance: number; family_allowance: number;
+  child_support_allowance: number;
   car_deduction: number; resident_tax: number;
   hourly_weekday: number; hourly_weekend: number;
   scheduled_end_time: string | null; scheduled_minutes: number;
@@ -34,6 +35,7 @@ interface Monthly {
   overtime_minutes: number; paid_leave_days: number;
   base_salary: number; fixed_overtime: number;
   position_allowance: number; family_allowance: number;
+  child_support_allowance: number;
   weekday_amount: number; weekend_amount: number;
   overtime_amount: number; paid_leave_amount: number;
   commute_amount: number; gross_amount: number;
@@ -212,7 +214,7 @@ function CalcView({ employee }: { employee: any }) {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, backgroundColor: "#fff" }}>
             <thead>
               <tr style={{ backgroundColor: T.primary, color: "#fff" }}>
-                {["氏名", "状態", "出勤", "労働", "残業", "有給", "支給合計", "控除合計", "差引", ""].map((h, i) => (
+                {["氏名", "状態", "出勤", "労働", "残業", "有給", "支給合計", "交通費", "社保", "雇保", "所得税", "控除合計", "差引", ""].map((h, i) => (
                   <th key={i} style={{ padding: "8px 6px", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", textAlign: i < 2 ? "left" : "right" }}>{h}</th>
                 ))}
               </tr>
@@ -232,6 +234,10 @@ function CalcView({ employee }: { employee: any }) {
                   <td style={{ ...tdStyle, textAlign: "right" }}>{minToHM(r.overtime_minutes)}</td>
                   <td style={{ ...tdStyle, textAlign: "right" }}>{r.paid_leave_days}日</td>
                   <td style={{ ...tdStyle, textAlign: "right", fontWeight: 600 }}>{yen(r.gross_amount)}</td>
+                  <td style={{ ...tdStyle, textAlign: "right", color: T.textSec }}>{yen(r.commute_amount)}</td>
+                  <td style={{ ...tdStyle, textAlign: "right", color: T.textSec }}>{yen(r.social_insurance)}</td>
+                  <td style={{ ...tdStyle, textAlign: "right", color: T.textSec }}>{yen(r.employment_insurance)}</td>
+                  <td style={{ ...tdStyle, textAlign: "right", color: T.textSec }}>{yen(r.income_tax)}</td>
                   <td style={{ ...tdStyle, textAlign: "right", color: T.danger }}>{yen(r.total_deduction)}</td>
                   <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, color: T.primary }}>{yen(r.net_amount)}</td>
                   <td style={tdStyle}>
@@ -286,6 +292,7 @@ function MasterView({ employee: _employee }: { employee: any }) {
       fixed_overtime: editing.fixed_overtime,
       position_allowance: editing.position_allowance,
       family_allowance: editing.family_allowance,
+      child_support_allowance: editing.child_support_allowance,
       car_deduction: editing.car_deduction,
       resident_tax: editing.resident_tax,
       hourly_weekday: editing.hourly_weekday,
@@ -317,7 +324,7 @@ function MasterView({ employee: _employee }: { employee: any }) {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, backgroundColor: "#fff" }}>
             <thead>
               <tr style={{ backgroundColor: T.primary, color: "#fff" }}>
-                {["氏名", "区分", "基本給/平日", "土日/役職", "社保", "住民税", "車", "交通費", "扶養", ""].map((h, i) => (
+                {["氏名", "区分", "基本給/平日", "土日/役職", "固定残業", "家族", "支援金", "社保", "住民税", "車", "交通費", "扶養", ""].map((h, i) => (
                   <th key={i} style={{ padding: "8px 6px", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
                 ))}
               </tr>
@@ -333,6 +340,9 @@ function MasterView({ employee: _employee }: { employee: any }) {
                   <td style={{ ...tdStyle, textAlign: "right" }}>
                     {r.employment_type === "パート" ? `${r.hourly_weekend}/h` : yen(r.position_allowance)}
                   </td>
+                  <td style={{ ...tdStyle, textAlign: "right" }}>{yen(r.fixed_overtime)}</td>
+                  <td style={{ ...tdStyle, textAlign: "right" }}>{yen(r.family_allowance)}</td>
+                  <td style={{ ...tdStyle, textAlign: "right" }}>{yen(r.child_support_allowance)}</td>
                   <td style={{ ...tdStyle, textAlign: "right" }}>{yen(r.social_insurance)}</td>
                   <td style={{ ...tdStyle, textAlign: "right" }}>{yen(r.resident_tax)}</td>
                   <td style={{ ...tdStyle, textAlign: "right" }}>{yen(r.car_deduction)}</td>
@@ -359,9 +369,10 @@ function MasterView({ employee: _employee }: { employee: any }) {
               {editing.employment_type === "正社員" ? (
                 <>
                   <Field label="基本給">{N(editing.base_salary, n => setEditing({ ...editing, base_salary: n }))}</Field>
-                  <Field label="固定残業">{N(editing.fixed_overtime, n => setEditing({ ...editing, fixed_overtime: n }))}</Field>
+                  <Field label="固定残業手当">{N(editing.fixed_overtime, n => setEditing({ ...editing, fixed_overtime: n }))}</Field>
                   <Field label="役職手当">{N(editing.position_allowance, n => setEditing({ ...editing, position_allowance: n }))}</Field>
                   <Field label="家族手当">{N(editing.family_allowance, n => setEditing({ ...editing, family_allowance: n }))}</Field>
+                  <Field label="子育て支援金">{N(editing.child_support_allowance, n => setEditing({ ...editing, child_support_allowance: n }))}</Field>
                   <Field label="車（控除）">{N(editing.car_deduction, n => setEditing({ ...editing, car_deduction: n }))}</Field>
                   <Field label="住民税">{N(editing.resident_tax, n => setEditing({ ...editing, resident_tax: n }))}</Field>
                 </>
@@ -379,6 +390,8 @@ function MasterView({ employee: _employee }: { employee: any }) {
                       placeholder="未指定=申告制" style={{ width: "100%", padding: "6px 8px", borderRadius: 4, border: `1px solid ${T.border}`, fontSize: 14 }} />
                   </Field>
                   <Field label="役職手当">{N(editing.position_allowance, n => setEditing({ ...editing, position_allowance: n }))}</Field>
+                  <Field label="家族手当">{N(editing.family_allowance, n => setEditing({ ...editing, family_allowance: n }))}</Field>
+                  <Field label="子育て支援金">{N(editing.child_support_allowance, n => setEditing({ ...editing, child_support_allowance: n }))}</Field>
                 </>
               )}
               <Field label="社会保険">{N(editing.social_insurance, n => setEditing({ ...editing, social_insurance: n }))}</Field>
@@ -430,12 +443,15 @@ function renderPayslipHTML(r: Monthly): string {
     ${row("残業 " + Math.round(r.overtime_minutes/60*100)/100 + "h × 1.25", yen(r.overtime_amount))}
     ${row("有給金額 " + r.paid_leave_days + "日", yen(r.paid_leave_amount))}
     ${row("役職手当", yen(r.position_allowance))}
+    ${row("家族手当", yen(r.family_allowance))}
+    ${row("子育て支援金", yen(r.child_support_allowance))}
     ${row("通勤費（非課税）", yen(r.commute_amount))}
   ` : `
     ${row("基本給", yen(r.base_salary))}
     ${row("固定残業手当", yen(r.fixed_overtime))}
     ${row("役職手当", yen(r.position_allowance))}
     ${row("家族手当", yen(r.family_allowance))}
+    ${row("子育て支援金", yen(r.child_support_allowance))}
     ${row("諸手当", yen(0))}
     ${row("通勤費（非課税）", yen(r.commute_amount))}
   `;
