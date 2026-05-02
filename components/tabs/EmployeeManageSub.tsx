@@ -99,10 +99,23 @@ const EditForm = ({ emp, stores, isNew, onClose, onSaved, companyId }: { emp: Pa
       bank_name: form.bank_name?.trim() || null, bank_branch: form.bank_branch?.trim() || null, bank_account_type: form.bank_account_type || null,
       bank_account_number: form.bank_account_number?.trim() || null, bank_account_holder: form.bank_account_holder?.trim() || null,
       basic_pension_number: form.basic_pension_number?.trim() || null, employment_insurance_number: form.employment_insurance_number?.trim() || null,
-      pin: form.pin?.trim() || "1234", skills: form.skills?.trim() || null, photo_url: photoUrl, updated_at: new Date().toISOString(),
+      skills: form.skills?.trim() || null, photo_url: photoUrl, updated_at: new Date().toISOString(),
     };
-    if (isNew) { const { error } = await supabase.from("employees").insert(payload); setSaving(false); if (error) { onSaved("登録失敗: " + error.message); return; } onSaved("新規登録しました"); }
-    else { const { error } = await supabase.from("employees").update(payload).eq("id", emp!.id); setSaving(false); if (error) { onSaved("更新失敗: " + error.message); return; } onSaved("更新しました"); }
+    if (isNew) {
+      const { data: inserted, error } = await supabase.from("employees").insert(payload).select("id").maybeSingle();
+      if (error) { setSaving(false); onSaved("登録失敗: " + error.message); return; }
+      if (inserted && form.pin?.trim()) {
+        await supabase.from("employee_pins").upsert({ employee_id: inserted.id, pin: form.pin.trim() }, { onConflict: "employee_id" });
+      }
+      setSaving(false); onSaved("新規登録しました");
+    } else {
+      const { error } = await supabase.from("employees").update(payload).eq("id", emp!.id);
+      if (error) { setSaving(false); onSaved("更新失敗: " + error.message); return; }
+      if (form.pin?.trim()) {
+        await supabase.from("employee_pins").upsert({ employee_id: emp!.id, pin: form.pin.trim() }, { onConflict: "employee_id" });
+      }
+      setSaving(false); onSaved("更新しました");
+    }
     onClose();
   };
 
