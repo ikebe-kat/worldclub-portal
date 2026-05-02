@@ -56,7 +56,7 @@ export default function OvertimeApprovalSub({ employee }: { employee: any }) {
     setLoading(false);
     if (error) {
       console.error("[OvertimeApprovalSub] load error:", error);
-      setLoadError("���ータ取得エラー: " + error.message);
+      setLoadError("データ取得エラー: " + error.message);
       return;
     }
     setReqs(((data || []) as any[]).map(r => ({
@@ -84,7 +84,7 @@ export default function OvertimeApprovalSub({ employee }: { employee: any }) {
       reject_reason: null,
       updated_at: new Date().toISOString(),
     }).eq("id", r.id);
-    if (error) { setDialog({ message: "承認に��敗: " + error.message }); return; }
+    if (error) { setDialog({ message: "承認に失敗: " + error.message }); return; }
     load();
   };
 
@@ -103,7 +103,7 @@ export default function OvertimeApprovalSub({ employee }: { employee: any }) {
   };
 
   if (!isWcAdmin) {
-    return <div style={{ padding: 24, color: T.textSec, fontSize: 13 }}>残業承認は権限がありません。</div>;
+    return <div style={{ padding: 24, color: T.textSec, fontSize: 13 }}>{"残業承認は権限がありません。"}</div>;
   }
 
   return (
@@ -125,7 +125,7 @@ export default function OvertimeApprovalSub({ employee }: { employee: any }) {
       )}
 
       {loading ? (
-        <div style={{ textAlign: "center", padding: 40, color: T.textSec }}>読み込み中...</div>
+        <div style={{ textAlign: "center", padding: 40, color: T.textSec }}>{"読み込み中..."}</div>
       ) : reqs.length === 0 ? (
         <div style={{ textAlign: "center", padding: 40, color: T.textMuted }}>
           {filter === "pending" ? "申請はありません" : "履歴はありません"}
@@ -139,10 +139,10 @@ export default function OvertimeApprovalSub({ employee }: { employee: any }) {
             }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>
-                  {surname(r.full_name || "")}（{r.employee_code}）　{r.attendance_date}
+                  {surname(r.full_name || "")}{"（"}{r.employee_code}{"）　"}{r.attendance_date}
                 </div>
                 {r.reason && <div style={{ fontSize: 11, color: T.textSec, marginTop: 4 }}>{r.reason}</div>}
-                {r.reject_reason && <div style={{ fontSize: 11, color: "#DC2626", marginTop: 4 }}>却下理由: {r.reject_reason}</div>}
+                {r.reject_reason && <div style={{ fontSize: 11, color: "#DC2626", marginTop: 4 }}>{"却下理由: "}{r.reject_reason}</div>}
               </div>
               {r.status === "pending" ? (
                 <>
@@ -150,12 +150,12 @@ export default function OvertimeApprovalSub({ employee }: { employee: any }) {
                     padding: "6px 12px", borderRadius: 4,
                     border: `1px solid ${T.danger}`, backgroundColor: "#fff",
                     color: T.danger, fontSize: 12, fontWeight: 700, cursor: "pointer",
-                  }}>却下</button>
+                  }}>{"却下"}</button>
                   <button onClick={() => approve(r)} style={{
                     padding: "6px 12px", borderRadius: 4, border: "none",
                     backgroundColor: T.primary, color: "#fff",
                     fontSize: 12, fontWeight: 700, cursor: "pointer",
-                  }}>承認</button>
+                  }}>{"承認"}</button>
                 </>
               ) : (
                 <span style={{
@@ -172,12 +172,12 @@ export default function OvertimeApprovalSub({ employee }: { employee: any }) {
       {rejectFor && (
         <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000 }} onClick={() => setRejectFor(null)}>
           <div style={{ backgroundColor: "#fff", borderRadius: 8, padding: "24px 20px", width: "100%", maxWidth: 320 }} onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize: 14, color: T.text, marginBottom: 14, textAlign: "center" }}>却下理由��入力</div>
-            <textarea value={rejectText} onChange={e => setRejectText(e.target.value)} placeholder="却下理由"
+            <div style={{ fontSize: 14, color: T.text, marginBottom: 14, textAlign: "center" }}>{"却下理由を入力"}</div>
+            <textarea value={rejectText} onChange={e => setRejectText(e.target.value)} placeholder={"却下理由"}
               style={{ width: "100%", padding: "8px 10px", borderRadius: 4, border: `1px solid ${T.border}`, fontSize: 13, minHeight: 56, marginBottom: 14, boxSizing: "border-box" }} />
             <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => setRejectFor(null)} style={{ flex: 1, padding: 12, borderRadius: 4, border: `1px solid ${T.border}`, backgroundColor: "#fff", color: T.textSec, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>キャンセ��</button>
-              <button onClick={reject} style={{ flex: 1, padding: 12, borderRadius: 4, border: "none", backgroundColor: T.danger, color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>却下</button>
+              <button onClick={() => setRejectFor(null)} style={{ flex: 1, padding: 12, borderRadius: 4, border: `1px solid ${T.border}`, backgroundColor: "#fff", color: T.textSec, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>{"キャンセル"}</button>
+              <button onClick={reject} style={{ flex: 1, padding: 12, borderRadius: 4, border: "none", backgroundColor: T.danger, color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>{"却下"}</button>
             </div>
           </div>
         </div>

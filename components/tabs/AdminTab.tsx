@@ -1289,12 +1289,9 @@ export default function AdminTab({ employee }: { employee: any }) {
   const myCode = employee?.employee_code || "";
   const isOwner = OWNER_CODES.includes(myCode);
   const isSuper = SUPER_CODES.includes(myCode);
-  // ワールドクラブの管理者（小川）
   const isWcOwner = myCode === "WC001";
   const visibleTabs = ALL_SUB_TABS.filter(t => {
-    // シフト管理はWC001も閲覧可
     if (t.id === "shift") return isOwner || isWcOwner;
-    // 給与管理 / 残業承認: WC001（小川）+ SUPER_CODES（W02 桑原・W49 岩永・W67 池邉）
     if (t.visibleTo === "wc_owner") return isWcOwner || isSuper;
     if (t.visibleTo === "owner_only") return isOwner;
     if (t.visibleTo === "owner_or_kondo") return isOwner;
@@ -1303,6 +1300,25 @@ export default function AdminTab({ employee }: { employee: any }) {
   });
   const defaultTab = isWcOwner ? "shift" : isOwner ? "notifications" : "individual";
   const [sub, setSub] = useState<SubTab>(defaultTab);
+  const [overtimePendingCount, setOvertimePendingCount] = useState(0);
+
+  useEffect(() => {
+    if (!employee?.company_id) return;
+    const fetchCount = async () => {
+      const { count } = await supabase
+        .from("wc_overtime_requests")
+        .select("id", { count: "exact", head: true })
+        .eq("company_id", employee.company_id)
+        .eq("status", "pending");
+      setOvertimePendingCount(count || 0);
+    };
+    fetchCount();
+    const ch = supabase.channel("wc_overtime_badge")
+      .on("postgres_changes", { event: "*", schema: "public", table: "wc_overtime_requests", filter: `company_id=eq.${employee.company_id}` },
+        () => fetchCount())
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [employee?.company_id]);
   // 給与管理タブは Excel 横長一覧を出すので、960px 制約は外して画面幅近くまで広げ、
   // ただし常識的な左右 12px の余白は確保する（box-sizing でその余白が viewport から内側に効く）。
   // テーブル側は table-layout:fixed と小フォント・ヘッダー折り返しで 30列を viewport-24px 内に収める。
@@ -1317,7 +1333,7 @@ export default function AdminTab({ employee }: { employee: any }) {
         display: "flex", gap: 4, marginBottom: 16,
         borderBottom: `1px solid ${T.border}`, overflowX: "auto",
       }}>
-        {visibleTabs.map(t => (<button key={t.id} onClick={() => setSub(t.id)} style={{ padding: "10px 14px", border: "none", backgroundColor: "transparent", cursor: "pointer", fontSize: 13, fontWeight: sub === t.id ? 700 : 400, color: sub === t.id ? T.primary : T.textSec, borderBottom: sub === t.id ? `3px solid ${T.primary}` : "3px solid transparent", transition: "all 0.2s", whiteSpace: "nowrap" }}>{t.label}</button>))}
+        {visibleTabs.map(t => (<button key={t.id} onClick={() => setSub(t.id)} style={{ padding: "10px 14px", border: "none", backgroundColor: "transparent", cursor: "pointer", fontSize: 13, fontWeight: sub === t.id ? 700 : 400, color: sub === t.id ? T.primary : T.textSec, borderBottom: sub === t.id ? `3px solid ${T.primary}` : "3px solid transparent", transition: "all 0.2s", whiteSpace: "nowrap", position: "relative" }}>{t.label}{t.id === "wc_overtime" && overtimePendingCount > 0 && <span style={{ position: "absolute", top: 2, right: 0, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: "#DC2626", color: "#fff", fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px", lineHeight: 1 }}>{overtimePendingCount}</span>}</button>))}
       </div>
       {sub === "notifications" && <NotificationsSub employee={employee} />}
       {sub === "paidleave" && <PaidLeaveSub employee={employee} />}
