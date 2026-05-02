@@ -227,7 +227,7 @@ function CalcView({ employee }: { employee: any }) {
           まだ計算されていません。「再計算」を押して下さい。
         </div>
       ) : (
-        <div style={{ overflowX: "auto" }}>
+        <div style={{ overflowX: "auto", width: "100%", maxWidth: "100%" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, backgroundColor: "#fff" }}>
             <thead>
               <tr style={{ backgroundColor: T.primary, color: "#fff" }}>
@@ -367,7 +367,7 @@ function MasterView({ employee: _employee }: { employee: any }) {
       {loading ? (
         <div style={{ textAlign: "center", padding: 40, color: T.textSec }}>読み込み中...</div>
       ) : (
-        <div style={{ overflowX: "auto" }}>
+        <div style={{ overflowX: "auto", width: "100%", maxWidth: "100%" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, backgroundColor: "#fff" }}>
             <thead>
               <tr style={{ backgroundColor: T.primary, color: "#fff" }}>
