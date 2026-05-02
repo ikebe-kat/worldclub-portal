@@ -266,17 +266,16 @@ export default function PunchTab({ employee }: { employee: any }) {
       status: 'pending',
       reason: overtimeReason.trim(),
     })
-    if (!error) {
-      await supabase.from('change_requests').insert({
-        company_id: employee.company_id, employee_id: employee.id,
-        category: '残業申請', detail: `${today} 残業申請\n${overtimeReason.trim()}`, status: '未処理',
-      })
-    }
     setOvertimeRequesting(false)
     if (error) {
       setMessage({ text: '残業申請に失敗: ' + error.message, ok: false })
       return
     }
+    const { error: crErr } = await supabase.from('change_requests').insert({
+      company_id: employee.company_id, employee_id: employee.id,
+      category: '残業申請', detail: `${today} 残業申請\n${overtimeReason.trim()}`, status: '未処理',
+    })
+    if (crErr) { console.error('change_requests insert failed:', crErr); showAlert('残業申請は登録しましたが、管理者への通知に失敗しました: ' + crErr.message); }
     setOvertimeStatus('pending')
     setOvertimeReason('')
     setMessage({ text: '残業申請を提出しました（小川さん承認待ち）', ok: true })
@@ -518,15 +517,16 @@ export default function PunchTab({ employee }: { employee: any }) {
     }, { onConflict: 'employee_id,attendance_date' })
     setSaving(false)
     if (!error) {
-      setModalOpen(false); fetchTodayRecord(employee.id); setMessage({ text: '申請を登録しました', ok: true })
       const catMap: Record<string, string> = { '有給（全日）': '有給申請', '遅刻': '遅刻申請', '早退': '早退申請', '欠勤': '欠勤申請' }
       const reqCategory = catMap[previewReason] || previewReason
-      await supabase.from('change_requests').insert({
+      const { error: crErr } = await supabase.from('change_requests').insert({
         company_id: employee.company_id, employee_id: employee.id,
         category: reqCategory,
         detail: `${todayStr} ${previewReason}${memoNote ? '\n' + memoNote : ''}`,
         status: '未処理',
       })
+      if (crErr) { console.error('change_requests insert failed:', crErr); showAlert('申請は登録しましたが、管理者への通知に失敗しました: ' + crErr.message); }
+      setModalOpen(false); fetchTodayRecord(employee.id); setMessage({ text: '申請を登録しました', ok: true })
       fetch(PUSH_URL, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

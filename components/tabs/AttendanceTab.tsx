@@ -510,14 +510,13 @@ export default function AttendanceTab({ employee }: { employee: any }) {
       company_id: employee.company_id, employee_id: employee.id,
       attendance_date: modalDay.dateStr, status: "pending", reason: overtimeReason.trim(),
     });
-    if (!error) {
-      await supabase.from("change_requests").insert({
-        company_id: employee.company_id, employee_id: employee.id,
-        category: "残業申請", detail: `${modalDay.dateStr} 残業申請\n${overtimeReason.trim()}`, status: "未処理",
-      });
-    }
     setSaving(false);
     if (error) { showAlert("残業申請に失敗: " + error.message); return; }
+    const { error: crErr } = await supabase.from("change_requests").insert({
+      company_id: employee.company_id, employee_id: employee.id,
+      category: "残業申請", detail: `${modalDay.dateStr} 残業申請\n${overtimeReason.trim()}`, status: "未処理",
+    });
+    if (crErr) { console.error("change_requests insert failed:", crErr); showAlert("残業申請は登録しましたが、管理者への通知に失敗しました: " + crErr.message); }
     setModalDay(null); loadData();
   };
 
@@ -592,11 +591,12 @@ export default function AttendanceTab({ employee }: { employee: any }) {
       setSaving(false);
       if (reqErr) { showAlert("申請に失敗しました: " + reqErr.message); return; }
       const catMap: Record<string, string> = { "公休（全日）": "公休申請", "有給（全日）": "有給申請" };
-      await supabase.from("change_requests").insert({
+      const { error: crErr } = await supabase.from("change_requests").insert({
         company_id: employee.company_id, employee_id: employee.id,
         category: catMap[previewReason] || previewReason,
         detail: `${modalDay.dateStr} ${previewReason}${note ? "\n" + note : ""}`, status: "未処理",
       });
+      if (crErr) { console.error("change_requests insert failed:", crErr); showAlert("申請は登録しましたが、管理者への通知に失敗しました: " + crErr.message); }
       setModalDay(null); loadData();
       return;
     }
@@ -610,10 +610,11 @@ export default function AttendanceTab({ employee }: { employee: any }) {
     if (!error) {
       const catMap: Record<string, string> = { "遅刻": "遅刻申請", "早退": "早退申請", "欠勤": "欠勤申請" };
       const reqCat = catMap[previewReason] || previewReason;
-      await supabase.from("change_requests").insert({
+      const { error: crErr } = await supabase.from("change_requests").insert({
         company_id: employee.company_id, employee_id: employee.id,
         category: reqCat, detail: `${modalDay.dateStr} ${previewReason}${note ? "\n" + note : ""}`, status: "未処理",
       });
+      if (crErr) { console.error("change_requests insert failed:", crErr); showAlert("申請は登録しましたが、管理者への通知に失敗しました: " + crErr.message); }
       setModalDay(null); loadData();
       if (previewReason && (previewReason.includes("有給") || previewReason.includes("希望休") || previewReason.includes("代休") || previewReason.includes("出張"))) {
         const storeName = employee.store_name || "";
