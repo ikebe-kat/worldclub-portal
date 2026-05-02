@@ -22,6 +22,7 @@ interface Setting {
   break_minutes_fixed: number | null;
   social_insurance: number; commute_per_day: number;
   dependents: number; is_payroll_only: boolean; is_active: boolean;
+  sort_order: number;
 }
 
 interface Monthly {
@@ -106,11 +107,20 @@ function CalcView({ employee }: { employee: any }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase.from("wc_payroll_monthly")
-      .select("*")
-      .eq("company_id", COMPANY_ID).eq("target_month", ym)
-      .order("display_name");
-    setRows((data || []) as any);
+    const [{ data: monthly }, { data: settings }] = await Promise.all([
+      supabase.from("wc_payroll_monthly").select("*")
+        .eq("company_id", COMPANY_ID).eq("target_month", ym),
+      supabase.from("wc_payroll_settings").select("id, sort_order")
+        .eq("company_id", COMPANY_ID),
+    ]);
+    const orderMap = new Map<string, number>();
+    (settings || []).forEach((s: any) => orderMap.set(s.id, s.sort_order ?? 999));
+    const sorted = ((monthly || []) as any[]).sort((a, b) => {
+      const ao = orderMap.get(a.payroll_setting_id) ?? 999;
+      const bo = orderMap.get(b.payroll_setting_id) ?? 999;
+      return ao - bo;
+    });
+    setRows(sorted);
     setLoading(false);
   }, [ym]);
   useEffect(() => { load(); }, [load]);
@@ -278,7 +288,7 @@ function MasterView({ employee: _employee }: { employee: any }) {
     const { data } = await supabase.from("wc_payroll_settings")
       .select("*")
       .eq("company_id", COMPANY_ID).eq("is_active", true)
-      .order("employment_type").order("display_name");
+      .order("sort_order", { ascending: true });
     setRows((data || []) as any);
     setLoading(false);
   };
