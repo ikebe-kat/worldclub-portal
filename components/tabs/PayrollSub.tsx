@@ -82,7 +82,11 @@ export default function PayrollSub({ employee }: { employee: any }) {
 
   return (
     <div>
-      <div style={{ display: "flex", gap: 4, marginBottom: 16, borderBottom: `1px solid ${T.border}` }}>
+      <div style={{
+        display: "flex", gap: 4, marginBottom: 16,
+        borderBottom: `1px solid ${T.border}`,
+        padding: "0 16px",
+      }}>
         {([
           { key: "calc", label: "月次計算" },
           { key: "master", label: "給与マスタ" },
@@ -192,7 +196,7 @@ function CalcView({ employee }: { employee: any }) {
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap", padding: "0 16px" }}>
         <button onClick={() => setYm(prevMonth(ym))} style={navBtn}>&lt;</button>
         <span style={{ fontSize: 16, fontWeight: 700, minWidth: 100, textAlign: "center" }}>{ym}</span>
         <button onClick={() => setYm(nextMonth(ym))} style={navBtn}>&gt;</button>
