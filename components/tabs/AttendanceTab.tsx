@@ -90,6 +90,16 @@ export default function AttendanceTab({ employee }: { employee: any }) {
   const [kibouQuota, setKibouQuota] = useState<number>(0);
   const [loading, setLoading] = useState(true);
 
+  /* パート判定 */
+  const PART_CODES = ['WC005','WC006','WC007','WC008','WC009','WC010','WC011','WC012','WC013','WC014','WC015','WC016'];
+  const [empType, setEmpType] = useState<string | null>(employee?.employment_type ?? null);
+  useEffect(() => {
+    if (!employee?.id) return;
+    supabase.from('employees').select('employment_type').eq('id', employee.id).maybeSingle()
+      .then(({ data }) => setEmpType((data as any)?.employment_type ?? employee?.employment_type ?? null));
+  }, [employee?.id]);
+  const isPart = empType === 'パート' || PART_CODES.includes(employee?.employee_code);
+
   /* レスポンシブ判定 */
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -107,6 +117,8 @@ export default function AttendanceTab({ employee }: { employee: any }) {
   const [selKinmu, setSelKinmu] = useState<string[]>([]);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const [selOvertime, setSelOvertime] = useState(false);
+  const [overtimeReason, setOvertimeReason] = useState("");
 
   /* 出張ピッカー */
   const [shucchoOpen, setShucchoOpen] = useState(false);
@@ -409,6 +421,7 @@ export default function AttendanceTab({ employee }: { employee: any }) {
   const openModal = (day: any) => {
     setModalDay(day);
     setSelZenjitsu(null); setSelGozen(null); setSelGogo(null); setSelKinmu([]); setNote("");
+    setSelOvertime(false); setOvertimeReason("");
     setShucchoOpen(false); setShucchoFrom(day.dateStr); setShucchoTo(day.dateStr); setShucchoWhere("");
     setDaikyuMode("none"); setDaikyuHalf(null); setDaikyuDate("");
 
@@ -433,7 +446,7 @@ export default function AttendanceTab({ employee }: { employee: any }) {
   };
 
   /* ── 排他制御 ── */
-  const toggleZenjitsu = (v: string) => { if (selZenjitsu === v) { setSelZenjitsu(null); return; } setSelZenjitsu(v); setSelGozen(null); setSelGogo(null); setDaikyuMode("none"); setDaikyuHalf(null); setDaikyuDate(""); };
+  const toggleZenjitsu = (v: string) => { if (selZenjitsu === v) { setSelZenjitsu(null); return; } setSelZenjitsu(v); setSelGozen(null); setSelGogo(null); setDaikyuMode("none"); setDaikyuHalf(null); setDaikyuDate(""); setSelOvertime(false); };
   const toggleGozen = (v: string) => { if (selGozen === v) { setSelGozen(null); return; } setSelGozen(v); setSelZenjitsu(null); };
   const toggleGogo = (v: string) => { if (selGogo === v) { setSelGogo(null); return; } setSelGogo(v); setSelZenjitsu(null); };
   const toggleKinmu = (v: string) => {
@@ -441,6 +454,7 @@ export default function AttendanceTab({ employee }: { employee: any }) {
     if (v === "代休") { if (daikyuMode === "full") { setDaikyuMode("none"); setDaikyuDate(""); } else { setDaikyuMode("full"); setDaikyuHalf(null); setSelZenjitsu(null); setSelGozen(null); setSelGogo(null); } return; }
     if (v === "半日代休") { if (daikyuMode === "half") { setDaikyuMode("none"); setDaikyuHalf(null); setDaikyuDate(""); } else { setDaikyuMode("half"); setDaikyuHalf(null); setSelZenjitsu(null); } return; }
     setSelKinmu(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
+    setSelOvertime(false);
   };
 
   /* ── プレビュー構築 ── */
@@ -487,9 +501,30 @@ export default function AttendanceTab({ employee }: { employee: any }) {
     else { showAlert("登録に失敗しました: " + error.message); }
   };
 
+  /* ── 残業申請登録 ── */
+  const submitOvertime = async () => {
+    if (!modalDay) return;
+    if (!overtimeReason.trim()) { showAlert("残業理由を入力してください"); return; }
+    setSaving(true);
+    const { error } = await supabase.from("wc_overtime_requests").insert({
+      company_id: employee.company_id, employee_id: employee.id,
+      attendance_date: modalDay.dateStr, status: "pending", reason: overtimeReason.trim(),
+    });
+    if (!error) {
+      await supabase.from("change_requests").insert({
+        company_id: employee.company_id, employee_id: employee.id,
+        category: "残業申請", detail: `${modalDay.dateStr} 残業申請\n${overtimeReason.trim()}`, status: "未処理",
+      });
+    }
+    setSaving(false);
+    if (error) { showAlert("残業申請に失敗: " + error.message); return; }
+    setModalDay(null); loadData();
+  };
+
   /* ── 事由登録 ── */
   const submitReason = async () => {
     if (!modalDay || !previewReason) return;
+    if (!note.trim()) { showAlert("理由を入力してください"); return; }
 
     if (selKinmu.includes("出張")) {
       if (!shucchoFrom) { showAlert("開始日を選択してください"); return; }
@@ -556,6 +591,12 @@ export default function AttendanceTab({ employee }: { employee: any }) {
       });
       setSaving(false);
       if (reqErr) { showAlert("申請に失敗しました: " + reqErr.message); return; }
+      const catMap: Record<string, string> = { "公休（全日）": "公休申請", "有給（全日）": "有給申請" };
+      await supabase.from("change_requests").insert({
+        company_id: employee.company_id, employee_id: employee.id,
+        category: catMap[previewReason] || previewReason,
+        detail: `${modalDay.dateStr} ${previewReason}${note ? "\n" + note : ""}`, status: "未処理",
+      });
       setModalDay(null); loadData();
       return;
     }
@@ -567,6 +608,12 @@ export default function AttendanceTab({ employee }: { employee: any }) {
     }, { onConflict: "employee_id,attendance_date" });
     setSaving(false);
     if (!error) {
+      const catMap: Record<string, string> = { "遅刻": "遅刻申請", "早退": "早退申請", "欠勤": "欠勤申請" };
+      const reqCat = catMap[previewReason] || previewReason;
+      await supabase.from("change_requests").insert({
+        company_id: employee.company_id, employee_id: employee.id,
+        category: reqCat, detail: `${modalDay.dateStr} ${previewReason}${note ? "\n" + note : ""}`, status: "未処理",
+      });
       setModalDay(null); loadData();
       if (previewReason && (previewReason.includes("有給") || previewReason.includes("希望休") || previewReason.includes("代休") || previewReason.includes("出張"))) {
         const storeName = employee.store_name || "";
@@ -806,10 +853,29 @@ export default function AttendanceTab({ employee }: { employee: any }) {
               </div>
             )}
 
+            {isPart && (
+              <>
+                <Dot color={T.warning} label="残業申請" />
+                <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8, marginBottom: 8 }}>
+                  <Chip label="残業申請" selected={selOvertime} color="#CA8A04" onClick={() => {
+                    setSelOvertime(!selOvertime);
+                    if (!selOvertime) { setSelZenjitsu(null); setSelGozen(null); setSelGogo(null); setSelKinmu([]); setDaikyuMode("none"); }
+                  }} />
+                </div>
+                {selOvertime && (
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={{ fontSize: 12, color: T.warning, display: "block", marginBottom: 4, fontWeight: 600 }}>残業理由（必須）</label>
+                    <textarea value={overtimeReason} onChange={e => setOvertimeReason(e.target.value)} placeholder="例：納品準備のため30分残業"
+                      style={{ width: "100%", padding: "10px 12px", borderRadius: "6px", border: `1px solid ${overtimeReason.trim() ? T.warning : T.danger}`, fontSize: 13, resize: "vertical", minHeight: 60, boxSizing: "border-box" }} />
+                  </div>
+                )}
+              </>
+            )}
+
             <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 12, color: T.textSec, display: "block", marginBottom: 4 }}>備考</label>
+              <label style={{ fontSize: 12, color: T.textSec, display: "block", marginBottom: 4 }}>理由（必須）</label>
               <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="例：熱があって遅刻しました"
-                style={{ width: "100%", padding: "10px 12px", borderRadius: "6px", border: `1px solid ${T.border}`, fontSize: 13, resize: "vertical", minHeight: 60, boxSizing: "border-box" }} />
+                style={{ width: "100%", padding: "10px 12px", borderRadius: "6px", border: `1px solid ${note.trim() ? T.border : T.danger}`, fontSize: 13, resize: "vertical", minHeight: 60, boxSizing: "border-box" }} />
             </div>
 
             <div style={{ display: "flex", gap: 10 }}>
@@ -817,10 +883,12 @@ export default function AttendanceTab({ employee }: { employee: any }) {
               {modalDay.reason && (
                 <button onClick={cancelReason} disabled={saving} style={{ flex: 1, padding: "12px", borderRadius: "6px", border: `1px solid ${T.danger}`, backgroundColor: "#fff", color: T.danger, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>{saving ? "..." : "取消"}</button>
               )}
-              {(() => {
+              {selOvertime ? (
+                <button onClick={submitOvertime} disabled={saving || !overtimeReason.trim()} style={{ flex: 1, padding: "12px", borderRadius: "6px", border: "none", backgroundColor: (saving || !overtimeReason.trim()) ? T.border : T.warning, color: (saving || !overtimeReason.trim()) ? T.textMuted : "#fff", fontSize: 14, fontWeight: 600, cursor: (saving || !overtimeReason.trim()) ? "default" : "pointer" }}>{saving ? "申請中..." : "残業申請"}</button>
+              ) : (() => {
                 const isShinsei = previewReason === "公休（全日）" || previewReason === "有給（全日）";
                 const locked = isShinsei && modalDay && isKoukyuLocked(modalDay.dateStr);
-                const disabled = saving || !previewReason || locked;
+                const disabled = saving || !previewReason || locked || !note.trim();
                 const label = locked ? "締切済み" : saving ? (isShinsei ? "申請中..." : "登録中...") : (isShinsei ? "申請" : "登録");
                 return (
                   <button onClick={submitReason} disabled={disabled} style={{ flex: 1, padding: "12px", borderRadius: "6px", border: "none", backgroundColor: disabled ? T.border : T.primary, color: disabled ? T.textMuted : "#fff", fontSize: 14, fontWeight: 600, cursor: disabled ? "default" : "pointer" }}>{label}</button>

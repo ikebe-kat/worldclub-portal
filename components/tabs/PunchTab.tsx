@@ -241,6 +241,7 @@ export default function PunchTab({ employee }: { employee: any }) {
 
   const [overtimeStatus, setOvertimeStatus] = useState<'none' | 'pending' | 'approved' | 'rejected'>('none')
   const [overtimeRequesting, setOvertimeRequesting] = useState(false)
+  const [overtimeReason, setOvertimeReason] = useState('')
 
   const fetchOvertimeStatus = async (employeeId: string) => {
     const today = toDateStr(new Date())
@@ -255,6 +256,7 @@ export default function PunchTab({ employee }: { employee: any }) {
 
   const requestOvertime = async () => {
     if (!employee?.id) return
+    if (!overtimeReason.trim()) { showAlert('残業理由を入力してください'); return }
     setOvertimeRequesting(true)
     const today = toDateStr(new Date())
     const { error } = await supabase.from('wc_overtime_requests').insert({
@@ -262,13 +264,21 @@ export default function PunchTab({ employee }: { employee: any }) {
       employee_id: employee.id,
       attendance_date: today,
       status: 'pending',
+      reason: overtimeReason.trim(),
     })
+    if (!error) {
+      await supabase.from('change_requests').insert({
+        company_id: employee.company_id, employee_id: employee.id,
+        category: '残業申請', detail: `${today} 残業申請\n${overtimeReason.trim()}`, status: '未処理',
+      })
+    }
     setOvertimeRequesting(false)
     if (error) {
       setMessage({ text: '残業申請に失敗: ' + error.message, ok: false })
       return
     }
     setOvertimeStatus('pending')
+    setOvertimeReason('')
     setMessage({ text: '残業申請を提出しました（小川さん承認待ち）', ok: true })
   }
 
@@ -495,6 +505,7 @@ export default function PunchTab({ employee }: { employee: any }) {
 
   const submitReason = async () => {
     if (!previewReason) return
+    if (!memoNote.trim()) { showAlert('理由を入力してください'); return }
 
     const todayStr = toDateStr(new Date())
     const todayDate = new Date()
@@ -690,10 +701,14 @@ export default function PunchTab({ employee }: { employee: any }) {
           ) : overtimeStatus === 'rejected' ? (
             <div style={{ padding: '10px 0', textAlign: 'center', fontSize: 13, color: '#DC2626', fontWeight: 600 }}>却下されました</div>
           ) : (
-            <button onClick={requestOvertime} disabled={overtimeRequesting} style={{
-              width: '100%', padding: '10px 0', borderRadius: 6, fontSize: 13, fontWeight: 600,
-              border: 'none', backgroundColor: T.primary, color: '#fff', cursor: 'pointer',
-            }}>{overtimeRequesting ? '申請中...' : '残業を申請する'}</button>
+            <>
+              <textarea value={overtimeReason} onChange={e => setOvertimeReason(e.target.value)} placeholder="残業理由（必須）"
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: `1px solid ${T.border}`, fontSize: 13, resize: 'vertical', minHeight: 44, boxSizing: 'border-box', marginBottom: 8 }} />
+              <button onClick={requestOvertime} disabled={overtimeRequesting || !overtimeReason.trim()} style={{
+                width: '100%', padding: '10px 0', borderRadius: 6, fontSize: 13, fontWeight: 600,
+                border: 'none', backgroundColor: overtimeReason.trim() ? T.primary : T.border, color: overtimeReason.trim() ? '#fff' : T.textMuted, cursor: overtimeReason.trim() ? 'pointer' : 'default',
+              }}>{overtimeRequesting ? '申請中...' : '残業を申請する'}</button>
+            </>
           )}
         </div>
       )}
@@ -746,9 +761,9 @@ export default function PunchTab({ employee }: { employee: any }) {
             </div>
 
             <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 12, color: T.textSec, display: 'block', marginBottom: 4 }}>備考</label>
+              <label style={{ fontSize: 12, color: T.textSec, display: 'block', marginBottom: 4 }}>理由（必須）</label>
               <textarea value={memoNote} onChange={e => setMemoNote(e.target.value)} placeholder="例：熱があって遅刻しました"
-                style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: `1px solid ${T.border}`, fontSize: 13, resize: 'vertical', minHeight: 60, boxSizing: 'border-box' }} />
+                style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: `1px solid ${memoNote.trim() ? T.border : '#EF4444'}`, fontSize: 13, resize: 'vertical', minHeight: 60, boxSizing: 'border-box' }} />
             </div>
 
             <div style={{ display: 'flex', gap: 10 }}>
@@ -756,7 +771,7 @@ export default function PunchTab({ employee }: { employee: any }) {
               {todayRecord?.reason && (
                 <button onClick={cancelReason} disabled={saving} style={{ flex: 1, padding: '12px', borderRadius: '6px', border: `1px solid ${T.danger}`, backgroundColor: '#fff', color: T.danger, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>{saving ? '...' : '取消'}</button>
               )}
-              <button onClick={submitReason} disabled={saving || !previewReason} style={{ flex: 1, padding: '12px', borderRadius: '6px', border: 'none', backgroundColor: previewReason ? T.primary : T.border, color: previewReason ? '#fff' : T.textMuted, fontSize: 14, fontWeight: 600, cursor: previewReason ? 'pointer' : 'default' }}>{saving ? '登録中...' : '登録'}</button>
+              <button onClick={submitReason} disabled={saving || !previewReason || !memoNote.trim()} style={{ flex: 1, padding: '12px', borderRadius: '6px', border: 'none', backgroundColor: previewReason && memoNote.trim() ? T.primary : T.border, color: previewReason && memoNote.trim() ? '#fff' : T.textMuted, fontSize: 14, fontWeight: 600, cursor: previewReason && memoNote.trim() ? 'pointer' : 'default' }}>{saving ? '登録中...' : '登録'}</button>
             </div>
           </div>
         </div>
