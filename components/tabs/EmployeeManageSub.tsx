@@ -11,8 +11,7 @@ const COMPANY_ID = "c2d368f0-aa9b-4f70-b082-43ec07723d6c";
 /* ── 選択肢定義（ハンドオフv15準拠） ── */
 /* ══════════════════════════════════════ */
 const EMPLOYMENT_TYPES = ["代表取締役", "正社員", "パート", "特定技能", "技能実習"] as const;
-const HOLIDAY_PATTERNS = ["正社員A","正社員B","正社員C","サービス正社員A","サービス正社員B","上限なし（パート）","経理（12月のみ3日）","人事（月3〜7日）","DX（月2～7日）","鈑金A","鈑金B","なし"] as const;
-const HOLIDAY_CALENDARS = ["サービス","営業フロント","財務経理","人事総務","パート水曜定休","DX","インシュアランス部","鈑金塗装部","代表取締役"] as const;
+const HOLIDAY_CALENDARS = ["全員共通"] as const;
 const WORK_PATTERNS = ["09:30-18:00","09:30-17:30","09:30-17:00","10:00-17:30","09:30-16:30"] as const;
 const ROLES = ["全店（代表）","全店（専務）","全店（人事）","全店（本部長）","八代店長","健軍店長","鈑金塗装部","一般"] as const;
 const GENDERS = ["男性", "女性"] as const;
@@ -63,7 +62,7 @@ const Field = ({ label, children, span }: { label: string; children: React.React
 /* ── 編集モーダル（新規・編集兼用）  ── */
 /* ══════════════════════════════════════ */
 const EditForm = ({ emp, stores, isNew, onClose, onSaved, companyId }: { emp: Partial<EmpRow> | null; stores: { id: string; name: string }[]; isNew: boolean; onClose: () => void; onSaved: (msg: string) => void; companyId: string }) => {
-  const initial: Record<string, any> = { store_id: "", employee_code: "", full_name: "", full_name_kana: "", email: "", phone: "", gender: "", birth_date: "", hire_date: new Date().toISOString().slice(0, 10), employment_type: "正社員", position: "", department: "", grade: "", weekly_work_days: 5, weekly_work_hours: 40, paid_leave_grant_date: "", work_pattern_code: "09:30-18:00", holiday_pattern: "正社員A", holiday_calendar: "営業フロント", role: "一般", requires_punch: true, postal_code: "", address: "", emergency_contact_name: "", emergency_contact_phone: "", emergency_contact_relation: "", bank_name: "", bank_branch: "", bank_account_type: "普通", bank_account_number: "", bank_account_holder: "", basic_pension_number: "", employment_insurance_number: "", pin: "1234", skills: "", my_number: "", insurance_card_requested: false };
+  const initial: Record<string, any> = { store_id: "", employee_code: "", full_name: "", full_name_kana: "", email: "", phone: "", gender: "", birth_date: "", hire_date: new Date().toISOString().slice(0, 10), employment_type: "正社員", position: "", department: "", grade: "", weekly_work_days: 5, weekly_work_hours: 40, paid_leave_grant_date: "", work_pattern_code: "09:30-18:00", holiday_pattern: "正社員A", holiday_calendar: "全員共通", role: "一般", requires_punch: true, postal_code: "", address: "", emergency_contact_name: "", emergency_contact_phone: "", emergency_contact_relation: "", bank_name: "", bank_branch: "", bank_account_type: "普通", bank_account_number: "", bank_account_holder: "", basic_pension_number: "", employment_insurance_number: "", pin: "1234", skills: "", my_number: "", insurance_card_requested: false };
   if (!isNew && emp) { Object.keys(initial).forEach(k => { const v = (emp as any)[k]; if (v != null) initial[k] = v; }); }
   const [form, setForm] = useState<Record<string, any>>(initial);
   const [saving, setSaving] = useState(false);
@@ -94,7 +93,7 @@ const EditForm = ({ emp, stores, isNew, onClose, onSaved, companyId }: { emp: Pa
       position: form.position?.trim() || null, department: form.department?.trim() || null, grade: form.grade?.trim() || null,
       weekly_work_days: form.weekly_work_days ? Number(form.weekly_work_days) : null, weekly_work_hours: form.weekly_work_hours ? Number(form.weekly_work_hours) : null,
       paid_leave_grant_date: form.paid_leave_grant_date || null, work_pattern_code: form.work_pattern_code || null,
-      holiday_pattern: form.holiday_pattern || null, holiday_calendar: form.holiday_calendar || null, role: form.role, requires_punch: form.requires_punch,
+      holiday_calendar: "全員共通", role: form.role, requires_punch: form.requires_punch,
       postal_code: form.postal_code?.trim() || null, address: form.address?.trim() || null,
       emergency_contact_name: form.emergency_contact_name?.trim() || null, emergency_contact_phone: form.emergency_contact_phone?.trim() || null, emergency_contact_relation: form.emergency_contact_relation?.trim() || null,
       bank_name: form.bank_name?.trim() || null, bank_branch: form.bank_branch?.trim() || null, bank_account_type: form.bank_account_type || null,
@@ -129,8 +128,8 @@ const EditForm = ({ emp, stores, isNew, onClose, onSaved, companyId }: { emp: Pa
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 8 }}><Field label="雇用区分 *"><select value={form.employment_type} onChange={e => set("employment_type", e.target.value)} style={selectStyle}>{EMPLOYMENT_TYPES.map(v => <option key={v} value={v}>{v}</option>)}</select></Field><Field label="管理者権限"><select value={form.role} onChange={e => set("role", e.target.value)} style={selectStyle}>{ROLES.map(v => <option key={v} value={v}>{v}</option>)}</select></Field></div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 8 }}><Field label="部署"><input type="text" value={form.department} onChange={e => set("department", e.target.value)} placeholder="営業部" style={inputStyle} /></Field><Field label="役職"><input type="text" value={form.position} onChange={e => set("position", e.target.value)} placeholder="店長" style={inputStyle} /></Field></div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 8 }}><Field label="等級"><input type="text" value={form.grade} onChange={e => set("grade", e.target.value)} style={inputStyle} /></Field><Field label="入社日 *"><input type="date" value={form.hire_date} onChange={e => set("hire_date", e.target.value)} style={inputStyle} /></Field></div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 8 }}><Field label="勤務パターン"><select value={form.work_pattern_code} onChange={e => set("work_pattern_code", e.target.value)} style={selectStyle}><option value="">未設定</option>{WORK_PATTERNS.map(v => <option key={v} value={v}>{v}</option>)}</select></Field><Field label="休日カレンダー"><select value={form.holiday_calendar} onChange={e => set("holiday_calendar", e.target.value)} style={selectStyle}><option value="">未設定</option>{HOLIDAY_CALENDARS.map(v => <option key={v} value={v}>{v}</option>)}</select></Field></div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 8 }}><Field label="希望休パターン"><select value={form.holiday_pattern} onChange={e => set("holiday_pattern", e.target.value)} style={selectStyle}><option value="">未設定</option>{HOLIDAY_PATTERNS.map(v => <option key={v} value={v}>{v}</option>)}</select></Field><Field label="有給発生日"><input type="date" value={form.paid_leave_grant_date} onChange={e => set("paid_leave_grant_date", e.target.value)} style={inputStyle} /></Field></div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 8 }}><Field label="勤務パターン"><select value={form.work_pattern_code} onChange={e => set("work_pattern_code", e.target.value)} style={selectStyle}><option value="">未設定</option>{WORK_PATTERNS.map(v => <option key={v} value={v}>{v}</option>)}</select></Field><Field label="休日カレンダー"><span style={{ ...inputStyle, display: "inline-block", backgroundColor: "#F9FAFB", color: T.text }}>全員共通</span></Field></div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 8 }}><Field label="有給発生日"><input type="date" value={form.paid_leave_grant_date} onChange={e => set("paid_leave_grant_date", e.target.value)} style={inputStyle} /></Field><div /></div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 8 }}><Field label="週勤務日数"><input type="number" value={form.weekly_work_days} onChange={e => set("weekly_work_days", e.target.value)} min={1} max={7} style={inputStyle} /></Field><Field label="週勤務時間"><input type="number" value={form.weekly_work_hours} onChange={e => set("weekly_work_hours", e.target.value)} step={0.5} style={inputStyle} /></Field><Field label="打刻要否"><select value={form.requires_punch ? "true" : "false"} onChange={e => set("requires_punch", e.target.value === "true")} style={selectStyle}><option value="true">必要</option><option value="false">不要</option></select></Field></div>
         <div style={sectionTitleStyle}>保有資格</div>
         <Field label="保有資格（自由記入）"><textarea value={form.skills} onChange={e => set("skills", e.target.value)} placeholder="自動車整備士2級、損保募集人資格 など" rows={2} style={{ ...inputStyle, resize: "vertical" }} /></Field>
@@ -402,7 +401,7 @@ export default function EmployeeManageSub({ employee }: { employee: any }) {
       : (
         <div style={{ borderRadius: 6, border: `1px solid ${T.border}`, overflow: "hidden" }}><div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 860 }}>
-            <thead><tr style={{ backgroundColor: T.primary }}>{["CD","氏名","店舗","雇用区分","部署","権限","勤務","カレンダー","希望休","入社日","",""].map(h => <th key={h} style={{ padding: "8px 6px", color: "#fff", fontWeight: 600, fontSize: 11, textAlign: "center", whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
+            <thead><tr style={{ backgroundColor: T.primary }}>{["CD","氏名","店舗","雇用区分","部署","権限","勤務","入社日","",""].map(h => <th key={h} style={{ padding: "8px 6px", color: "#fff", fontWeight: 600, fontSize: 11, textAlign: "center", whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
             <tbody>{filtered.map(emp => (
               <tr key={emp.id} style={{ borderBottom: `1px solid ${T.borderLight}`, backgroundColor: emp.is_active === false ? "#FFF5F5" : "#fff" }}>
                 <td style={{ padding: "8px 6px", textAlign: "center", fontSize: 11, color: T.textMuted, fontVariantNumeric: "tabular-nums" }}>{emp.employee_code}</td>
@@ -412,8 +411,6 @@ export default function EmployeeManageSub({ employee }: { employee: any }) {
                 <td style={{ padding: "8px 6px", textAlign: "center", fontSize: 11, color: T.textSec }}>{emp.department || "—"}</td>
                 <td style={{ padding: "8px 6px", textAlign: "center", fontSize: 10, color: emp.role !== "一般" ? T.primary : T.textMuted }}>{emp.role === "一般" ? "—" : emp.role}</td>
                 <td style={{ padding: "8px 6px", textAlign: "center", fontSize: 11, color: T.textSec, fontVariantNumeric: "tabular-nums" }}>{emp.work_pattern_code || "—"}</td>
-                <td style={{ padding: "8px 6px", textAlign: "center", fontSize: 10, color: T.textSec }}>{emp.holiday_calendar || "—"}</td>
-                <td style={{ padding: "8px 6px", textAlign: "center", fontSize: 10, color: T.textSec }}>{emp.holiday_pattern || "—"}</td>
                 <td style={{ padding: "8px 6px", textAlign: "center", fontSize: 11, color: T.textMuted }}>{emp.hire_date}</td>
                 <td style={{ padding: "6px", textAlign: "center" }}><button onClick={() => setDetailEmp(emp)} style={{ padding: "5px 8px", borderRadius: 4, border: `1px solid ${T.gold}`, backgroundColor: T.goldLight, color: "#78350F", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>詳細</button></td>
                 <td style={{ padding: "6px", textAlign: "center", whiteSpace: "nowrap" }}>
