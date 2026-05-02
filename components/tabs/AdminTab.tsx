@@ -1308,17 +1308,17 @@ export default function AdminTab({ employee }: { employee: any }) {
   const defaultTab = isWcOwner ? "shift" : isOwner ? "notifications" : "individual";
   const [sub, setSub] = useState<SubTab>(defaultTab);
   // 給与管理タブは Excel 横長一覧を出すので親 wrapper の左右 padding と maxWidth を解除する
+  // ただし左右 6px だけ確保して画面外にはみ出さないようにする
   const isWideSub = sub === "wc_payroll";
   return (
     <div style={{
-      padding: isWideSub ? "16px 0" : "16px 12px",
+      padding: isWideSub ? "0 6px" : "16px 12px",
       maxWidth: isWideSub ? "100%" : 960,
       margin: "0 auto",
     }}>
       <div style={{
         display: "flex", gap: 4, marginBottom: 16,
         borderBottom: `1px solid ${T.border}`, overflowX: "auto",
-        ...(isWideSub ? { padding: "0 12px" } : null),
       }}>
         {visibleTabs.map(t => (<button key={t.id} onClick={() => setSub(t.id)} style={{ padding: "10px 14px", border: "none", backgroundColor: "transparent", cursor: "pointer", fontSize: 13, fontWeight: sub === t.id ? 700 : 400, color: sub === t.id ? T.primary : T.textSec, borderBottom: sub === t.id ? `3px solid ${T.primary}` : "3px solid transparent", transition: "all 0.2s", whiteSpace: "nowrap" }}>{t.label}</button>))}
       </div>
