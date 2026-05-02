@@ -690,7 +690,7 @@ export default function PunchTab({ employee }: { employee: any }) {
         <Dot color="#EF4444" label="申請" />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           {[
-            { label: '有給申請（全日）', chip: '有給（全日）' },
+            { label: '有給申請', chip: '有給（全日）' },
             { label: '遅刻申請', chip: '遅刻' },
             { label: '早退申請', chip: '早退' },
             { label: '欠勤申請', chip: '欠勤' },
