@@ -100,7 +100,7 @@ const EditForm = ({ emp, stores, isNew, onClose, onSaved, companyId }: { emp: Pa
       bank_name: form.bank_name?.trim() || null, bank_branch: form.bank_branch?.trim() || null, bank_account_type: form.bank_account_type || null,
       bank_account_number: form.bank_account_number?.trim() || null, bank_account_holder: form.bank_account_holder?.trim() || null,
       basic_pension_number: form.basic_pension_number?.trim() || null, employment_insurance_number: form.employment_insurance_number?.trim() || null,
-      pin: form.pin?.trim() || "1234", skills: form.skills?.trim() || null, my_number: form.my_number?.trim() || null, insurance_card_requested: form.insurance_card_requested || false, photo_url: photoUrl, updated_at: new Date().toISOString(),
+      pin: form.pin?.trim() || "1234", skills: form.skills?.trim() || null, photo_url: photoUrl, updated_at: new Date().toISOString(),
     };
     if (isNew) { const { error } = await supabase.from("employees").insert(payload); setSaving(false); if (error) { onSaved("登録失敗: " + error.message); return; } onSaved("新規登録しました"); }
     else { const { error } = await supabase.from("employees").update(payload).eq("id", emp!.id); setSaving(false); if (error) { onSaved("更新失敗: " + error.message); return; } onSaved("更新しました"); }
@@ -365,7 +365,7 @@ export default function EmployeeManageSub({ employee }: { employee: any }) {
     const storeMap: Record<string, string> = {};
     storeList.forEach((s: { id: string; name: string }) => { storeMap[s.id] = s.name; });
     const { data: ed } = await supabase.from("employees")
-      .select("id, company_id, store_id, employee_code, full_name, full_name_kana, email, phone, gender, birth_date, hire_date, employment_type, position, department, grade, weekly_work_days, weekly_work_hours, paid_leave_grant_date, work_pattern_code, holiday_pattern, holiday_calendar, role, requires_punch, is_active, postal_code, address, emergency_contact_name, emergency_contact_phone, emergency_contact_relation, bank_name, bank_branch, bank_account_type, bank_account_number, bank_account_holder, basic_pension_number, employment_insurance_number, photo_url, resigned_at, pin, skills, my_number, insurance_card_requested")
+      .select("*")
       .eq("company_id", COMPANY_ID).order("employee_code");
     setEmps((ed || []).map((e: any) => ({ ...e, store_name: storeMap[e.store_id] || "" })));
     setLoading(false);
