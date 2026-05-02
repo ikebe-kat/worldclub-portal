@@ -51,7 +51,7 @@ interface Monthly {
   detail_json: any;
 }
 
-const yen = (n: number | null | undefined) => (n == null ? "—" : `¥${Math.round(n).toLocaleString("ja-JP")}`);
+const yen = (n: number | null | undefined) => (n == null ? "—" : n === 0 ? "－" : `¥${Math.round(n).toLocaleString("ja-JP")}`);
 const minToHM = (m: number | null | undefined) => {
   if (m == null) return "—";
   const sign = m < 0 ? "-" : "";
@@ -383,18 +383,26 @@ function CalcView({ employee }: { employee: any }) {
                   "子育て支援金","有給金額","給料計","交通費","非課税","総支給",
                   "課税計","社保","雇保","社保計","所得税","住民税","車","控除計",
                   "扶養","差引支給額",""
-                ].map((h, i) => (
-                  <th key={i} style={{
-                    padding: "4px 2px", fontSize: 9, fontWeight: 600,
-                    whiteSpace: "normal", wordBreak: "keep-all",
-                    lineHeight: 1.15, verticalAlign: "bottom",
-                    textAlign: i < 2 ? "left" : "right",
-                    backgroundColor: HEADER_BG[i],
-                    color: (i < 2 || i === 30) ? "#fff" : T.text,
-                    borderRight: "1px solid #D1D5DB",
-                    borderBottom: "2px solid #374151",
-                  }}>{h}</th>
-                ))}
+                ].map((h, i) => {
+                  const sticky: React.CSSProperties =
+                    i === 0 ? { position: "sticky", left: 0, zIndex: 3, minWidth: 72 } :
+                    i === 1 ? { position: "sticky", left: 72, zIndex: 3, minWidth: 50, boxShadow: "2px 0 4px rgba(0,0,0,0.1)" } :
+                    i === 29 ? { position: "sticky", right: 52, zIndex: 3, minWidth: 80, boxShadow: "-2px 0 4px rgba(0,0,0,0.1)" } :
+                    i === 30 ? { position: "sticky", right: 0, zIndex: 3, minWidth: 52 } : {};
+                  return (
+                    <th key={i} style={{
+                      padding: "4px 2px", fontSize: 9, fontWeight: 600,
+                      whiteSpace: "normal", wordBreak: "keep-all",
+                      lineHeight: 1.15, verticalAlign: "bottom",
+                      textAlign: i < 2 ? "left" : "right",
+                      backgroundColor: HEADER_BG[i],
+                      color: (i < 2 || i === 30) ? "#fff" : T.text,
+                      borderRight: "1px solid #D1D5DB",
+                      borderBottom: "2px solid #374151",
+                      ...sticky,
+                    }}>{h}</th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
@@ -413,9 +421,9 @@ function CalcView({ employee }: { employee: any }) {
                   />
                 );
                 return (
-                  <tr key={r.id} style={{ borderBottom: "1px solid #9CA3AF" }}>
-                    <td style={tdNarrow}>{r.display_name}</td>
-                    <td style={tdNarrow}>
+                  <tr key={r.id} style={{ borderBottom: "1px solid #9CA3AF" }} className="payroll-row">
+                    <td style={{ ...tdNarrow, position: "sticky", left: 0, zIndex: 1, backgroundColor: "#fff", minWidth: 72 }}>{r.display_name}</td>
+                    <td style={{ ...tdNarrow, position: "sticky", left: 72, zIndex: 1, backgroundColor: "#fff", minWidth: 50, boxShadow: "2px 0 4px rgba(0,0,0,0.1)" }}>
                       <span style={{
                         padding: "2px 6px", borderRadius: 10, fontSize: 9, fontWeight: 700, color: "#fff",
                         backgroundColor: r.status === "confirmed" ? T.primary : T.warning,
@@ -455,8 +463,8 @@ function CalcView({ employee }: { employee: any }) {
                     <td style={{ ...tdNum, color: T.danger, fontWeight: 600, backgroundColor: "#FCA5A5" }}>{yen(r.total_deduction)}</td>
                     {ec("dependents", String(r.dependents), tdNum)}
                     {/* 29 差引支給額（派生・編集不可） */}
-                    <td style={{ ...tdNum, fontWeight: 700, color: T.primary, backgroundColor: "#DDD6FE" }}>{yen(r.net_amount)}</td>
-                    <td style={tdNarrow}>
+                    <td style={{ ...tdNum, fontWeight: 700, color: T.primary, backgroundColor: "#DDD6FE", position: "sticky", right: 52, zIndex: 1, minWidth: 80, boxShadow: "-2px 0 4px rgba(0,0,0,0.1)" }}>{yen(r.net_amount)}</td>
+                    <td style={{ ...tdNarrow, position: "sticky", right: 0, zIndex: 1, backgroundColor: "#fff", minWidth: 52 }}>
                       <button onClick={() => printOne(r)} style={{
                         padding: "4px 8px", borderRadius: 4, border: `1px solid ${T.border}`,
                         backgroundColor: "#fff", color: T.text, fontSize: 10, cursor: "pointer",
@@ -478,6 +486,7 @@ function CalcView({ employee }: { employee: any }) {
           onCancel={() => setDialog(null)}
         />
       )}
+      <style>{`.payroll-row:hover > td { background-color: #F0FDF4 !important; }`}</style>
     </div>
   );
 }
@@ -536,22 +545,28 @@ function MasterView({ employee: _employee }: { employee: any }) {
                   "氏名","区分","基本給","固定残業","役職","家族","諸手当","支援金",
                   "平日時給","土日時給","所定終業","所定労働(分)","休憩固定",
                   "社保","住民税","車","交通費/日","扶養",
-                ].map((h, i) => (
-                  <th key={i} style={{
-                    padding: "6px 4px", fontSize: 10, fontWeight: 600,
-                    whiteSpace: "normal", wordBreak: "keep-all", lineHeight: 1.15,
-                    borderRight: "1px solid #D1D5DB",
-                    borderBottom: "2px solid #374151",
-                    textAlign: i < 2 ? "left" : "right",
-                  }}>{h}</th>
-                ))}
+                ].map((h, i) => {
+                  const sticky: React.CSSProperties =
+                    i === 0 ? { position: "sticky", left: 0, zIndex: 3, minWidth: 72 } :
+                    i === 1 ? { position: "sticky", left: 72, zIndex: 3, minWidth: 56, boxShadow: "2px 0 4px rgba(0,0,0,0.1)" } : {};
+                  return (
+                    <th key={i} style={{
+                      padding: "6px 4px", fontSize: 10, fontWeight: 600,
+                      whiteSpace: "normal", wordBreak: "keep-all", lineHeight: 1.15,
+                      borderRight: "1px solid #D1D5DB",
+                      borderBottom: "2px solid #374151",
+                      textAlign: i < 2 ? "left" : "right",
+                      ...sticky,
+                    }}>{h}</th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
               {rows.map(r => (
-                <tr key={r.id} style={{ borderBottom: "1px solid #9CA3AF" }}>
-                  <td style={tdStyle}>{r.display_name}</td>
-                  <td style={tdStyle}>{r.employment_type}</td>
+                <tr key={r.id} style={{ borderBottom: "1px solid #9CA3AF" }} className="payroll-row">
+                  <td style={{ ...tdStyle, position: "sticky", left: 0, zIndex: 1, backgroundColor: "#fff", minWidth: 72 }}>{r.display_name}</td>
+                  <td style={{ ...tdStyle, position: "sticky", left: 72, zIndex: 1, backgroundColor: "#fff", minWidth: 56, boxShadow: "2px 0 4px rgba(0,0,0,0.1)" }}>{r.employment_type}</td>
                   <NumCell r={r} field="base_salary" />
                   <NumCell r={r} field="fixed_overtime" />
                   <NumCell r={r} field="position_allowance" />
