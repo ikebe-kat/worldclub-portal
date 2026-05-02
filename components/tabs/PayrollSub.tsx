@@ -103,6 +103,25 @@ export default function PayrollSub({ employee }: { employee: any }) {
   );
 }
 
+// 月次計算テーブル各列のヘッダー背景色（インデックスは表示列順 0-30）
+// 5つの「計」「総支給」「差引支給額」列はデータ行にも同色を適用（インラインで個別指定）。
+const HEADER_BG = [
+  "#1a4b24", "#1a4b24",                                                          // 0,1   氏名/状態 (T.primary)
+  "#DBEAFE","#DBEAFE","#DBEAFE","#DBEAFE","#DBEAFE","#DBEAFE","#DBEAFE",          // 2-8   勤怠系
+  "#DCFCE7","#DCFCE7","#DCFCE7","#DCFCE7","#DCFCE7","#DCFCE7","#DCFCE7",          // 9-15  支給明細
+  "#BBF7D0",                                                                     // 16    給料計
+  "#D1FAE5","#D1FAE5",                                                            // 17,18 交通費・非課税
+  "#A7F3D0",                                                                     // 19    総支給
+  "#FEF3C7",                                                                     // 20    課税計
+  "#FEE2E2","#FEE2E2",                                                            // 21,22 社保・雇保
+  "#FECACA",                                                                     // 23    社保計
+  "#FEE2E2","#FEE2E2","#FEE2E2",                                                  // 24,25,26 所得税・住民税・車
+  "#FCA5A5",                                                                     // 27    控除計
+  "#EDE9FE",                                                                     // 28    扶養
+  "#DDD6FE",                                                                     // 29    差引支給額
+  "#1a4b24",                                                                     // 30    明細ボタン列
+];
+
 /* ═══════════════ 月次計算ビュー ═══════════════ */
 function CalcView({ employee }: { employee: any }) {
   const [ym, setYm] = useState<string>(currentYM());
@@ -232,7 +251,7 @@ function CalcView({ employee }: { employee: any }) {
             backgroundColor: "#fff", tableLayout: "fixed",
           }}>
             <thead>
-              <tr style={{ backgroundColor: T.primary, color: "#fff" }}>
+              <tr>
                 {[
                   "氏名","状態","出勤日数","労働時間","残業時間","深夜早朝","有給(日)",
                   "平日時間","土日時間","基本給","固定残業手当","役職手当","家族手当","諸手当",
@@ -245,6 +264,8 @@ function CalcView({ employee }: { employee: any }) {
                     whiteSpace: "normal", wordBreak: "keep-all",
                     lineHeight: 1.15, verticalAlign: "bottom",
                     textAlign: i < 2 ? "left" : "right",
+                    backgroundColor: HEADER_BG[i],
+                    color: (i < 2 || i === 30) ? "#fff" : T.text,
                   }}>{h}</th>
                 ))}
               </tr>
@@ -279,20 +300,20 @@ function CalcView({ employee }: { employee: any }) {
                     <td style={tdNum}>{yen(r.other_allowance)}</td>
                     <td style={tdNum}>{yen(r.child_support_allowance)}</td>
                     <td style={tdNum}>{yen(r.paid_leave_amount)}</td>
-                    <td style={{ ...tdNum, fontWeight: 600 }}>{yen(salaryTotal)}</td>
+                    <td style={{ ...tdNum, fontWeight: 600, backgroundColor: "#BBF7D0" }}>{yen(salaryTotal)}</td>
                     <td style={tdNum}>{yen(r.commute_amount)}</td>
                     <td style={tdNum}>{yen(nonTaxable)}</td>
-                    <td style={{ ...tdNum, fontWeight: 600 }}>{yen(r.gross_amount)}</td>
+                    <td style={{ ...tdNum, fontWeight: 600, backgroundColor: "#A7F3D0" }}>{yen(r.gross_amount)}</td>
                     <td style={tdNum}>{yen(taxableTotal)}</td>
                     <td style={tdNum}>{yen(r.social_insurance)}</td>
                     <td style={tdNum}>{yen(r.employment_insurance)}</td>
-                    <td style={{ ...tdNum, fontWeight: 600 }}>{yen(insuranceTotal)}</td>
+                    <td style={{ ...tdNum, fontWeight: 600, backgroundColor: "#FECACA" }}>{yen(insuranceTotal)}</td>
                     <td style={tdNum}>{yen(r.income_tax)}</td>
                     <td style={tdNum}>{yen(r.resident_tax)}</td>
                     <td style={tdNum}>{yen(r.car_deduction)}</td>
-                    <td style={{ ...tdNum, color: T.danger, fontWeight: 600 }}>{yen(r.total_deduction)}</td>
+                    <td style={{ ...tdNum, color: T.danger, fontWeight: 600, backgroundColor: "#FCA5A5" }}>{yen(r.total_deduction)}</td>
                     <td style={tdNum}>{r.dependents}</td>
-                    <td style={{ ...tdNum, fontWeight: 700, color: T.primary }}>{yen(r.net_amount)}</td>
+                    <td style={{ ...tdNum, fontWeight: 700, color: T.primary, backgroundColor: "#DDD6FE" }}>{yen(r.net_amount)}</td>
                     <td style={tdNarrow}>
                       <button onClick={() => printOne(r)} style={{
                         padding: "4px 8px", borderRadius: 4, border: `1px solid ${T.border}`,
