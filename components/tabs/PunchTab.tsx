@@ -155,17 +155,16 @@ export default function PunchTab({ employee }: { employee: any }) {
   const [daikyuHalf, setDaikyuHalf] = useState<'am' | 'pm' | null>(null)
   const [daikyuDate, setDaikyuDate] = useState('')
 
-  /* 雇用区分（localStorageに含まれないことがあるためDBから補完） */
+  /* 雇用区分: localStorage が古い場合があるので常にDBから取得 */
   const [empType, setEmpType] = useState<string | null>(employee?.employment_type ?? null)
   useEffect(() => {
     if (!employee?.id) return
-    if (employee.employment_type) { setEmpType(employee.employment_type); return }
     supabase.from('employees')
       .select('employment_type')
       .eq('id', employee.id)
       .maybeSingle()
-      .then(({ data }) => setEmpType(((data as any)?.employment_type as string) ?? null))
-  }, [employee?.id, employee?.employment_type])
+      .then(({ data }) => setEmpType((data as any)?.employment_type ?? employee?.employment_type ?? null))
+  }, [employee?.id])
 
   const isPart = empType === 'パート'
   const needsBreakUI = isPart && employee?.employee_code !== FIXED_BREAK_PART_CODE

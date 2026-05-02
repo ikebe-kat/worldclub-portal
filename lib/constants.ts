@@ -79,6 +79,40 @@ export function calendarDisplayName(fullName: string, empCode?: string): string 
   return surname;
 }
 
+/** 締め日20日: mo月度 = 前月21日〜当月20日 */
+export const CUTOFF_DAY = 20;
+
+export function periodRange(yr: number, mo: number): { start: string; end: string } {
+  const py = mo === 1 ? yr - 1 : yr;
+  const pm = mo === 1 ? 12 : mo - 1;
+  return {
+    start: `${py}-${String(pm).padStart(2, "0")}-21`,
+    end:   `${yr}-${String(mo).padStart(2, "0")}-${CUTOFF_DAY}`,
+  };
+}
+
+export function currentPeriodMonth(): { yr: number; mo: number } {
+  const now = new Date();
+  let mo = now.getMonth() + 1;
+  let yr = now.getFullYear();
+  if (now.getDate() >= 21) { mo++; if (mo > 12) { mo = 1; yr++; } }
+  return { yr, mo };
+}
+
+export function periodDays(yr: number, mo: number): string[] {
+  const { start, end } = periodRange(yr, mo);
+  const [sy, sm, sd] = start.split("-").map(Number);
+  const [ey, em, ed] = end.split("-").map(Number);
+  const days: string[] = [];
+  const d = new Date(sy, sm - 1, sd);
+  const last = new Date(ey, em - 1, ed);
+  while (d <= last) {
+    days.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+    d.setDate(d.getDate() + 1);
+  }
+  return days;
+}
+
 /** import互換用（ワールドクラブでは使用しない） */
 export const KOUKYU_PART_CODES: readonly string[] = [];
 export const isKoukyuPart = (_empCode: string): boolean => false;

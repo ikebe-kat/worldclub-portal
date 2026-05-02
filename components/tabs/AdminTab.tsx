@@ -1,6 +1,6 @@
 ﻿"use client";
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { T, displayReason, displayChipLabel, isKoukyuPart } from "@/lib/constants";
+import { T, displayReason, displayChipLabel, isKoukyuPart, periodRange, currentPeriodMonth, periodDays } from "@/lib/constants";
 import { Badge, ReasonBadges } from "@/components/ui";
 import Dialog from "@/components/ui/Dialog";
 import { supabase } from "@/lib/supabase";
@@ -375,8 +375,9 @@ const IndividualSub = ({ employee }: { employee: any }) => {
   const [storeFilter, setStoreFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [selectedEmp, setSelectedEmp] = useState<EmpOption | null>(null);
-  const [yr, setYr] = useState(new Date().getFullYear());
-  const [mo, setMo] = useState(new Date().getMonth() + 1);
+  const _cp = currentPeriodMonth();
+  const [yr, setYr] = useState(_cp.yr);
+  const [mo, setMo] = useState(_cp.mo);
   const [rows, setRows] = useState<AttRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [editRow, setEditRow] = useState<AttRow | null>(null);
@@ -405,9 +406,7 @@ const IndividualSub = ({ employee }: { employee: any }) => {
 
   const fetchAttendance = useCallback(async (empId: string) => {
     setLoading(true);
-    const startDate = `${yr}-${String(mo).padStart(2,"0")}-01`;
-    const endDay = new Date(yr, mo, 0).getDate();
-    const endDate = `${yr}-${String(mo).padStart(2,"0")}-${String(endDay).padStart(2,"0")}`;
+    const { start: startDate, end: endDate } = periodRange(yr, mo);
 
     const emp = emps.find(e => e.id === empId);
     const calType = emp?.holiday_calendar || null;
@@ -427,8 +426,7 @@ const IndividualSub = ({ employee }: { employee: any }) => {
     const dataMap: Record<string, AttRow> = {};
     (data || []).forEach((r: any) => { dataMap[r.attendance_date] = r; });
     const allDays: AttRow[] = [];
-    for (let d = 1; d <= endDay; d++) {
-      const dateStr = `${yr}-${String(mo).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+    for (const dateStr of periodDays(yr, mo)) {
       const isHoliday = holidaySet.has(dateStr);
       if (dataMap[dateStr]) {
         const existing = dataMap[dateStr];
@@ -438,7 +436,7 @@ const IndividualSub = ({ employee }: { employee: any }) => {
           allDays.push(existing);
         }
       }
-      else { allDays.push({ id: `empty-${d}`, attendance_date: dateStr, day_of_week: null, punch_in: null, punch_out: null, reason: null, break_minutes: null, late_minutes: null, early_leave_minutes: null, actual_hours: null, scheduled_hours: null, overtime_hours: null, over_under: null, employee_note: null, admin_memo: null, is_holiday: isHoliday || null, work_pattern_code: null }); }
+      else { allDays.push({ id: `empty-${dateStr}`, attendance_date: dateStr, day_of_week: null, punch_in: null, punch_out: null, reason: null, break_minutes: null, late_minutes: null, early_leave_minutes: null, actual_hours: null, scheduled_hours: null, overtime_hours: null, over_under: null, employee_note: null, admin_memo: null, is_holiday: isHoliday || null, work_pattern_code: null }); }
     }
     setRows(allDays);
     setLoading(false);
@@ -509,7 +507,7 @@ const IndividualSub = ({ employee }: { employee: any }) => {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <button onClick={() => goMonth(-1)} style={{ width: 30, height: 30, border: `1px solid ${T.border}`, borderRadius: 6, backgroundColor: "#fff", cursor: "pointer", fontSize: 13, color: T.textSec, display: "flex", alignItems: "center", justifyContent: "center" }}>◀</button>
-            <span style={{ fontSize: 15, fontWeight: 700, color: T.text, minWidth: 80, textAlign: "center" }}>{yr}年{mo}月</span>
+            <span style={{ fontSize: 15, fontWeight: 700, color: T.text, minWidth: 100, textAlign: "center" }}>{yr}年{mo}月度</span>
             <button onClick={() => goMonth(1)} style={{ width: 30, height: 30, border: `1px solid ${T.border}`, borderRadius: 6, backgroundColor: "#fff", cursor: "pointer", fontSize: 13, color: T.textSec, display: "flex", alignItems: "center", justifyContent: "center" }}>▶</button>
           </div>
         </div>
@@ -879,9 +877,9 @@ interface MonthlyRow {
 const MonthlySub = ({ employee }: { employee: any }) => {
   const perm = getPermLevel(employee?.role || null);
   const myCode = employee?.employee_code || "";
-  const now = new Date();
-  const [yr, setYr] = useState(now.getFullYear());
-  const [mo, setMo] = useState(now.getMonth() + 1);
+  const _cpM = currentPeriodMonth();
+  const [yr, setYr] = useState(_cpM.yr);
+  const [mo, setMo] = useState(_cpM.mo);
   const [storeFilter, setStoreFilter] = useState("all");
   const [stores, setStores] = useState<{ id: string; name: string }[]>([]);
   const [emps, setEmps] = useState<EmpOption[]>([]);
@@ -907,9 +905,7 @@ const MonthlySub = ({ employee }: { employee: any }) => {
   const fetchMonthly = useCallback(async () => {
     if (emps.length === 0) return;
     setLoading(true);
-    const startDate = `${yr}-${String(mo).padStart(2,"0")}-01`;
-    const endDay = new Date(yr, mo, 0).getDate();
-    const endDate = `${yr}-${String(mo).padStart(2,"0")}-${String(endDay).padStart(2,"0")}`;
+    const { start: startDate, end: endDate } = periodRange(yr, mo);
     const yearMonth = `${yr}/${String(mo).padStart(2,"0")}`;
 
     let scopedEmps = emps;
@@ -994,7 +990,7 @@ const MonthlySub = ({ employee }: { employee: any }) => {
     <div>
       <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
         <button onClick={() => goMonth(-1)} style={{ width: 30, height: 30, border: `1px solid ${T.border}`, borderRadius: 6, backgroundColor: "#fff", cursor: "pointer", fontSize: 13, color: T.textSec, display: "flex", alignItems: "center", justifyContent: "center" }}>◀</button>
-        <span style={{ fontSize: 15, fontWeight: 700, color: T.text, minWidth: 90, textAlign: "center" }}>{yr}年{mo}月</span>
+        <span style={{ fontSize: 15, fontWeight: 700, color: T.text, minWidth: 100, textAlign: "center" }}>{yr}年{mo}月度</span>
         <button onClick={() => goMonth(1)} style={{ width: 30, height: 30, border: `1px solid ${T.border}`, borderRadius: 6, backgroundColor: "#fff", cursor: "pointer", fontSize: 13, color: T.textSec, display: "flex", alignItems: "center", justifyContent: "center" }}>▶</button>
         <select value={storeFilter} onChange={e => setStoreFilter(e.target.value)} style={{ padding: "8px 12px", borderRadius: 6, border: `1px solid ${T.border}`, fontSize: 12, color: T.textSec }}>{STORE_FILTER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
         <div style={{ marginLeft: "auto", fontSize: 12, color: T.textSec }}>変形月所定: <strong style={{ color: T.text }}>{fmHours(varHours)}</strong></div>

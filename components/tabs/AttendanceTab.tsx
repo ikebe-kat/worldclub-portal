@@ -1,7 +1,7 @@
 "use client";
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
-import { T, DOW, stepMonth, fmtMin, displayReason, displayChipLabel, isKoukyuPart } from "@/lib/constants";
+import { T, DOW, stepMonth, fmtMin, displayReason, displayChipLabel, isKoukyuPart, periodRange, currentPeriodMonth, periodDays } from "@/lib/constants";
 import { ReasonBadges } from "@/components/ui";
 import { useSmoothSwipe } from "@/hooks/useSmoothSwipe";
 import type { MonthlySummary } from "@/lib/types";
@@ -70,9 +70,9 @@ interface DialogState {
 
 /* ══════════════════════════════════════ */
 export default function AttendanceTab({ employee }: { employee: any }) {
-  const now = new Date();
-  const [yr, setYr] = useState(now.getFullYear());
-  const [mo, setMo] = useState(now.getMonth() + 1);
+  const _cp = currentPeriodMonth();
+  const [yr, setYr] = useState(_cp.yr);
+  const [mo, setMo] = useState(_cp.mo);
   const [rows, setRows] = useState<any[]>([]);
   const [holidays, setHolidays] = useState<string[]>([]);
   const [shiftConf, setShiftConf] = useState<{ confirmed_at: string; is_modified: boolean } | null>(null);
@@ -139,9 +139,7 @@ export default function AttendanceTab({ employee }: { employee: any }) {
   const loadData = useCallback(async (showLoading = false) => {
     if (!employee?.id) return;
     if (showLoading) setLoading(true);
-    const from = `${yr}-${String(mo).padStart(2, "0")}-01`;
-    const toDate = new Date(yr, mo, 0);
-    const to = `${yr}-${String(mo).padStart(2, "0")}-${String(toDate.getDate()).padStart(2, "0")}`;
+    const { start: from, end: to } = periodRange(yr, mo);
     const yearMonth = `${yr}/${String(mo).padStart(2, "0")}`;
 
     const { data: attData } = await supabase
@@ -266,14 +264,13 @@ export default function AttendanceTab({ employee }: { employee: any }) {
 
   /* ── 日付リスト ── */
   const allDays = useMemo(() => {
-    const days = [];
-    const daysInMonth = new Date(yr, mo, 0).getDate();
-    for (let d = 1; d <= daysInMonth; d++) {
-      const date = new Date(yr, mo - 1, d);
-      const dateStr = `${yr}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    const days: any[] = [];
+    const pDays = periodDays(yr, mo);
+    for (const dateStr of pDays) {
+      const date = new Date(dateStr);
       const rec = rows.find(r => r.attendance_date === dateStr);
       days.push({
-        day: d, dow: date.getDay(), dateStr,
+        day: date.getDate(), dow: date.getDay(), dateStr,
         pi: rec?.punch_in?.slice(0, 5) ?? null, po: rec?.punch_out?.slice(0, 5) ?? null,
         reason: rec?.reason ?? null,
         wm: rec?.actual_hours ? Math.round(Number(rec.actual_hours) * 60) : 0,
@@ -628,7 +625,7 @@ export default function AttendanceTab({ employee }: { employee: any }) {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, gap: 8, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <button onClick={() => go(-1)} style={{ width: 30, height: 30, border: `1px solid ${T.border}`, borderRadius: "6px", backgroundColor: "#fff", cursor: "pointer", fontSize: 13, color: T.textSec }}>◀</button>
-          <span style={{ fontSize: 15, fontWeight: 700, color: T.text, minWidth: 90, textAlign: "center" }}>{yr}年{mo}月</span>
+          <span style={{ fontSize: 15, fontWeight: 700, color: T.text, minWidth: 100, textAlign: "center" }}>{yr}年{mo}月度</span>
           <button onClick={() => go(1)} style={{ width: 30, height: 30, border: `1px solid ${T.border}`, borderRadius: "6px", backgroundColor: "#fff", cursor: "pointer", fontSize: 13, color: T.textSec }}>▶</button>
         </div>
         {(() => {
