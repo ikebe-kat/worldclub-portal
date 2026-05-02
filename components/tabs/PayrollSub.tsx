@@ -547,8 +547,8 @@ function MasterView({ employee: _employee }: { employee: any }) {
                   "社保","住民税","車","交通費/日","扶養",
                 ].map((h, i) => {
                   const sticky: React.CSSProperties =
-                    i === 0 ? { position: "sticky", left: 0, zIndex: 3, minWidth: 72 } :
-                    i === 1 ? { position: "sticky", left: 72, zIndex: 3, minWidth: 56, boxShadow: "2px 0 4px rgba(0,0,0,0.1)" } : {};
+                    i === 0 ? { position: "sticky", left: 0, zIndex: 3, minWidth: 72, backgroundColor: T.primary } :
+                    i === 1 ? { position: "sticky", left: 72, zIndex: 3, minWidth: 56, backgroundColor: T.primary, boxShadow: "2px 0 4px rgba(0,0,0,0.1)" } : {};
                   return (
                     <th key={i} style={{
                       padding: "6px 4px", fontSize: 10, fontWeight: 600,

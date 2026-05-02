@@ -51,15 +51,13 @@ export default function PaidLeaveSub({ employee }: { employee: any }) {
 
     const { data: balData, error: balErr } = await supabase
       .from("paid_leave_balances")
-      .select("employee_id, fiscal_year, carry_over, granted, consumed, remaining")
+      .select("employee_id, carry_over, granted, consumed, remaining")
       .eq("company_id", COMPANY_ID);
 
     if (balErr) console.error("paid_leave_balances:", balErr.message);
 
-    const currentFY = new Date().getFullYear();
     const balMap: Record<string, { carry_over: number; granted: number; consumed: number; remaining: number }> = {};
     (balData || []).forEach((b: any) => {
-      if (b.fiscal_year != null && b.fiscal_year !== currentFY) return;
       balMap[b.employee_id] = {
         carry_over: b.carry_over ?? 0,
         granted: b.granted ?? 0,
