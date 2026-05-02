@@ -16,6 +16,7 @@ interface Setting {
   base_salary: number; fixed_overtime: number;
   position_allowance: number; family_allowance: number;
   child_support_allowance: number;
+  other_allowance: number;
   car_deduction: number; resident_tax: number;
   hourly_weekday: number; hourly_weekend: number;
   scheduled_end_time: string | null; scheduled_minutes: number;
@@ -69,6 +70,92 @@ function prevMonth(ym: string): string {
 function currentYM(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/* ═══════════════ インライン編集セル ═══════════════
+ * クリック→input、Enter or blur で onSave、Escape で cancel。
+ * グローバル CSS の `input { font-size: 16px !important }` を上書きするため
+ * ref.style.setProperty で !important を付与する。
+ * 数値以外（時刻=分）の場合 toMin/fromMin で表示・編集を変換可能。
+ */
+type EditableCellProps = {
+  value: number;
+  display: string;
+  onSave: (n: number) => Promise<void> | void;
+  baseStyle: React.CSSProperties;
+  parse?: (raw: string) => number;       // input文字列→保存する数値
+  step?: string;
+  disabled?: boolean;
+};
+function EditableCell({ value, display, onSave, baseStyle, parse, step = "1", disabled }: EditableCellProps) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!editing) return;
+    setDraft(String(value ?? 0));
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.style.setProperty("font-size", "10px", "important");
+      el.style.setProperty("padding", "2px 3px", "important");
+      el.focus();
+      el.select();
+    });
+  }, [editing, value]);
+
+  if (disabled) {
+    return <td style={baseStyle}>{display}</td>;
+  }
+
+  const commit = async () => {
+    if (saving) return;
+    const n = parse ? parse(draft) : parseFloat(draft);
+    if (Number.isNaN(n)) { setEditing(false); return; }
+    if (n === value) { setEditing(false); return; }
+    setSaving(true);
+    try { await onSave(n); }
+    finally { setSaving(false); setEditing(false); }
+  };
+
+  if (editing) {
+    return (
+      <td style={baseStyle}>
+        <input
+          ref={inputRef}
+          type="number"
+          step={step}
+          value={draft}
+          disabled={saving}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={e => {
+            if (e.key === "Enter") { e.preventDefault(); commit(); }
+            else if (e.key === "Escape") { e.preventDefault(); setEditing(false); }
+          }}
+          style={{
+            width: "100%",
+            border: `1px solid ${T.primary}`,
+            background: "#fffbeb",
+            textAlign: (baseStyle.textAlign as any) ?? "right",
+            boxSizing: "border-box",
+            outline: "none",
+          }}
+        />
+      </td>
+    );
+  }
+  return (
+    <td
+      style={{ ...baseStyle, cursor: "pointer" }}
+      title="クリックで編集"
+      onClick={() => setEditing(true)}
+    >
+      {display}
+    </td>
+  );
 }
 
 export default function PayrollSub({ employee }: { employee: any }) {
@@ -159,6 +246,32 @@ function CalcView({ employee }: { employee: any }) {
     if (error) { setDialog({ message: "計算失敗: " + error.message }); return; }
     setDialog({ message: `${data}件計算しました` });
     load();
+  };
+
+  /* インライン編集: 1セル更新 → 派生(gross/total_deduction/net)を再計算 → DBへ一括update */
+  const updateMonthly = async (r: Monthly, field: keyof Monthly, value: number) => {
+    if (r.status === "confirmed") {
+      setDialog({ message: "確定済みは編集できません。" });
+      return;
+    }
+    const next: Monthly = { ...r, [field]: value };
+    next.gross_amount    = next.base_salary + next.fixed_overtime + next.position_allowance
+                         + next.family_allowance + next.child_support_allowance + next.other_allowance
+                         + next.weekday_amount + next.weekend_amount + next.overtime_amount
+                         + next.paid_leave_amount + next.commute_amount;
+    next.total_deduction = next.social_insurance + next.employment_insurance
+                         + next.income_tax + next.resident_tax + next.car_deduction;
+    next.net_amount      = next.gross_amount - next.total_deduction;
+
+    const { error } = await supabase.from("wc_payroll_monthly").update({
+      [field]: value,
+      gross_amount:    next.gross_amount,
+      total_deduction: next.total_deduction,
+      net_amount:      next.net_amount,
+      updated_at:      new Date().toISOString(),
+    }).eq("id", r.id);
+    if (error) { setDialog({ message: "保存失敗: " + error.message }); return; }
+    setRows(prev => prev.map(x => x.id === r.id ? next : x));
   };
 
   const confirmAll = async () => {
@@ -274,11 +387,19 @@ function CalcView({ employee }: { employee: any }) {
             </thead>
             <tbody>
               {rows.map(r => {
-                // 派生値（DB不要、既存カラムから算出）
-                const salaryTotal     = r.gross_amount - r.commute_amount;       // 給料計
-                const nonTaxable      = r.commute_amount;                        // 非課税
-                const taxableTotal    = Math.max(0, r.gross_amount - nonTaxable - r.social_insurance - r.employment_insurance); // 課税計
-                const insuranceTotal  = r.social_insurance + r.employment_insurance; // 社保計
+                const salaryTotal    = r.gross_amount - r.commute_amount;
+                const nonTaxable     = r.commute_amount;
+                const taxableTotal   = Math.max(0, r.gross_amount - nonTaxable - r.social_insurance - r.employment_insurance);
+                const insuranceTotal = r.social_insurance + r.employment_insurance;
+                const ec = (field: keyof Monthly, display: string, baseStyle: React.CSSProperties) => (
+                  <EditableCell
+                    value={(r[field] as number) ?? 0}
+                    display={display}
+                    onSave={(n) => updateMonthly(r, field, n)}
+                    baseStyle={baseStyle}
+                    disabled={r.status === "confirmed"}
+                  />
+                );
                 return (
                   <tr key={r.id} style={{ borderBottom: "1px solid #9CA3AF" }}>
                     <td style={tdNarrow}>{r.display_name}</td>
@@ -288,33 +409,40 @@ function CalcView({ employee }: { employee: any }) {
                         backgroundColor: r.status === "confirmed" ? T.primary : T.warning,
                       }}>{r.status === "confirmed" ? "確定" : "下書"}</span>
                     </td>
-                    <td style={tdNum}>{r.worked_days}</td>
-                    <td style={tdNum}>{minToHM(r.worked_minutes)}</td>
-                    <td style={tdNum}>{minToHM(r.overtime_minutes)}</td>
-                    <td style={tdNum}>{minToHM(r.night_minutes)}</td>
-                    <td style={tdNum}>{r.paid_leave_days}</td>
-                    <td style={tdNum}>{minToHM(r.weekday_minutes)}</td>
-                    <td style={tdNum}>{minToHM(r.weekend_minutes)}</td>
-                    <td style={tdNum}>{yen(r.base_salary)}</td>
-                    <td style={tdNum}>{yen(r.fixed_overtime)}</td>
-                    <td style={tdNum}>{yen(r.position_allowance)}</td>
-                    <td style={tdNum}>{yen(r.family_allowance)}</td>
-                    <td style={tdNum}>{yen(r.other_allowance)}</td>
-                    <td style={tdNum}>{yen(r.child_support_allowance)}</td>
-                    <td style={tdNum}>{yen(r.paid_leave_amount)}</td>
+                    {ec("worked_days",     String(r.worked_days),       tdNum)}
+                    {ec("worked_minutes",  minToHM(r.worked_minutes),   tdNum)}
+                    {ec("overtime_minutes",minToHM(r.overtime_minutes), tdNum)}
+                    {ec("night_minutes",   minToHM(r.night_minutes),    tdNum)}
+                    {ec("paid_leave_days", String(r.paid_leave_days),   tdNum)}
+                    {ec("weekday_minutes", minToHM(r.weekday_minutes),  tdNum)}
+                    {ec("weekend_minutes", minToHM(r.weekend_minutes),  tdNum)}
+                    {ec("base_salary",          yen(r.base_salary),             tdNum)}
+                    {ec("fixed_overtime",       yen(r.fixed_overtime),          tdNum)}
+                    {ec("position_allowance",   yen(r.position_allowance),      tdNum)}
+                    {ec("family_allowance",     yen(r.family_allowance),        tdNum)}
+                    {ec("other_allowance",      yen(r.other_allowance),         tdNum)}
+                    {ec("child_support_allowance", yen(r.child_support_allowance), tdNum)}
+                    {ec("paid_leave_amount",    yen(r.paid_leave_amount),       tdNum)}
+                    {/* 16 給料計（派生・編集不可） */}
                     <td style={{ ...tdNum, fontWeight: 600, backgroundColor: "#BBF7D0" }}>{yen(salaryTotal)}</td>
-                    <td style={tdNum}>{yen(r.commute_amount)}</td>
+                    {ec("commute_amount", yen(r.commute_amount), tdNum)}
+                    {/* 18 非課税（派生・編集不可、= commute_amount） */}
                     <td style={tdNum}>{yen(nonTaxable)}</td>
+                    {/* 19 総支給（派生・編集不可） */}
                     <td style={{ ...tdNum, fontWeight: 600, backgroundColor: "#A7F3D0" }}>{yen(r.gross_amount)}</td>
+                    {/* 20 課税計（派生・編集不可） */}
                     <td style={tdNum}>{yen(taxableTotal)}</td>
-                    <td style={tdNum}>{yen(r.social_insurance)}</td>
-                    <td style={tdNum}>{yen(r.employment_insurance)}</td>
+                    {ec("social_insurance",     yen(r.social_insurance),     tdNum)}
+                    {ec("employment_insurance", yen(r.employment_insurance), tdNum)}
+                    {/* 23 社保計（派生・編集不可） */}
                     <td style={{ ...tdNum, fontWeight: 600, backgroundColor: "#FECACA" }}>{yen(insuranceTotal)}</td>
-                    <td style={tdNum}>{yen(r.income_tax)}</td>
-                    <td style={tdNum}>{yen(r.resident_tax)}</td>
-                    <td style={tdNum}>{yen(r.car_deduction)}</td>
+                    {ec("income_tax",    yen(r.income_tax),    tdNum)}
+                    {ec("resident_tax",  yen(r.resident_tax),  tdNum)}
+                    {ec("car_deduction", yen(r.car_deduction), tdNum)}
+                    {/* 27 控除計（派生・編集不可） */}
                     <td style={{ ...tdNum, color: T.danger, fontWeight: 600, backgroundColor: "#FCA5A5" }}>{yen(r.total_deduction)}</td>
-                    <td style={tdNum}>{r.dependents}</td>
+                    {ec("dependents", String(r.dependents), tdNum)}
+                    {/* 29 差引支給額（派生・編集不可） */}
                     <td style={{ ...tdNum, fontWeight: 700, color: T.primary, backgroundColor: "#DDD6FE" }}>{yen(r.net_amount)}</td>
                     <td style={tdNarrow}>
                       <button onClick={() => printOne(r)} style={{
@@ -342,12 +470,13 @@ function CalcView({ employee }: { employee: any }) {
   );
 }
 
-/* ═══════════════ マスタ編集ビュー ═══════════════ */
+/* ═══════════════ マスタ編集ビュー ═══════════════
+ * 全フィールドはセルクリックで直接編集（編集ボタン廃止）。
+ * Enter/Blurで wc_payroll_settings に即UPDATE、Escでキャンセル。
+ */
 function MasterView({ employee: _employee }: { employee: any }) {
   const [rows, setRows] = useState<Setting[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState<Setting | null>(null);
-  const [saving, setSaving] = useState(false);
   const [dialog, setDialog] = useState<{ message: string } | null>(null);
 
   const load = async () => {
@@ -361,36 +490,26 @@ function MasterView({ employee: _employee }: { employee: any }) {
   };
   useEffect(() => { load(); }, []);
 
-  const save = async () => {
-    if (!editing) return;
-    setSaving(true);
+  const updateField = async (r: Setting, field: keyof Setting, value: number | null | string) => {
     const { error } = await supabase.from("wc_payroll_settings").update({
-      base_salary: editing.base_salary,
-      fixed_overtime: editing.fixed_overtime,
-      position_allowance: editing.position_allowance,
-      family_allowance: editing.family_allowance,
-      child_support_allowance: editing.child_support_allowance,
-      car_deduction: editing.car_deduction,
-      resident_tax: editing.resident_tax,
-      hourly_weekday: editing.hourly_weekday,
-      hourly_weekend: editing.hourly_weekend,
-      scheduled_end_time: editing.scheduled_end_time || null,
-      scheduled_minutes: editing.scheduled_minutes,
-      break_minutes_fixed: editing.break_minutes_fixed,
-      social_insurance: editing.social_insurance,
-      commute_per_day: editing.commute_per_day,
-      dependents: editing.dependents,
-      updated_at: new Date().toISOString(),
-    }).eq("id", editing.id);
-    setSaving(false);
+      [field]: value, updated_at: new Date().toISOString(),
+    }).eq("id", r.id);
     if (error) { setDialog({ message: "保存失敗: " + error.message }); return; }
-    setEditing(null); load();
+    setRows(prev => prev.map(x => x.id === r.id ? { ...x, [field]: value } as Setting : x));
   };
 
-  const N = (val: number, set: (n: number) => void) => (
-    <input type="number" value={val ?? 0} onChange={e => set(parseInt(e.target.value || "0", 10))}
-      style={{ width: "100%", padding: "6px 8px", borderRadius: 4, border: `1px solid ${T.border}`, fontSize: 14 }} />
-  );
+  /* マスタ用セル（数値）。EditableCellを再利用 */
+  const NumCell = ({ r, field, suffix = "" }: { r: Setting; field: keyof Setting; suffix?: string }) => {
+    const v = (r[field] as number) ?? 0;
+    return (
+      <EditableCell
+        value={v}
+        display={`${yen(v).replace("¥","").replace(/\.\d+/,"")}${suffix ? "" : ""}`.trim() === "" ? "—" : yen(v) + suffix}
+        onSave={(n) => updateField(r, field, n)}
+        baseStyle={{ ...tdStyle, textAlign: "right" }}
+      />
+    );
+  };
 
   return (
     <div>
@@ -398,87 +517,75 @@ function MasterView({ employee: _employee }: { employee: any }) {
         <div style={{ textAlign: "center", padding: 40, color: T.textSec }}>読み込み中...</div>
       ) : (
         <div style={{ overflowX: "auto", width: "100%", maxWidth: "100%" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, backgroundColor: "#fff" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, backgroundColor: "#fff" }}>
             <thead>
               <tr style={{ backgroundColor: T.primary, color: "#fff" }}>
-                {["氏名", "区分", "基本給/平日", "土日/役職", "固定残業", "家族", "支援金", "社保", "住民税", "車", "交通費", "扶養", ""].map((h, i) => (
-                  <th key={i} style={{ padding: "8px 6px", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
+                {[
+                  "氏名","区分","基本給","固定残業","役職","家族","諸手当","支援金",
+                  "平日時給","土日時給","所定終業","所定労働(分)","休憩固定",
+                  "社保","住民税","車","交通費/日","扶養",
+                ].map((h, i) => (
+                  <th key={i} style={{
+                    padding: "6px 4px", fontSize: 10, fontWeight: 600,
+                    whiteSpace: "normal", wordBreak: "keep-all", lineHeight: 1.15,
+                    borderRight: "1px solid #D1D5DB",
+                    borderBottom: "2px solid #374151",
+                    textAlign: i < 2 ? "left" : "right",
+                  }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {rows.map(r => (
-                <tr key={r.id} style={{ borderBottom: `1px solid ${T.border}` }}>
+                <tr key={r.id} style={{ borderBottom: "1px solid #9CA3AF" }}>
                   <td style={tdStyle}>{r.display_name}</td>
                   <td style={tdStyle}>{r.employment_type}</td>
+                  <NumCell r={r} field="base_salary" />
+                  <NumCell r={r} field="fixed_overtime" />
+                  <NumCell r={r} field="position_allowance" />
+                  <NumCell r={r} field="family_allowance" />
+                  <NumCell r={r} field="other_allowance" />
+                  <NumCell r={r} field="child_support_allowance" />
+                  <NumCell r={r} field="hourly_weekday" />
+                  <NumCell r={r} field="hourly_weekend" />
+                  {/* 所定終業: time editor */}
                   <td style={{ ...tdStyle, textAlign: "right" }}>
-                    {r.employment_type === "パート" ? `${r.hourly_weekday}/h` : yen(r.base_salary)}
+                    <input
+                      type="time"
+                      value={(r.scheduled_end_time ?? "").slice(0,5)}
+                      onChange={e => {
+                        const v = e.target.value || null;
+                        updateField(r, "scheduled_end_time", v as any);
+                      }}
+                      style={{ width: 80, fontSize: 11, padding: 1, border: `1px solid ${T.border}` }}
+                    />
                   </td>
+                  <NumCell r={r} field="scheduled_minutes" />
+                  {/* 休憩固定: nullable */}
                   <td style={{ ...tdStyle, textAlign: "right" }}>
-                    {r.employment_type === "パート" ? `${r.hourly_weekend}/h` : yen(r.position_allowance)}
+                    <input
+                      type="number"
+                      defaultValue={r.break_minutes_fixed ?? ""}
+                      placeholder="申告制"
+                      onBlur={e => {
+                        const raw = e.target.value;
+                        const v = raw === "" ? null : parseInt(raw, 10);
+                        if (v !== r.break_minutes_fixed) updateField(r, "break_minutes_fixed", v);
+                      }}
+                      style={{ width: 60, fontSize: 11, padding: 1, border: `1px solid ${T.border}`, textAlign: "right" }}
+                    />
                   </td>
-                  <td style={{ ...tdStyle, textAlign: "right" }}>{yen(r.fixed_overtime)}</td>
-                  <td style={{ ...tdStyle, textAlign: "right" }}>{yen(r.family_allowance)}</td>
-                  <td style={{ ...tdStyle, textAlign: "right" }}>{yen(r.child_support_allowance)}</td>
-                  <td style={{ ...tdStyle, textAlign: "right" }}>{yen(r.social_insurance)}</td>
-                  <td style={{ ...tdStyle, textAlign: "right" }}>{yen(r.resident_tax)}</td>
-                  <td style={{ ...tdStyle, textAlign: "right" }}>{yen(r.car_deduction)}</td>
-                  <td style={{ ...tdStyle, textAlign: "right" }}>{yen(r.commute_per_day)}/日</td>
-                  <td style={{ ...tdStyle, textAlign: "right" }}>{r.dependents}</td>
-                  <td style={tdStyle}>
-                    <button onClick={() => setEditing({ ...r })} style={{
-                      padding: "4px 10px", borderRadius: 4, border: `1px solid ${T.primary}`,
-                      backgroundColor: "#fff", color: T.primary, fontSize: 11, cursor: "pointer",
-                    }}>編集</button>
-                  </td>
+                  <NumCell r={r} field="social_insurance" />
+                  <NumCell r={r} field="resident_tax" />
+                  <NumCell r={r} field="car_deduction" />
+                  <NumCell r={r} field="commute_per_day" suffix="/日" />
+                  <NumCell r={r} field="dependents" />
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
-      )}
-
-      {editing && (
-        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000 }} onClick={() => setEditing(null)}>
-          <div style={{ backgroundColor: "#fff", borderRadius: 8, padding: 20, width: "100%", maxWidth: 480, maxHeight: "90vh", overflow: "auto" }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ margin: "0 0 16px", fontSize: 16 }}>{editing.display_name} の給与マスタ</h3>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, fontSize: 12 }}>
-              {editing.employment_type === "正社員" ? (
-                <>
-                  <Field label="基本給">{N(editing.base_salary, n => setEditing({ ...editing, base_salary: n }))}</Field>
-                  <Field label="固定残業手当">{N(editing.fixed_overtime, n => setEditing({ ...editing, fixed_overtime: n }))}</Field>
-                  <Field label="役職手当">{N(editing.position_allowance, n => setEditing({ ...editing, position_allowance: n }))}</Field>
-                  <Field label="家族手当">{N(editing.family_allowance, n => setEditing({ ...editing, family_allowance: n }))}</Field>
-                  <Field label="子育て支援金">{N(editing.child_support_allowance, n => setEditing({ ...editing, child_support_allowance: n }))}</Field>
-                  <Field label="車（控除）">{N(editing.car_deduction, n => setEditing({ ...editing, car_deduction: n }))}</Field>
-                  <Field label="住民税">{N(editing.resident_tax, n => setEditing({ ...editing, resident_tax: n }))}</Field>
-                </>
-              ) : (
-                <>
-                  <Field label="平日時給">{N(editing.hourly_weekday, n => setEditing({ ...editing, hourly_weekday: n }))}</Field>
-                  <Field label="土日時給">{N(editing.hourly_weekend, n => setEditing({ ...editing, hourly_weekend: n }))}</Field>
-                  <Field label="所定終業 (HH:MM)">
-                    <input type="time" value={editing.scheduled_end_time?.slice(0, 5) || ""} onChange={e => setEditing({ ...editing, scheduled_end_time: e.target.value })}
-                      style={{ width: "100%", padding: "6px 8px", borderRadius: 4, border: `1px solid ${T.border}`, fontSize: 14 }} />
-                  </Field>
-                  <Field label="所定労働(分)">{N(editing.scheduled_minutes, n => setEditing({ ...editing, scheduled_minutes: n }))}</Field>
-                  <Field label="休憩固定(分/NULL可)">
-                    <input type="number" value={editing.break_minutes_fixed ?? ""} onChange={e => setEditing({ ...editing, break_minutes_fixed: e.target.value === "" ? null : parseInt(e.target.value, 10) })}
-                      placeholder="未指定=申告制" style={{ width: "100%", padding: "6px 8px", borderRadius: 4, border: `1px solid ${T.border}`, fontSize: 14 }} />
-                  </Field>
-                  <Field label="役職手当">{N(editing.position_allowance, n => setEditing({ ...editing, position_allowance: n }))}</Field>
-                  <Field label="家族手当">{N(editing.family_allowance, n => setEditing({ ...editing, family_allowance: n }))}</Field>
-                  <Field label="子育て支援金">{N(editing.child_support_allowance, n => setEditing({ ...editing, child_support_allowance: n }))}</Field>
-                </>
-              )}
-              <Field label="社会保険">{N(editing.social_insurance, n => setEditing({ ...editing, social_insurance: n }))}</Field>
-              <Field label="交通費(日額)">{N(editing.commute_per_day, n => setEditing({ ...editing, commute_per_day: n }))}</Field>
-              <Field label="扶養人数">{N(editing.dependents, n => setEditing({ ...editing, dependents: n }))}</Field>
-            </div>
-            <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-              <button onClick={() => setEditing(null)} style={{ flex: 1, padding: 10, borderRadius: 4, border: `1px solid ${T.border}`, backgroundColor: "#fff", color: T.textSec, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>キャンセル</button>
-              <button onClick={save} disabled={saving} style={{ flex: 1, padding: 10, borderRadius: 4, border: "none", backgroundColor: T.primary, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{saving ? "保存中..." : "保存"}</button>
-            </div>
+          <div style={{ marginTop: 12, padding: "8px 16px", fontSize: 11, color: T.textSec }}>
+            ※ 各セルをクリックして直接編集。Enter で保存、Esc でキャンセル。
           </div>
         </div>
       )}
@@ -487,13 +594,6 @@ function MasterView({ employee: _employee }: { employee: any }) {
     </div>
   );
 }
-
-const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
-  <div>
-    <div style={{ fontSize: 11, color: T.textSec, marginBottom: 3 }}>{label}</div>
-    {children}
-  </div>
-);
 
 const navBtn: React.CSSProperties = {
   width: 32, height: 32, borderRadius: "50%", border: `1px solid ${T.border}`,
