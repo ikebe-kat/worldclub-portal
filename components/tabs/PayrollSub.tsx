@@ -266,6 +266,8 @@ function CalcView({ employee }: { employee: any }) {
                     textAlign: i < 2 ? "left" : "right",
                     backgroundColor: HEADER_BG[i],
                     color: (i < 2 || i === 30) ? "#fff" : T.text,
+                    borderRight: "1px solid #D1D5DB",
+                    borderBottom: "2px solid #374151",
                   }}>{h}</th>
                 ))}
               </tr>
@@ -278,7 +280,7 @@ function CalcView({ employee }: { employee: any }) {
                 const taxableTotal    = Math.max(0, r.gross_amount - nonTaxable - r.social_insurance - r.employment_insurance); // 課税計
                 const insuranceTotal  = r.social_insurance + r.employment_insurance; // 社保計
                 return (
-                  <tr key={r.id} style={{ borderBottom: `1px solid ${T.border}` }}>
+                  <tr key={r.id} style={{ borderBottom: "1px solid #9CA3AF" }}>
                     <td style={tdNarrow}>{r.display_name}</td>
                     <td style={tdNarrow}>
                       <span style={{
@@ -503,11 +505,13 @@ const tdStyle: React.CSSProperties = {
 const tdNarrow: React.CSSProperties = {
   padding: "3px 2px", fontSize: 10, color: T.text,
   whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+  borderRight: "1px solid #D1D5DB",
 };
 const tdNum: React.CSSProperties = {
   padding: "3px 2px", fontSize: 10, color: T.text,
   whiteSpace: "nowrap", textAlign: "right",
   overflow: "hidden", textOverflow: "ellipsis",
+  borderRight: "1px solid #D1D5DB",
 };
 
 /* ═══════════════ 給与明細 PDF (HTML) 生成 ═══════════════ */
