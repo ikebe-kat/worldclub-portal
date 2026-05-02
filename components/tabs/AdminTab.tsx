@@ -1307,19 +1307,17 @@ export default function AdminTab({ employee }: { employee: any }) {
   });
   const defaultTab = isWcOwner ? "shift" : isOwner ? "notifications" : "individual";
   const [sub, setSub] = useState<SubTab>(defaultTab);
-  // 給与管理タブは Excel 横長一覧を出すので親 wrapper の maxWidth を解除しつつ
-  // 左右 6px の余白を確保し、box-sizing と overflow-x で確実に viewport 幅に閉じ込める。
-  // overflow-x: hidden を AdminTab outer に置き、テーブル wrapper 側の overflow-x: auto で
-  // 横スクロールするように分担する。
+  // 給与管理タブは Excel 横長一覧を出すので、960px 制約は外して画面幅近くまで広げ、
+  // ただし常識的な左右 12px の余白は確保する（box-sizing でその余白が viewport から内側に効く）。
+  // テーブル側は table-layout:fixed と小フォント・ヘッダー折り返しで 30列を viewport-24px 内に収める。
   const isWideSub = sub === "wc_payroll";
   return (
     <div style={{
-      padding: isWideSub ? "0 6px" : "16px 12px",
+      padding: "16px 12px",
       maxWidth: isWideSub ? "100%" : 960,
       width: isWideSub ? "100%" : undefined,
       boxSizing: "border-box",
       margin: "0 auto",
-      overflowX: isWideSub ? "hidden" : undefined,
     }}>
       <div style={{
         display: "flex", gap: 4, marginBottom: 16,

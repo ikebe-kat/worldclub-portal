@@ -85,7 +85,6 @@ export default function PayrollSub({ employee }: { employee: any }) {
       <div style={{
         display: "flex", gap: 4, marginBottom: 16,
         borderBottom: `1px solid ${T.border}`,
-        padding: "0 16px",
       }}>
         {([
           { key: "calc", label: "月次計算" },
@@ -196,7 +195,7 @@ function CalcView({ employee }: { employee: any }) {
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap", padding: "0 16px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
         <button onClick={() => setYm(prevMonth(ym))} style={navBtn}>&lt;</button>
         <span style={{ fontSize: 16, fontWeight: 700, minWidth: 100, textAlign: "center" }}>{ym}</span>
         <button onClick={() => setYm(nextMonth(ym))} style={navBtn}>&gt;</button>
@@ -228,7 +227,10 @@ function CalcView({ employee }: { employee: any }) {
         </div>
       ) : (
         <div style={{ overflowX: "auto", width: "100%", maxWidth: "100%" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, backgroundColor: "#fff" }}>
+          <table style={{
+            width: "100%", borderCollapse: "collapse", fontSize: 10,
+            backgroundColor: "#fff", tableLayout: "fixed",
+          }}>
             <thead>
               <tr style={{ backgroundColor: T.primary, color: "#fff" }}>
                 {[
@@ -238,7 +240,12 @@ function CalcView({ employee }: { employee: any }) {
                   "課税計","社保","雇保","社保計","所得税","住民税","車","控除計",
                   "扶養","差引支給額",""
                 ].map((h, i) => (
-                  <th key={i} style={{ padding: "6px 4px", fontSize: 10, fontWeight: 600, whiteSpace: "nowrap", textAlign: i < 2 ? "left" : "right" }}>{h}</th>
+                  <th key={i} style={{
+                    padding: "4px 2px", fontSize: 9, fontWeight: 600,
+                    whiteSpace: "normal", wordBreak: "keep-all",
+                    lineHeight: 1.15, verticalAlign: "bottom",
+                    textAlign: i < 2 ? "left" : "right",
+                  }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -473,10 +480,13 @@ const tdStyle: React.CSSProperties = {
   padding: "8px 6px", fontSize: 12, color: T.text, whiteSpace: "nowrap",
 };
 const tdNarrow: React.CSSProperties = {
-  padding: "4px 4px", fontSize: 11, color: T.text, whiteSpace: "nowrap",
+  padding: "3px 2px", fontSize: 10, color: T.text,
+  whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
 };
 const tdNum: React.CSSProperties = {
-  padding: "4px 4px", fontSize: 11, color: T.text, whiteSpace: "nowrap", textAlign: "right",
+  padding: "3px 2px", fontSize: 10, color: T.text,
+  whiteSpace: "nowrap", textAlign: "right",
+  overflow: "hidden", textOverflow: "ellipsis",
 };
 
 /* ═══════════════ 給与明細 PDF (HTML) 生成 ═══════════════ */
