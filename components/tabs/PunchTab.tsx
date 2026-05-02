@@ -48,7 +48,7 @@ function toLocalISO(date: Date): string {
 function roundPunchIn(d: Date): string {
   const h = d.getHours()
   const m = d.getMinutes()
-  if (h < 9 || (h === 9 && m < 30)) return '09:30'
+  if (h < 10) return '10:00'
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
