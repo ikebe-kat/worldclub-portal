@@ -99,8 +99,10 @@ function EditableCell({ value, display, onSave, baseStyle, parse, step = "1", di
     requestAnimationFrame(() => {
       const el = inputRef.current;
       if (!el) return;
+      // グローバル `input { font-size: 16px !important }` を上書き（セル幅維持の要）
       el.style.setProperty("font-size", "10px", "important");
-      el.style.setProperty("padding", "2px 3px", "important");
+      el.style.setProperty("padding", "0", "important");
+      el.style.setProperty("margin",  "0", "important");
       el.focus();
       el.select();
     });
@@ -121,8 +123,14 @@ function EditableCell({ value, display, onSave, baseStyle, parse, step = "1", di
   };
 
   if (editing) {
+    // 編集中は td 自体の padding/border を打ち消し、input でセルを完全に埋める。
+    // baseStyle の borderRight だけ残してレイアウトを保持。
     return (
-      <td style={baseStyle}>
+      <td style={{
+        ...baseStyle,
+        padding: 0,
+        // borderRight は baseStyle 由来のものをそのまま保持
+      }}>
         <input
           ref={inputRef}
           type="number"
@@ -136,12 +144,16 @@ function EditableCell({ value, display, onSave, baseStyle, parse, step = "1", di
             else if (e.key === "Escape") { e.preventDefault(); setEditing(false); }
           }}
           style={{
+            display: "block",
             width: "100%",
-            border: `1px solid ${T.primary}`,
-            background: "#fffbeb",
+            height: "100%",
+            border: "1px solid #059669",
+            background: "#F0FDF4",
+            color: T.text,
             textAlign: (baseStyle.textAlign as any) ?? "right",
             boxSizing: "border-box",
             outline: "none",
+            borderRadius: 0,
           }}
         />
       </td>
@@ -504,7 +516,7 @@ function MasterView({ employee: _employee }: { employee: any }) {
     return (
       <EditableCell
         value={v}
-        display={`${yen(v).replace("¥","").replace(/\.\d+/,"")}${suffix ? "" : ""}`.trim() === "" ? "—" : yen(v) + suffix}
+        display={yen(v) + suffix}
         onSave={(n) => updateField(r, field, n)}
         baseStyle={{ ...tdStyle, textAlign: "right" }}
       />
