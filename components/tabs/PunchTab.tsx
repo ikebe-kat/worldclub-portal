@@ -155,7 +155,8 @@ export default function PunchTab({ employee }: { employee: any }) {
   const [daikyuHalf, setDaikyuHalf] = useState<'am' | 'pm' | null>(null)
   const [daikyuDate, setDaikyuDate] = useState('')
 
-  /* 雇用区分: localStorage が古い場合があるので常にDBから取得 */
+  /* 雇用区分: 常にDBから取得。NULLの場合は社員コードでフォールバック判定 */
+  const PART_CODES = ['WC005','WC006','WC007','WC008','WC009','WC010','WC011','WC012','WC013','WC014','WC015','WC016']
   const [empType, setEmpType] = useState<string | null>(employee?.employment_type ?? null)
   useEffect(() => {
     if (!employee?.id) return
@@ -163,10 +164,15 @@ export default function PunchTab({ employee }: { employee: any }) {
       .select('employment_type')
       .eq('id', employee.id)
       .maybeSingle()
-      .then(({ data }) => setEmpType((data as any)?.employment_type ?? employee?.employment_type ?? null))
+      .then(({ data, error }) => {
+        if (error) console.error('empType fetch error:', error.message)
+        const val = (data as any)?.employment_type ?? null
+        console.log('empType from DB:', val, 'prop:', employee?.employment_type, 'code:', employee?.employee_code)
+        setEmpType(val || employee?.employment_type || null)
+      })
   }, [employee?.id])
 
-  const isPart = empType === 'パート'
+  const isPart = empType === 'パート' || PART_CODES.includes(employee?.employee_code)
   const needsBreakUI = isPart && employee?.employee_code !== FIXED_BREAK_PART_CODE
 
   /* カスタムダイアログ */
@@ -667,8 +673,8 @@ export default function PunchTab({ employee }: { employee: any }) {
         </div>
       )}
 
-      {/* パート残業申請（パート全員、出勤済み時のみ） */}
-      {isPart && status === 'in' && (
+      {/* パート残業申請（事前申請可） */}
+      {isPart && (
         <div style={{
           maxWidth: 340, margin: '0 auto 24px', padding: '12px 14px',
           borderRadius: 8, border: `1px solid ${T.border}`, backgroundColor: '#fff',
