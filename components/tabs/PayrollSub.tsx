@@ -33,16 +33,19 @@ interface Monthly {
   period_start: string; period_end: string; pay_date: string | null;
   worked_days: number; worked_minutes: number;
   weekday_minutes: number; weekend_minutes: number;
-  overtime_minutes: number; paid_leave_days: number;
+  overtime_minutes: number; night_minutes: number;
+  paid_leave_days: number;
   base_salary: number; fixed_overtime: number;
   position_allowance: number; family_allowance: number;
   child_support_allowance: number;
+  other_allowance: number;
   weekday_amount: number; weekend_amount: number;
   overtime_amount: number; paid_leave_amount: number;
   commute_amount: number; gross_amount: number;
   social_insurance: number; employment_insurance: number;
   income_tax: number; resident_tax: number; car_deduction: number;
   total_deduction: number; net_amount: number;
+  dependents: number;
   status: "draft" | "confirmed";
   detail_json: any;
 }
@@ -221,43 +224,73 @@ function CalcView({ employee }: { employee: any }) {
         </div>
       ) : (
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, backgroundColor: "#fff" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, backgroundColor: "#fff" }}>
             <thead>
               <tr style={{ backgroundColor: T.primary, color: "#fff" }}>
-                {["氏名", "状態", "出勤", "労働", "残業", "有給", "支給合計", "交通費", "社保", "雇保", "所得税", "控除合計", "差引", ""].map((h, i) => (
-                  <th key={i} style={{ padding: "8px 6px", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", textAlign: i < 2 ? "left" : "right" }}>{h}</th>
+                {[
+                  "氏名","状態","出勤日数","労働時間","残業時間","深夜早朝","有給(日)",
+                  "平日時間","土日時間","基本給","固定残業手当","役職手当","家族手当","諸手当",
+                  "子育て支援金","有給金額","給料計","交通費","非課税","総支給",
+                  "課税計","社保","雇保","社保計","所得税","住民税","車","控除計",
+                  "扶養","差引支給額",""
+                ].map((h, i) => (
+                  <th key={i} style={{ padding: "6px 4px", fontSize: 10, fontWeight: 600, whiteSpace: "nowrap", textAlign: i < 2 ? "left" : "right" }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {rows.map(r => (
-                <tr key={r.id} style={{ borderBottom: `1px solid ${T.border}` }}>
-                  <td style={tdStyle}>{r.display_name}</td>
-                  <td style={tdStyle}>
-                    <span style={{
-                      padding: "2px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, color: "#fff",
-                      backgroundColor: r.status === "confirmed" ? T.primary : T.warning,
-                    }}>{r.status === "confirmed" ? "確定" : "下書"}</span>
-                  </td>
-                  <td style={{ ...tdStyle, textAlign: "right" }}>{r.worked_days}日</td>
-                  <td style={{ ...tdStyle, textAlign: "right" }}>{minToHM(r.worked_minutes)}</td>
-                  <td style={{ ...tdStyle, textAlign: "right" }}>{minToHM(r.overtime_minutes)}</td>
-                  <td style={{ ...tdStyle, textAlign: "right" }}>{r.paid_leave_days}日</td>
-                  <td style={{ ...tdStyle, textAlign: "right", fontWeight: 600 }}>{yen(r.gross_amount)}</td>
-                  <td style={{ ...tdStyle, textAlign: "right", color: T.textSec }}>{yen(r.commute_amount)}</td>
-                  <td style={{ ...tdStyle, textAlign: "right", color: T.textSec }}>{yen(r.social_insurance)}</td>
-                  <td style={{ ...tdStyle, textAlign: "right", color: T.textSec }}>{yen(r.employment_insurance)}</td>
-                  <td style={{ ...tdStyle, textAlign: "right", color: T.textSec }}>{yen(r.income_tax)}</td>
-                  <td style={{ ...tdStyle, textAlign: "right", color: T.danger }}>{yen(r.total_deduction)}</td>
-                  <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, color: T.primary }}>{yen(r.net_amount)}</td>
-                  <td style={tdStyle}>
-                    <button onClick={() => printOne(r)} style={{
-                      padding: "4px 10px", borderRadius: 4, border: `1px solid ${T.border}`,
-                      backgroundColor: "#fff", color: T.text, fontSize: 11, cursor: "pointer",
-                    }}>明細</button>
-                  </td>
-                </tr>
-              ))}
+              {rows.map(r => {
+                // 派生値（DB不要、既存カラムから算出）
+                const salaryTotal     = r.gross_amount - r.commute_amount;       // 給料計
+                const nonTaxable      = r.commute_amount;                        // 非課税
+                const taxableTotal    = Math.max(0, r.gross_amount - nonTaxable - r.social_insurance - r.employment_insurance); // 課税計
+                const insuranceTotal  = r.social_insurance + r.employment_insurance; // 社保計
+                return (
+                  <tr key={r.id} style={{ borderBottom: `1px solid ${T.border}` }}>
+                    <td style={tdNarrow}>{r.display_name}</td>
+                    <td style={tdNarrow}>
+                      <span style={{
+                        padding: "2px 6px", borderRadius: 10, fontSize: 9, fontWeight: 700, color: "#fff",
+                        backgroundColor: r.status === "confirmed" ? T.primary : T.warning,
+                      }}>{r.status === "confirmed" ? "確定" : "下書"}</span>
+                    </td>
+                    <td style={tdNum}>{r.worked_days}</td>
+                    <td style={tdNum}>{minToHM(r.worked_minutes)}</td>
+                    <td style={tdNum}>{minToHM(r.overtime_minutes)}</td>
+                    <td style={tdNum}>{minToHM(r.night_minutes)}</td>
+                    <td style={tdNum}>{r.paid_leave_days}</td>
+                    <td style={tdNum}>{minToHM(r.weekday_minutes)}</td>
+                    <td style={tdNum}>{minToHM(r.weekend_minutes)}</td>
+                    <td style={tdNum}>{yen(r.base_salary)}</td>
+                    <td style={tdNum}>{yen(r.fixed_overtime)}</td>
+                    <td style={tdNum}>{yen(r.position_allowance)}</td>
+                    <td style={tdNum}>{yen(r.family_allowance)}</td>
+                    <td style={tdNum}>{yen(r.other_allowance)}</td>
+                    <td style={tdNum}>{yen(r.child_support_allowance)}</td>
+                    <td style={tdNum}>{yen(r.paid_leave_amount)}</td>
+                    <td style={{ ...tdNum, fontWeight: 600 }}>{yen(salaryTotal)}</td>
+                    <td style={tdNum}>{yen(r.commute_amount)}</td>
+                    <td style={tdNum}>{yen(nonTaxable)}</td>
+                    <td style={{ ...tdNum, fontWeight: 600 }}>{yen(r.gross_amount)}</td>
+                    <td style={tdNum}>{yen(taxableTotal)}</td>
+                    <td style={tdNum}>{yen(r.social_insurance)}</td>
+                    <td style={tdNum}>{yen(r.employment_insurance)}</td>
+                    <td style={{ ...tdNum, fontWeight: 600 }}>{yen(insuranceTotal)}</td>
+                    <td style={tdNum}>{yen(r.income_tax)}</td>
+                    <td style={tdNum}>{yen(r.resident_tax)}</td>
+                    <td style={tdNum}>{yen(r.car_deduction)}</td>
+                    <td style={{ ...tdNum, color: T.danger, fontWeight: 600 }}>{yen(r.total_deduction)}</td>
+                    <td style={tdNum}>{r.dependents}</td>
+                    <td style={{ ...tdNum, fontWeight: 700, color: T.primary }}>{yen(r.net_amount)}</td>
+                    <td style={tdNarrow}>
+                      <button onClick={() => printOne(r)} style={{
+                        padding: "4px 8px", borderRadius: 4, border: `1px solid ${T.border}`,
+                        backgroundColor: "#fff", color: T.text, fontSize: 10, cursor: "pointer",
+                      }}>明細</button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -434,6 +467,12 @@ const navBtn: React.CSSProperties = {
 };
 const tdStyle: React.CSSProperties = {
   padding: "8px 6px", fontSize: 12, color: T.text, whiteSpace: "nowrap",
+};
+const tdNarrow: React.CSSProperties = {
+  padding: "4px 4px", fontSize: 11, color: T.text, whiteSpace: "nowrap",
+};
+const tdNum: React.CSSProperties = {
+  padding: "4px 4px", fontSize: 11, color: T.text, whiteSpace: "nowrap", textAlign: "right",
 };
 
 /* ═══════════════ 給与明細 PDF (HTML) 生成 ═══════════════ */
