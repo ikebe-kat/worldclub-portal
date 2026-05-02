@@ -503,6 +503,14 @@ export default function PunchTab({ employee }: { employee: any }) {
     setSaving(false)
     if (!error) {
       setModalOpen(false); fetchTodayRecord(employee.id); setMessage({ text: '申請を登録しました', ok: true })
+      const catMap: Record<string, string> = { '有給（全日）': '有給申請', '遅刻': '遅刻申請', '早退': '早退申請', '欠勤': '欠勤申請' }
+      const reqCategory = catMap[previewReason] || previewReason
+      await supabase.from('change_requests').insert({
+        company_id: employee.company_id, employee_id: employee.id,
+        category: reqCategory,
+        detail: `${todayStr} ${previewReason}${memoNote ? '\n' + memoNote : ''}`,
+        status: '未処理',
+      })
       fetch(PUSH_URL, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

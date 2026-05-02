@@ -1302,7 +1302,7 @@ export default function AdminTab({ employee }: { employee: any }) {
     if (t.visibleTo === "wc_owner") return isWcOwner || isSuper;
     if (t.visibleTo === "owner_only") return isOwner;
     if (t.visibleTo === "owner_or_kondo") return isOwner;
-    if (t.visibleTo === "super_only") return isOwner || isSuper;
+    if (t.visibleTo === "super_only") return isOwner || isSuper || isWcOwner;
     return true;
   });
   const defaultTab = isWcOwner ? "shift" : isOwner ? "notifications" : "individual";
