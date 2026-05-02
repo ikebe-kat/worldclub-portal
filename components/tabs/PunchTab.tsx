@@ -21,9 +21,8 @@ interface TodayRecord {
 // パート休憩選択：松浦潤子(WC015)は40分固定でUI非表示、その他は退勤時必須
 const FIXED_BREAK_PART_CODE = 'WC015'
 const FIXED_BREAK_MINUTES = 40
-const isPartEmployee = (emp: any): boolean => emp?.employment_type === 'パート'
-const needsBreakSelection = (emp: any): boolean =>
-  isPartEmployee(emp) && emp?.employee_code !== FIXED_BREAK_PART_CODE
+// employment_type は localStorage の employee に含まれない可能性があるため
+// PunchTab 内で DB から再取得した値（empType state）で判定する。
 
 interface DialogState {
   message: string
@@ -154,6 +153,21 @@ export default function PunchTab({ employee }: { employee: any }) {
   const [daikyuHalf, setDaikyuHalf] = useState<'am' | 'pm' | null>(null)
   const [daikyuDate, setDaikyuDate] = useState('')
 
+  /* 雇用区分（localStorageに含まれないことがあるためDBから補完） */
+  const [empType, setEmpType] = useState<string | null>(employee?.employment_type ?? null)
+  useEffect(() => {
+    if (!employee?.id) return
+    if (employee.employment_type) { setEmpType(employee.employment_type); return }
+    supabase.from('employees')
+      .select('employment_type')
+      .eq('id', employee.id)
+      .maybeSingle()
+      .then(({ data }) => setEmpType(((data as any)?.employment_type as string) ?? null))
+  }, [employee?.id, employee?.employment_type])
+
+  const isPart = empType === 'パート'
+  const needsBreakUI = isPart && employee?.employee_code !== FIXED_BREAK_PART_CODE
+
   /* カスタムダイアログ */
   const [dialog, setDialog] = useState<DialogState | null>(null)
 
@@ -273,7 +287,7 @@ export default function PunchTab({ employee }: { employee: any }) {
     if (!employee) return
 
     // パート（松浦以外）は退勤時に休憩選択必須
-    if (type === 'out' && needsBreakSelection(employee)) {
+    if (type === 'out' && needsBreakUI) {
       if (todayRecord?.break_minutes_self_reported === null ||
           todayRecord?.break_minutes_self_reported === undefined) {
         setMessage({ text: '休憩を選択してから退勤してください', ok: false })
@@ -613,7 +627,7 @@ export default function PunchTab({ employee }: { employee: any }) {
       </div>
 
       {/* パート休憩自己申告（松浦以外、出勤済み時のみ） */}
-      {needsBreakSelection(employee) && status === 'in' && (
+      {needsBreakUI && status === 'in' && (
         <div style={{
           maxWidth: 340, margin: '0 auto 24px', padding: '12px 14px',
           borderRadius: 8, border: `1px solid ${T.border}`, backgroundColor: '#fff',
@@ -644,7 +658,7 @@ export default function PunchTab({ employee }: { employee: any }) {
       )}
 
       {/* パート残業申請（パート全員、出勤済み時のみ） */}
-      {isPartEmployee(employee) && status === 'in' && (
+      {isPart && status === 'in' && (
         <div style={{
           maxWidth: 340, margin: '0 auto 24px', padding: '12px 14px',
           borderRadius: 8, border: `1px solid ${T.border}`, backgroundColor: '#fff',

@@ -1298,7 +1298,8 @@ export default function AdminTab({ employee }: { employee: any }) {
   const visibleTabs = ALL_SUB_TABS.filter(t => {
     // シフト管理はWC001も閲覧可
     if (t.id === "shift") return isOwner || isWcOwner;
-    if (t.visibleTo === "wc_owner") return isWcOwner || myCode === "W67";
+    // 給与管理 / 残業承認: WC001（小川）+ SUPER_CODES（W02 桑原・W49 岩永・W67 池邉）
+    if (t.visibleTo === "wc_owner") return isWcOwner || isSuper;
     if (t.visibleTo === "owner_only") return isOwner;
     if (t.visibleTo === "owner_or_kondo") return isOwner;
     if (t.visibleTo === "super_only") return isOwner || isSuper;

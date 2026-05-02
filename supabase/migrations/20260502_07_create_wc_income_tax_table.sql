@@ -18,3 +18,6 @@ CREATE TABLE IF NOT EXISTS public.wc_income_tax_table (
 );
 
 COMMENT ON TABLE public.wc_income_tax_table IS '源泉徴収税額表（月額・甲欄）。範囲 [bracket_min, bracket_max) で扶養人数0〜7に対応';
+
+-- RLS 無効化（wc_payroll_function が SECURITY DEFINER で参照するが念のため）
+ALTER TABLE public.wc_income_tax_table DISABLE ROW LEVEL SECURITY;

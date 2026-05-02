@@ -67,9 +67,10 @@ function currentYM(): string {
 
 export default function PayrollSub({ employee }: { employee: any }) {
   const [tab, setTab] = useState<Tab>("calc");
-  const isOgawa = employee?.employee_code === "WC001";
+  const myCode = employee?.employee_code || "";
+  const isWcAdmin = myCode === "WC001" || ["W02", "W49", "W67"].includes(myCode);
 
-  if (!isOgawa && employee?.employee_code !== "W67") {
+  if (!isWcAdmin) {
     return <div style={{ padding: 24, color: T.textSec, fontSize: 13 }}>給与管理は権限がありません。</div>;
   }
 

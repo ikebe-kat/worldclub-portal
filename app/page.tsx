@@ -20,7 +20,7 @@ export default function LoginPage() {
         try {
           const { data, error } = await supabase
             .from('employees')
-            .select('id, employee_code, full_name, full_name_kana, department, position, store_id, company_id, holiday_calendar, holiday_pattern, work_pattern_code, requires_punch, role, portal_group_id, stores(store_name)')
+            .select('id, employee_code, full_name, full_name_kana, department, position, employment_type, store_id, company_id, holiday_calendar, holiday_pattern, work_pattern_code, requires_punch, role, portal_group_id, stores(store_name)')
             .eq('portal_group_id', portalToken)
             .eq('company_id', COMPANY_ID)
             .maybeSingle();
@@ -60,7 +60,7 @@ export default function LoginPage() {
 
     const { data, error: dbError } = await supabase
       .from('employees')
-      .select('id, employee_code, full_name, full_name_kana, department, position, store_id, company_id, holiday_calendar, holiday_pattern, work_pattern_code, requires_punch, role, portal_group_id, stores(store_name)')
+      .select('id, employee_code, full_name, full_name_kana, department, position, employment_type, store_id, company_id, holiday_calendar, holiday_pattern, work_pattern_code, requires_punch, role, portal_group_id, stores(store_name)')
       .eq('employee_code', code)
       .eq('company_id', COMPANY_ID)
       .maybeSingle()

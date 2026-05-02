@@ -11,10 +11,17 @@
 --   3. 結果件数を返す
 -- ═══════════════════════════════════════════════════════════════
 
+-- ※ SECURITY DEFINER: supabase.rpc 経由の anon/authenticated ロール実行で
+--    wc_* テーブルが RLS により 0 行に見える問題を回避するため、
+--    関数は所有者（postgres）権限で実行する。
+--    search_path も明示し、不正な schema での解決を防ぐ。
+
 CREATE OR REPLACE FUNCTION public.wc_fn_lookup_income_tax(
   p_taxable integer, p_dependents integer
 ) RETURNS integer
 LANGUAGE plpgsql STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_dep integer := LEAST(GREATEST(p_dependents, 0), 7);
@@ -52,6 +59,8 @@ CREATE OR REPLACE FUNCTION public.wc_fn_calculate_monthly_payroll(
   p_caller_id    uuid
 ) RETURNS integer
 LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_company_id uuid := 'c2d368f0-aa9b-4f70-b082-43ec07723d6c'::uuid;
@@ -245,4 +254,8 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.wc_fn_calculate_monthly_payroll IS
-  'worldclub: 月次給与計算（前月21日〜当月20日、当月末日支給）。draftのみ更新';
+  'worldclub: 月次給与計算（前月21日〜当月20日、当月末日支給）。draftのみ更新。SECURITY DEFINERでRLSをバイパス';
+
+-- 認証済みユーザーがRPC経由で実行できるように
+GRANT EXECUTE ON FUNCTION public.wc_fn_calculate_monthly_payroll(text, uuid) TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.wc_fn_lookup_income_tax(integer, integer)   TO authenticated, anon;

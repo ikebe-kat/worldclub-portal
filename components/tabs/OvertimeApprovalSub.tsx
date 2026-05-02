@@ -28,7 +28,9 @@ export default function OvertimeApprovalSub({ employee }: { employee: any }) {
   const [rejectText, setRejectText] = useState("");
   const [dialog, setDialog] = useState<{ message: string } | null>(null);
 
-  const isOgawa = employee?.employee_code === "WC001";
+  const myCode = employee?.employee_code || "";
+  const isOgawa = myCode === "WC001";
+  const isWcAdmin = isOgawa || ["W02", "W49", "W67"].includes(myCode);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -88,8 +90,8 @@ export default function OvertimeApprovalSub({ employee }: { employee: any }) {
     setRejectFor(null); setRejectText(""); load();
   };
 
-  if (!isOgawa) {
-    return <div style={{ padding: 24, color: T.textSec, fontSize: 13 }}>残業承認は小川さんのみ操作できます。</div>;
+  if (!isWcAdmin) {
+    return <div style={{ padding: 24, color: T.textSec, fontSize: 13 }}>残業承認は権限がありません。</div>;
   }
 
   return (

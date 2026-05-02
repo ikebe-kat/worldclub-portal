@@ -135,3 +135,14 @@ COMMENT ON TABLE public.wc_payroll_global   IS 'worldclub: 全社給与設定';
 COMMENT ON TABLE public.wc_payroll_monthly  IS 'worldclub: 月次給与計算結果';
 COMMENT ON TABLE public.wc_overtime_requests IS 'worldclub: パートの残業事前/当日申請';
 COMMENT ON TABLE public.wc_jp_holidays      IS 'worldclub: 日本の祝日（土日扱い判定用）';
+
+-- ── RLS は明示的に無効化 ───────────────────────────────────
+-- これらのテーブルは worldclub 専用＋管理者のみが操作するため、
+-- 行レベルセキュリティではなく アプリ層 + 関数の SECURITY DEFINER で制御する。
+-- Supabase のプロジェクト設定で auto-RLS が ON になっていても、ここで明示的に OFF にする。
+ALTER TABLE public.wc_payroll_settings   DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.wc_payroll_global     DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.wc_payroll_monthly    DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.wc_overtime_requests  DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.wc_jp_holidays        DISABLE ROW LEVEL SECURITY;
+-- ※ wc_income_tax_table は migration 07 で同様に DISABLE する
