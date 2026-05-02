@@ -100,7 +100,7 @@ function EditableCell({ value, display, onSave, baseStyle, parse, step = "1", di
       const el = inputRef.current;
       if (!el) return;
       // グローバル `input { font-size: 16px !important }` を上書き（セル幅維持の要）
-      el.style.setProperty("font-size", "10px", "important");
+      el.style.setProperty("font-size", "inherit", "important");
       el.style.setProperty("padding", "0", "important");
       el.style.setProperty("margin",  "0", "important");
       el.focus();
@@ -518,7 +518,7 @@ function MasterView({ employee: _employee }: { employee: any }) {
         value={v}
         display={yen(v) + suffix}
         onSave={(n) => updateField(r, field, n)}
-        baseStyle={{ ...tdStyle, textAlign: "right" }}
+        baseStyle={{ ...tdStyle, textAlign: "right", minWidth: 76, maxWidth: 76, overflow: "hidden" }}
       />
     );
   };
@@ -573,20 +573,24 @@ function MasterView({ employee: _employee }: { employee: any }) {
                     />
                   </td>
                   <NumCell r={r} field="scheduled_minutes" />
-                  {/* 休憩固定: nullable */}
-                  <td style={{ ...tdStyle, textAlign: "right" }}>
-                    <input
-                      type="number"
-                      defaultValue={r.break_minutes_fixed ?? ""}
-                      placeholder="申告制"
-                      onBlur={e => {
-                        const raw = e.target.value;
-                        const v = raw === "" ? null : parseInt(raw, 10);
-                        if (v !== r.break_minutes_fixed) updateField(r, "break_minutes_fixed", v);
-                      }}
-                      style={{ width: 60, fontSize: 11, padding: 1, border: `1px solid ${T.border}`, textAlign: "right" }}
-                    />
-                  </td>
+                  {/* 休憩固定: 正社員=60分固定(読取専用)、パート=編集可(NULLなら申告制) */}
+                  {r.employment_type === "正社員" ? (
+                    <td style={{ ...tdStyle, textAlign: "right" }}>60分固定</td>
+                  ) : (
+                    <td style={{ ...tdStyle, textAlign: "right" }}>
+                      <input
+                        type="number"
+                        defaultValue={r.break_minutes_fixed ?? ""}
+                        placeholder="申告制"
+                        onBlur={e => {
+                          const raw = e.target.value;
+                          const v = raw === "" ? null : parseInt(raw, 10);
+                          if (v !== r.break_minutes_fixed) updateField(r, "break_minutes_fixed", v);
+                        }}
+                        style={{ width: 60, fontSize: 11, padding: 1, border: `1px solid ${T.border}`, textAlign: "right" }}
+                      />
+                    </td>
+                  )}
                   <NumCell r={r} field="social_insurance" />
                   <NumCell r={r} field="resident_tax" />
                   <NumCell r={r} field="car_deduction" />
