@@ -6,10 +6,7 @@ import Dialog from "@/components/ui/Dialog";
 
 const DOW = ["日","月","火","水","木","金","土"];
 
-const CALENDAR_TYPES = [
-  "営業フロント", "サービス", "鈑金塗装部", "インシュアランス部",
-  "人事総務", "財務経理", "DX", "代表取締役", "パート水曜定休",
-];
+const CALENDAR_TYPES = ["全員共通"];
 
 /* ══════════════════════════════════════ */
 /* ── 休日カレンダー設定 ── */
@@ -90,13 +87,7 @@ const HolidayCalendarSection = ({ employee }: { employee: any }) => {
   return (
     <div>
       <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
-        <select
-          value={calType}
-          onChange={(e) => setCalType(e.target.value)}
-          style={{ padding: "8px 12px", borderRadius: 6, border: `1px solid ${T.border}`, fontSize: 13, color: T.text }}
-        >
-          {CALENDAR_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-        </select>
+        <span style={{ padding: "8px 12px", borderRadius: 6, border: `1px solid ${T.border}`, fontSize: 13, color: T.text, backgroundColor: "#fff" }}>全員共通</span>
         <button onClick={() => goMonth(-1)} style={{ width: 30, height: 30, border: `1px solid ${T.border}`, borderRadius: 6, backgroundColor: "#fff", cursor: "pointer", fontSize: 13, color: T.textSec, display: "flex", alignItems: "center", justifyContent: "center" }}>◀</button>
         <span style={{ fontSize: 15, fontWeight: 700, color: T.text, minWidth: 90, textAlign: "center" }}>{yr}年{mo}月</span>
         <button onClick={() => goMonth(1)} style={{ width: 30, height: 30, border: `1px solid ${T.border}`, borderRadius: 6, backgroundColor: "#fff", cursor: "pointer", fontSize: 13, color: T.textSec, display: "flex", alignItems: "center", justifyContent: "center" }}>▶</button>

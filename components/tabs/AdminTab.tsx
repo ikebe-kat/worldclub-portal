@@ -1310,12 +1310,10 @@ export default function AdminTab({ employee }: { employee: any }) {
   // 給与管理タブは Excel 横長一覧を出すので、960px 制約は外して画面幅近くまで広げ、
   // ただし常識的な左右 12px の余白は確保する（box-sizing でその余白が viewport から内側に効く）。
   // テーブル側は table-layout:fixed と小フォント・ヘッダー折り返しで 30列を viewport-24px 内に収める。
-  const isWideSub = sub === "wc_payroll";
   return (
     <div style={{
       padding: "16px 12px",
-      maxWidth: isWideSub ? "100%" : 960,
-      width: isWideSub ? "100%" : undefined,
+      maxWidth: 960,
       boxSizing: "border-box",
       margin: "0 auto",
     }}>

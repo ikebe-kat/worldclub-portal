@@ -372,8 +372,8 @@ function CalcView({ employee }: { employee: any }) {
       ) : (
         <div style={{ overflowX: "auto", width: "100%", maxWidth: "100%" }}>
           <table style={{
-            width: "100%", borderCollapse: "collapse", fontSize: 10,
-            backgroundColor: "#fff", tableLayout: "fixed",
+            borderCollapse: "collapse", fontSize: 10,
+            backgroundColor: "#fff", minWidth: 1200,
           }}>
             <thead>
               <tr>
@@ -529,7 +529,7 @@ function MasterView({ employee: _employee }: { employee: any }) {
         <div style={{ textAlign: "center", padding: 40, color: T.textSec }}>読み込み中...</div>
       ) : (
         <div style={{ overflowX: "auto", width: "100%", maxWidth: "100%" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, backgroundColor: "#fff" }}>
+          <table style={{ borderCollapse: "collapse", fontSize: 11, backgroundColor: "#fff", minWidth: 1100 }}>
             <thead>
               <tr style={{ backgroundColor: T.primary, color: "#fff" }}>
                 {[
