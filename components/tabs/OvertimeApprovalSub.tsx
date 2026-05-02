@@ -27,6 +27,7 @@ export default function OvertimeApprovalSub({ employee }: { employee: any }) {
   const [rejectFor, setRejectFor] = useState<OvertimeReq | null>(null);
   const [rejectText, setRejectText] = useState("");
   const [dialog, setDialog] = useState<{ message: string } | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const myCode = employee?.employee_code || "";
   const isOgawa = myCode === "WC001";
@@ -34,28 +35,39 @@ export default function OvertimeApprovalSub({ employee }: { employee: any }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const q = supabase
+    setLoadError(null);
+
+    const { data: empData } = await supabase
+      .from("employees")
+      .select("id, employee_code, full_name")
+      .eq("company_id", COMPANY_ID);
+    const empMap: Record<string, { code: string; name: string }> = {};
+    (empData || []).forEach((e: any) => { empMap[e.id] = { code: e.employee_code, name: e.full_name }; });
+
+    let q = supabase
       .from("wc_overtime_requests")
-      .select("id, employee_id, attendance_date, status, reason, reject_reason, created_at, employees!inner(full_name, employee_code)")
+      .select("id, employee_id, attendance_date, status, reason, reject_reason, created_at")
       .eq("company_id", COMPANY_ID)
-      .order("attendance_date", { ascending: false })
+      .order("created_at", { ascending: false })
       .limit(200);
-    const { data, error } = await (filter === "pending" ? q.eq("status", "pending") : q);
+    if (filter === "pending") q = q.eq("status", "pending");
+    const { data, error } = await q;
+
     setLoading(false);
     if (error) {
       console.error("[OvertimeApprovalSub] load error:", error);
+      setLoadError("���ータ取得エラー: " + error.message);
       return;
     }
     setReqs(((data || []) as any[]).map(r => ({
       ...r,
-      full_name: r.employees?.full_name,
-      employee_code: r.employees?.employee_code,
+      full_name: empMap[r.employee_id]?.name || "不明",
+      employee_code: empMap[r.employee_id]?.code || "—",
     })));
   }, [filter]);
 
   useEffect(() => { load(); }, [load]);
 
-  // リアルタイム購読
   useEffect(() => {
     const ch = supabase.channel("wc_overtime_requests_admin")
       .on("postgres_changes", { event: "*", schema: "public", table: "wc_overtime_requests", filter: `company_id=eq.${COMPANY_ID}` },
@@ -72,7 +84,7 @@ export default function OvertimeApprovalSub({ employee }: { employee: any }) {
       reject_reason: null,
       updated_at: new Date().toISOString(),
     }).eq("id", r.id);
-    if (error) { setDialog({ message: "承認に失敗: " + error.message }); return; }
+    if (error) { setDialog({ message: "承認に��敗: " + error.message }); return; }
     load();
   };
 
@@ -107,6 +119,10 @@ export default function OvertimeApprovalSub({ employee }: { employee: any }) {
           }}>{f === "pending" ? "申請中" : "全件"}</button>
         ))}
       </div>
+
+      {loadError && (
+        <div style={{ padding: 12, marginBottom: 12, borderRadius: 6, backgroundColor: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", fontSize: 12 }}>{loadError}</div>
+      )}
 
       {loading ? (
         <div style={{ textAlign: "center", padding: 40, color: T.textSec }}>読み込み中...</div>
@@ -156,11 +172,11 @@ export default function OvertimeApprovalSub({ employee }: { employee: any }) {
       {rejectFor && (
         <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000 }} onClick={() => setRejectFor(null)}>
           <div style={{ backgroundColor: "#fff", borderRadius: 8, padding: "24px 20px", width: "100%", maxWidth: 320 }} onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize: 14, color: T.text, marginBottom: 14, textAlign: "center" }}>却下理由を入力</div>
+            <div style={{ fontSize: 14, color: T.text, marginBottom: 14, textAlign: "center" }}>却下理由��入力</div>
             <textarea value={rejectText} onChange={e => setRejectText(e.target.value)} placeholder="却下理由"
               style={{ width: "100%", padding: "8px 10px", borderRadius: 4, border: `1px solid ${T.border}`, fontSize: 13, minHeight: 56, marginBottom: 14, boxSizing: "border-box" }} />
             <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => setRejectFor(null)} style={{ flex: 1, padding: 12, borderRadius: 4, border: `1px solid ${T.border}`, backgroundColor: "#fff", color: T.textSec, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>キャンセル</button>
+              <button onClick={() => setRejectFor(null)} style={{ flex: 1, padding: 12, borderRadius: 4, border: `1px solid ${T.border}`, backgroundColor: "#fff", color: T.textSec, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>キャンセ��</button>
               <button onClick={reject} style={{ flex: 1, padding: 12, borderRadius: 4, border: "none", backgroundColor: T.danger, color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>却下</button>
             </div>
           </div>
