@@ -66,7 +66,9 @@ BEGIN
   NEW.break_minutes := v_break_min;
 
   -- 実労働分
-  v_work_min := (EXTRACT(EPOCH FROM (NEW.punch_out - NEW.punch_in)) / 60)::int - v_break_min;
+  -- ※ punch_in/punch_out は text または time のどちらの可能性もあるため
+  --   ::time でキャスト（time→time は no-op、text→time は "HH:MM"/"HH:MM:SS" を解釈）
+  v_work_min := (EXTRACT(EPOCH FROM (NEW.punch_out::time - NEW.punch_in::time)) / 60)::int - v_break_min;
   IF v_work_min < 0 THEN v_work_min := 0; END IF;
   NEW.actual_hours := round((v_work_min::numeric / 60.0)::numeric, 2);
 
@@ -78,8 +80,8 @@ BEGIN
          AND o.attendance_date = NEW.attendance_date
          AND o.status          = 'approved'
     ) INTO v_overtime_approved;
-    IF v_overtime_approved AND NEW.punch_out > v_scheduled_end THEN
-      v_overtime_min := (EXTRACT(EPOCH FROM (NEW.punch_out - v_scheduled_end)) / 60)::int;
+    IF v_overtime_approved AND NEW.punch_out::time > v_scheduled_end THEN
+      v_overtime_min := (EXTRACT(EPOCH FROM (NEW.punch_out::time - v_scheduled_end)) / 60)::int;
       IF v_overtime_min < 0 THEN v_overtime_min := 0; END IF;
     END IF;
   END IF;

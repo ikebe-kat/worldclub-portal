@@ -11,13 +11,15 @@ WITH wc AS (
     'c2d368f0-aa9b-4f70-b082-43ec07723d6c'::uuid AS cid,
     '06027f43-fa49-4b2e-8009-903456b0ce33'::uuid AS sid
 )
+-- ※ 20260406_create_leave_requests.sql の table 定義に approver_id は無いので除外。
+--   reason カラムも初期定義には無いが本番DBには存在するため含める（ShiftSub.tsx も書き込み済み）。
 INSERT INTO public.leave_requests
   (company_id, store_id, employee_id, attendance_date, type, status, reason,
-   approved_by, approver_id, approved_at)
+   approved_by, approved_at)
 SELECT
   wc.cid, wc.sid, e.id, v.dt::date,
   'yukyu', 'approved', '有給（全日）',
-  e.id, e.id, now()
+  e.id, now()
 FROM wc
 CROSS JOIN (VALUES
   ('WC002', '2026-05-18'),
