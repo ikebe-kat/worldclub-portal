@@ -11,15 +11,19 @@ import SharoushiSub from "@/components/tabs/SharoushiSub";
 import EmployeeManageSub from "@/components/tabs/EmployeeManageSub";
 import SettingsSub from "@/components/tabs/SettingsSub";
 import ShiftSub from "@/components/tabs/ShiftSub";
+import OvertimeApprovalSub from "@/components/tabs/OvertimeApprovalSub";
+import PayrollSub from "@/components/tabs/PayrollSub";
 
 interface EmpOption { id: string; code: string; name: string; store_id: string; store_name: string; department: string | null; role: string | null; hire_date: string | null; paid_leave_grant_date: string | null; holiday_calendar: string | null; }
 interface AttRow { id: string; attendance_date: string; day_of_week: string | null; punch_in: string | null; punch_out: string | null; reason: string | null; break_minutes: number | null; late_minutes: number | null; early_leave_minutes: number | null; actual_hours: number | null; scheduled_hours: number | null; overtime_hours: number | null; over_under: number | null; employee_note: string | null; admin_memo: string | null; is_holiday: boolean | null; work_pattern_code: string | null; }
 
-type SubTab = "notifications" | "paidleave" | "shift" | "sharoushi" | "individual" | "daily" | "monthly" | "requests" | "documents" | "employee_manage" | "settings";
-const ALL_SUB_TABS: { id: SubTab; label: string; visibleTo: "owner_only" | "super_only" | "all" }[] = [
+type SubTab = "notifications" | "paidleave" | "shift" | "wc_overtime" | "wc_payroll" | "sharoushi" | "individual" | "daily" | "monthly" | "requests" | "documents" | "employee_manage" | "settings";
+const ALL_SUB_TABS: { id: SubTab; label: string; visibleTo: "owner_only" | "super_only" | "all" | "owner_or_kondo" | "wc_owner" }[] = [
   { id: "notifications", label: "お知らせ", visibleTo: "owner_or_kondo" },
   { id: "paidleave", label: "有給管理", visibleTo: "owner_or_kondo" },
   { id: "shift", label: "シフト管理", visibleTo: "owner_or_kondo" },
+  { id: "wc_overtime", label: "残業承認", visibleTo: "wc_owner" },
+  { id: "wc_payroll", label: "給与管理", visibleTo: "wc_owner" },
   { id: "sharoushi", label: "社労士出力", visibleTo: "owner_only" },
   { id: "individual", label: "個人出勤簿", visibleTo: "all" },
   { id: "daily", label: "日次一覧", visibleTo: "all" },
@@ -1294,6 +1298,7 @@ export default function AdminTab({ employee }: { employee: any }) {
   const visibleTabs = ALL_SUB_TABS.filter(t => {
     // シフト管理はWC001も閲覧可
     if (t.id === "shift") return isOwner || isWcOwner;
+    if (t.visibleTo === "wc_owner") return isWcOwner || myCode === "W67";
     if (t.visibleTo === "owner_only") return isOwner;
     if (t.visibleTo === "owner_or_kondo") return isOwner;
     if (t.visibleTo === "super_only") return isOwner || isSuper;
@@ -1309,6 +1314,8 @@ export default function AdminTab({ employee }: { employee: any }) {
       {sub === "notifications" && <NotificationsSub employee={employee} />}
       {sub === "paidleave" && <PaidLeaveSub employee={employee} />}
       {sub === "shift" && <ShiftSub employee={employee} />}
+      {sub === "wc_overtime" && <OvertimeApprovalSub employee={employee} />}
+      {sub === "wc_payroll" && <PayrollSub employee={employee} />}
       {sub === "sharoushi" && <SharoushiSub employee={employee} />}
       {sub === "individual" && <IndividualSub employee={employee} />}
       {sub === "daily" && <DailySub employee={employee} />}

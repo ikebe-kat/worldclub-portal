@@ -42,4 +42,6 @@ next-env.d.ts
 
 .vercel
 
-supabase/
+supabase/*
+!supabase/migrations/
+!supabase/functions/

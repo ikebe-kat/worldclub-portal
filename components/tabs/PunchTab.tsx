@@ -15,7 +15,15 @@ interface TodayRecord {
   punch_in: string | null
   punch_out: string | null
   reason: string | null
+  break_minutes_self_reported: number | null
 }
+
+// パート休憩選択：松浦潤子(WC015)は40分固定でUI非表示、その他は退勤時必須
+const FIXED_BREAK_PART_CODE = 'WC015'
+const FIXED_BREAK_MINUTES = 40
+const isPartEmployee = (emp: any): boolean => emp?.employment_type === 'パート'
+const needsBreakSelection = (emp: any): boolean =>
+  isPartEmployee(emp) && emp?.employee_code !== FIXED_BREAK_PART_CODE
 
 interface DialogState {
   message: string
@@ -180,7 +188,7 @@ export default function PunchTab({ employee }: { employee: any }) {
 
     const { data, error } = await supabase
       .from('attendance_daily')
-      .select('id, punch_in, punch_out, reason')
+      .select('id, punch_in, punch_out, reason, break_minutes_self_reported')
       .eq('employee_id', employeeId)
       .eq('attendance_date', today)
       .maybeSingle()
@@ -200,15 +208,79 @@ export default function PunchTab({ employee }: { employee: any }) {
             punch_in: data.punch_in ? data.punch_in.slice(0, 5) : null,
             punch_out: data.punch_out ? data.punch_out.slice(0, 5) : null,
             reason: data.reason ?? null,
+            break_minutes_self_reported: (data as any).break_minutes_self_reported ?? null,
           }
         : null
     )
+    // 残業申請の状態を取得
+    if (employee?.id) fetchOvertimeStatus(employee.id)
+  }
+
+  // ─── 残業申請状態 ─────────────────────────────────────────────────────────
+
+  const [overtimeStatus, setOvertimeStatus] = useState<'none' | 'pending' | 'approved' | 'rejected'>('none')
+  const [overtimeRequesting, setOvertimeRequesting] = useState(false)
+
+  const fetchOvertimeStatus = async (employeeId: string) => {
+    const today = toDateStr(new Date())
+    const { data } = await supabase
+      .from('wc_overtime_requests')
+      .select('status')
+      .eq('employee_id', employeeId)
+      .eq('attendance_date', today)
+      .maybeSingle()
+    setOvertimeStatus(data ? (data.status as any) : 'none')
+  }
+
+  const requestOvertime = async () => {
+    if (!employee?.id) return
+    setOvertimeRequesting(true)
+    const today = toDateStr(new Date())
+    const { error } = await supabase.from('wc_overtime_requests').insert({
+      company_id: employee.company_id,
+      employee_id: employee.id,
+      attendance_date: today,
+      status: 'pending',
+    })
+    setOvertimeRequesting(false)
+    if (error) {
+      setMessage({ text: '残業申請に失敗: ' + error.message, ok: false })
+      return
+    }
+    setOvertimeStatus('pending')
+    setMessage({ text: '残業申請を提出しました（小川さん承認待ち）', ok: true })
   }
 
   // ─── 打刻処理 ─────────────────────────────────────────────────────────────
 
+  const handleBreakSelect = async (minutes: number) => {
+    if (!todayRecord?.id) {
+      setMessage({ text: '先に出勤打刻をしてください', ok: false })
+      return
+    }
+    const { error } = await supabase
+      .from('attendance_daily')
+      .update({ break_minutes_self_reported: minutes, updated_at: new Date().toISOString() })
+      .eq('id', todayRecord.id)
+    if (error) {
+      setMessage({ text: '休憩の保存に失敗: ' + error.message, ok: false })
+      return
+    }
+    setTodayRecord({ ...todayRecord, break_minutes_self_reported: minutes })
+  }
+
   const handlePunch = async (type: 'in' | 'out') => {
     if (!employee) return
+
+    // パート（松浦以外）は退勤時に休憩選択必須
+    if (type === 'out' && needsBreakSelection(employee)) {
+      if (todayRecord?.break_minutes_self_reported === null ||
+          todayRecord?.break_minutes_self_reported === undefined) {
+        setMessage({ text: '休憩を選択してから退勤してください', ok: false })
+        return
+      }
+    }
+
     setPunching(true)
     setMessage(null)
 
@@ -218,6 +290,9 @@ export default function PunchTab({ employee }: { employee: any }) {
     const rounded = type === 'in' ? roundPunchIn(d) : roundPunchOut(d)
 
     try {
+      // 松浦潤子(WC015)は40分固定で先に書き込んでおく
+      const fixedBreak = (employee.employee_code === FIXED_BREAK_PART_CODE) ? FIXED_BREAK_MINUTES : null
+
       if (type === 'in') {
         if (todayRecord?.id) {
           const { error } = await supabase
@@ -237,12 +312,16 @@ export default function PunchTab({ employee }: { employee: any }) {
               punch_in_raw: rawTimestamp,
               punch_in: rounded,
               break_minutes: 60,
+              break_minutes_self_reported: fixedBreak,
             })
-            .select('id, punch_in, punch_out, reason')
+            .select('id, punch_in, punch_out, reason, break_minutes_self_reported')
             .maybeSingle()
           if (error) throw error
           if (!rec) throw new Error('insert succeeded but no data returned')
-          setTodayRecord({ id: rec.id, punch_in: rounded, punch_out: null, reason: null })
+          setTodayRecord({
+            id: rec.id, punch_in: rounded, punch_out: null, reason: null,
+            break_minutes_self_reported: (rec as any).break_minutes_self_reported ?? null,
+          })
           setMessage({ text: `出勤打刻しました　${rounded}`, ok: true })
           setPunching(false)
           return
@@ -266,12 +345,16 @@ export default function PunchTab({ employee }: { employee: any }) {
               punch_out_raw: rawTimestamp,
               punch_out: rounded,
               break_minutes: 60,
+              break_minutes_self_reported: fixedBreak,
             })
-            .select('id, punch_in, punch_out, reason')
+            .select('id, punch_in, punch_out, reason, break_minutes_self_reported')
             .maybeSingle()
           if (error) throw error
           if (!rec) throw new Error('insert succeeded but no data returned')
-          setTodayRecord({ id: rec.id, punch_in: null, punch_out: rounded, reason: null })
+          setTodayRecord({
+            id: rec.id, punch_in: null, punch_out: rounded, reason: null,
+            break_minutes_self_reported: (rec as any).break_minutes_self_reported ?? null,
+          })
           setMessage({ text: `退勤打刻しました　${rounded}`, ok: true })
           setPunching(false)
           return
@@ -528,6 +611,62 @@ export default function PunchTab({ employee }: { employee: any }) {
           <span style={{ fontSize: 14 }}>▼</span>{punching ? '...' : '退勤'}
         </button>
       </div>
+
+      {/* パート休憩自己申告（松浦以外、出勤済み時のみ） */}
+      {needsBreakSelection(employee) && status === 'in' && (
+        <div style={{
+          maxWidth: 340, margin: '0 auto 24px', padding: '12px 14px',
+          borderRadius: 8, border: `1px solid ${T.border}`, backgroundColor: '#fff',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: T.textSec }}>休憩</span>
+            {(todayRecord?.break_minutes_self_reported === null ||
+              todayRecord?.break_minutes_self_reported === undefined) && (
+              <span style={{ fontSize: 11, color: '#DC2626', fontWeight: 600 }}>※退勤前に必須</span>
+            )}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+            {[30, 45, 60].map(min => {
+              const selected = todayRecord?.break_minutes_self_reported === min
+              return (
+                <button key={min} onClick={() => handleBreakSelect(min)} style={{
+                  padding: '10px 0', borderRadius: 6, fontSize: 13, fontWeight: 600,
+                  cursor: 'pointer',
+                  border: selected ? 'none' : `1px solid ${T.border}`,
+                  backgroundColor: selected ? T.primary : '#fff',
+                  color: selected ? '#fff' : T.text,
+                  transition: 'all 0.15s',
+                }}>{min}分</button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* パート残業申請（パート全員、出勤済み時のみ） */}
+      {isPartEmployee(employee) && status === 'in' && (
+        <div style={{
+          maxWidth: 340, margin: '0 auto 24px', padding: '12px 14px',
+          borderRadius: 8, border: `1px solid ${T.border}`, backgroundColor: '#fff',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: T.textSec }}>残業申請</span>
+            <span style={{ fontSize: 11, color: T.textMuted }}>承認後に残業代計算</span>
+          </div>
+          {overtimeStatus === 'approved' ? (
+            <div style={{ padding: '10px 0', textAlign: 'center', fontSize: 13, color: '#16A34A', fontWeight: 600 }}>承認済み</div>
+          ) : overtimeStatus === 'pending' ? (
+            <div style={{ padding: '10px 0', textAlign: 'center', fontSize: 13, color: '#CA8A04', fontWeight: 600 }}>承認待ち</div>
+          ) : overtimeStatus === 'rejected' ? (
+            <div style={{ padding: '10px 0', textAlign: 'center', fontSize: 13, color: '#DC2626', fontWeight: 600 }}>却下されました</div>
+          ) : (
+            <button onClick={requestOvertime} disabled={overtimeRequesting} style={{
+              width: '100%', padding: '10px 0', borderRadius: 6, fontSize: 13, fontWeight: 600,
+              border: 'none', backgroundColor: T.primary, color: '#fff', cursor: 'pointer',
+            }}>{overtimeRequesting ? '申請中...' : '残業を申請する'}</button>
+          )}
+        </div>
+      )}
 
       {/* 休暇申請 */}
       <div style={{ maxWidth: 440, margin: '0 auto', textAlign: 'left' }}>
