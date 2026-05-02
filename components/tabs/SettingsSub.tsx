@@ -282,32 +282,9 @@ const VariableHoursSection = ({ employee }: { employee: any }) => {
 /* ── メインコンポーネント ── */
 /* ══════════════════════════════════════ */
 export default function SettingsSub({ employee }: { employee: any }) {
-  const [section, setSection] = useState<"holiday" | "variable">("holiday");
-
   return (
     <div>
-      <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
-        <button
-          onClick={() => setSection("holiday")}
-          style={{
-            padding: "8px 16px", borderRadius: 20, fontSize: 12, fontWeight: section === "holiday" ? 700 : 400,
-            cursor: "pointer", border: section === "holiday" ? `2px solid ${T.primary}` : `1px solid ${T.border}`,
-            backgroundColor: section === "holiday" ? T.primary + "15" : "#fff",
-            color: section === "holiday" ? T.primary : T.textSec,
-          }}
-        >休日カレンダー</button>
-        <button
-          onClick={() => setSection("variable")}
-          style={{
-            padding: "8px 16px", borderRadius: 20, fontSize: 12, fontWeight: section === "variable" ? 700 : 400,
-            cursor: "pointer", border: section === "variable" ? `2px solid ${T.primary}` : `1px solid ${T.border}`,
-            backgroundColor: section === "variable" ? T.primary + "15" : "#fff",
-            color: section === "variable" ? T.primary : T.textSec,
-          }}
-        >変形労働時間</button>
-      </div>
-      {section === "holiday" && <HolidayCalendarSection employee={employee} />}
-      {section === "variable" && <VariableHoursSection employee={employee} />}
+      <HolidayCalendarSection employee={employee} />
     </div>
   );
 }

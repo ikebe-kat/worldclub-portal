@@ -5,6 +5,8 @@ import Dialog from "@/components/ui/Dialog";
 import { supabase } from "@/lib/supabase";
 import NyushaSheetExport from "@/components/tabs/NyushaSheetExport";
 
+const COMPANY_ID = "c2d368f0-aa9b-4f70-b082-43ec07723d6c";
+
 /* ══════════════════════════════════════ */
 /* ── 選択肢定義（ハンドオフv15準拠） ── */
 /* ══════════════════════════════════════ */
@@ -356,19 +358,18 @@ export default function EmployeeManageSub({ employee }: { employee: any }) {
   const [dialogMsg, setDialogMsg] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
-    if (!employee?.company_id) return;
     setLoading(true);
-    const { data: sd } = await supabase.from("stores").select("id, store_name").eq("company_id", employee.company_id);
+    const { data: sd } = await supabase.from("stores").select("id, store_name").eq("company_id", COMPANY_ID);
     const storeList = (sd || []).map((s: any) => ({ id: s.id, name: s.store_name || "" }));
     setStores(storeList);
     const storeMap: Record<string, string> = {};
     storeList.forEach((s: { id: string; name: string }) => { storeMap[s.id] = s.name; });
     const { data: ed } = await supabase.from("employees")
       .select("id, company_id, store_id, employee_code, full_name, full_name_kana, email, phone, gender, birth_date, hire_date, employment_type, position, department, grade, weekly_work_days, weekly_work_hours, paid_leave_grant_date, work_pattern_code, holiday_pattern, holiday_calendar, role, requires_punch, is_active, postal_code, address, emergency_contact_name, emergency_contact_phone, emergency_contact_relation, bank_name, bank_branch, bank_account_type, bank_account_number, bank_account_holder, basic_pension_number, employment_insurance_number, photo_url, resigned_at, pin, skills, my_number, insurance_card_requested")
-      .eq("company_id", employee.company_id).order("employee_code");
+      .eq("company_id", COMPANY_ID).order("employee_code");
     setEmps((ed || []).map((e: any) => ({ ...e, store_name: storeMap[e.store_id] || "" })));
     setLoading(false);
-  }, [employee?.company_id]);
+  }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -424,9 +425,9 @@ export default function EmployeeManageSub({ employee }: { employee: any }) {
           </table>
         </div></div>
       )}
-      {editEmp && <EditForm emp={isNew ? null : editEmp} stores={stores} isNew={isNew} onClose={() => { setEditEmp(null); setIsNew(false); }} onSaved={handleSaved} companyId={employee.company_id} />}
+      {editEmp && <EditForm emp={isNew ? null : editEmp} stores={stores} isNew={isNew} onClose={() => { setEditEmp(null); setIsNew(false); }} onSaved={handleSaved} companyId={COMPANY_ID} />}
       {resignEmp && <ResignModal emp={resignEmp} onClose={() => setResignEmp(null)} onSaved={handleSaved} />}
-      {detailEmp && <EmpDetailModal emp={detailEmp} companyId={employee.company_id} uploaderName={employee.full_name || ""} onClose={() => setDetailEmp(null)} onMsg={setDialogMsg} />}
+      {detailEmp && <EmpDetailModal emp={detailEmp} companyId={COMPANY_ID} uploaderName={employee.full_name || ""} onClose={() => setDetailEmp(null)} onMsg={setDialogMsg} />}
       {dialogMsg && <Dialog message={dialogMsg} onOk={() => setDialogMsg(null)} />}
       <style>{`@keyframes slideUp{from{transform:translateY(30px);opacity:0}to{transform:translateY(0);opacity:1}}@keyframes fadeIn{from{opacity:0}to{opacity:1}}`}</style>
     </div>

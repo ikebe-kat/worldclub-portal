@@ -6,6 +6,8 @@ import { T, DOW } from '@/lib/constants'
 import { ReasonBadges } from '@/components/ui'
 import Dialog from '@/components/ui/Dialog'
 
+const PUSH_URL = "https://pktqlbpdjemmomfanvgt.supabase.co/functions/v1/send-push";
+
 // ─── 型 ──────────────────────────────────────────────────────────────────────
 
 type PunchStatus = 'unset' | 'in' | 'both'
@@ -489,19 +491,6 @@ export default function PunchTab({ employee }: { employee: any }) {
   const submitReason = async () => {
     if (!previewReason) return
 
-    if (selKinmu.includes('出張')) {
-      if (!shucchoFrom) { showAlert('開始日を選択してください'); return }
-      const f = new Date(shucchoFrom), t = new Date(shucchoTo || shucchoFrom)
-      if (f > t) { showAlert('日付が正しくありません'); return }
-      const diffDays = Math.round((t.getTime() - f.getTime()) / 86400000) + 1
-      if (diffDays > 14) { showAlert('一度に登録できるのは14日間までです'); return }
-      const confirmMsg = `出張${shucchoWhere ? `（${shucchoWhere}）` : ''}\n${shucchoFrom} 〜 ${shucchoTo || shucchoFrom}（${diffDays}日間）\n\n登録しますか？`
-      showConfirm(confirmMsg, doShucchoBatch, '登録')
-      return
-    }
-
-    if (daikyuMode === 'half' && !daikyuHalf) { showAlert('午前か午後を選択してください'); return }
-
     const todayStr = toDateStr(new Date())
     const todayDate = new Date()
 
@@ -512,7 +501,21 @@ export default function PunchTab({ employee }: { employee: any }) {
       reason: previewReason, employee_note: memoNote || null, updated_at: new Date().toISOString(),
     }, { onConflict: 'employee_id,attendance_date' })
     setSaving(false)
-    if (!error) { setModalOpen(false); fetchTodayRecord(employee.id); setMessage({ text: '申請を登録しました', ok: true }) }
+    if (!error) {
+      setModalOpen(false); fetchTodayRecord(employee.id); setMessage({ text: '申請を登録しました', ok: true })
+      fetch(PUSH_URL, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "wc_leave_request",
+          payload: {
+            company_id: employee.company_id,
+            employee_name: employee.full_name,
+            reason: previewReason,
+            attendance_date: todayStr,
+          },
+        }),
+      }).catch(() => {})
+    }
     else { showAlert('登録に失敗しました: ' + error.message) }
   }
 
@@ -682,29 +685,22 @@ export default function PunchTab({ employee }: { employee: any }) {
         </div>
       )}
 
-      {/* 休暇申請 */}
+      {/* 申請ボタン */}
       <div style={{ maxWidth: 440, margin: '0 auto', textAlign: 'left' }}>
-        <Dot color="#EF4444" label="休暇申請" />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 24 }}>
-          {['有給（全日）', '午前有給', '午後有給', '希望休（全日）', '午前希望休', '午後希望休'].map(l => (
-            <button key={l} onClick={() => openModal(l)} style={{
+        <Dot color="#EF4444" label="申請" />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          {[
+            { label: '有給申請（全日）', chip: '有給（全日）' },
+            { label: '遅刻申請', chip: '遅刻' },
+            { label: '早退申請', chip: '早退' },
+            { label: '欠勤申請', chip: '欠勤' },
+          ].map(b => (
+            <button key={b.chip} onClick={() => openModal(b.chip)} style={{
               padding: '13px 6px', borderRadius: '6px',
               border: `1px solid ${T.border}`, backgroundColor: '#fff',
               color: T.text, fontSize: 12, fontWeight: 500,
               cursor: 'pointer', transition: 'all 0.15s',
-            }}>{l}</button>
-          ))}
-        </div>
-
-        <Dot color="#22C55E" label="勤務申請" />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-          {['出張', '休日出勤', '代休', '遅刻', '早退', '欠勤'].map(l => (
-            <button key={l} onClick={() => openModal(l)} style={{
-              padding: '13px 6px', borderRadius: '6px',
-              border: `1px solid ${T.border}`, backgroundColor: '#fff',
-              color: T.text, fontSize: 12, fontWeight: 500,
-              cursor: 'pointer', transition: 'all 0.15s',
-            }}>{l}</button>
+            }}>{b.label}</button>
           ))}
         </div>
       </div>
@@ -717,7 +713,7 @@ export default function PunchTab({ employee }: { employee: any }) {
             onClick={e => e.stopPropagation()}>
 
             <div style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: T.border, margin: '0 auto 16px' }} />
-            <div style={{ fontSize: 17, fontWeight: 700, color: T.text, marginBottom: 4 }}>休暇・勤務申請</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: T.text, marginBottom: 4 }}>申請</div>
             <div style={{ fontSize: 13, color: T.textSec, marginBottom: 16 }}>
               {todayDate.getFullYear()}年{todayDate.getMonth() + 1}月{todayDate.getDate()}日（{DOW[todayDate.getDay()]}）
             </div>
@@ -727,57 +723,14 @@ export default function PunchTab({ employee }: { employee: any }) {
               {previewReason ? <ReasonBadges reason={previewReason} /> : <span style={{ fontSize: 13, color: T.textMuted }}>事由を選択してください</span>}
             </div>
 
-            <Dot color={T.holidayRed} label="休暇申請" />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
-              <Chip label="有給（全日）" selected={selZenjitsu === '有給（全日）'} color={T.yukyuBlue} onClick={() => toggleZenjitsu('有給（全日）')} />
-              <Chip label="希望休（全日）" selected={selZenjitsu === '希望休（全日）'} color={T.kibouYellow} onClick={() => toggleZenjitsu('希望休（全日）')} />
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
-              <Chip label="午前有給" selected={selGozen === '午前有給'} color={T.yukyuBlue} onClick={() => toggleGozen('午前有給')} />
-              <Chip label="午前希望休" selected={selGozen === '午前希望休'} color={T.kibouYellow} onClick={() => toggleGozen('午前希望休')} />
-            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20 }}>
-              <Chip label="午後有給" selected={selGogo === '午後有給'} color={T.yukyuBlue} onClick={() => toggleGogo('午後有給')} />
-              <Chip label="午後希望休" selected={selGogo === '午後希望休'} color={T.kibouYellow} onClick={() => toggleGogo('午後希望休')} />
-            </div>
-
-            <Dot color={T.kinmuGreen} label="勤務申請" />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
-              {['出張', '休日出勤', '代休', '半日代休', '遅刻', '早退', '欠勤'].map(k => (
-                <Chip key={k} label={k}
-                  selected={k === '代休' ? daikyuMode === 'full' : k === '半日代休' ? daikyuMode === 'half' : selKinmu.includes(k)}
-                  color={T.kinmuGreen} onClick={() => toggleKinmu(k)} />
+              <Chip label="有給（全日）" selected={selZenjitsu === '有給（全日）'} color={T.yukyuBlue}
+                onClick={() => { if (selZenjitsu === '有給（全日）') { setSelZenjitsu(null) } else { setSelZenjitsu('有給（全日）'); setSelKinmu([]) } }} />
+              {['遅刻', '早退', '欠勤'].map(k => (
+                <Chip key={k} label={k} selected={selKinmu.includes(k)} color={T.kinmuGreen}
+                  onClick={() => { setSelZenjitsu(null); setSelKinmu(prev => prev.includes(k) ? [] : [k]) }} />
               ))}
             </div>
-
-            {shucchoOpen && (
-              <div style={{ padding: 14, borderRadius: '6px', border: `1px solid ${T.kinmuGreen}`, backgroundColor: '#F0FFF4', marginBottom: 12 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: T.kinmuGreen, marginBottom: 10 }}>出張の詳細</div>
-                <Field label="行先（任意）"><input type="text" value={shucchoWhere} onChange={e => setShucchoWhere(e.target.value)} placeholder="例：東京、大阪" style={inputStyle} /></Field>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                  <Field label="開始日"><input type="date" value={shucchoFrom} onChange={e => setShucchoFrom(e.target.value)} style={inputStyle} /></Field>
-                  <Field label="終了日"><input type="date" value={shucchoTo} onChange={e => setShucchoTo(e.target.value)} style={inputStyle} /></Field>
-                </div>
-              </div>
-            )}
-
-            {daikyuMode === 'full' && (
-              <div style={{ padding: 14, borderRadius: '6px', border: `1px solid ${T.kinmuGreen}`, backgroundColor: '#F0FFF4', marginBottom: 12 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: T.kinmuGreen, marginBottom: 10 }}>代休の対象日（休日出勤した日）</div>
-                <Field label="対象日"><input type="date" value={daikyuDate} onChange={e => setDaikyuDate(e.target.value)} style={inputStyle} /></Field>
-              </div>
-            )}
-
-            {daikyuMode === 'half' && (
-              <div style={{ padding: 14, borderRadius: '6px', border: `1px solid ${T.kinmuGreen}`, backgroundColor: '#F0FFF4', marginBottom: 12 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: T.kinmuGreen, marginBottom: 10 }}>半日代休の詳細</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
-                  <Chip label="午前代休" selected={daikyuHalf === 'am'} color={T.kinmuGreen} onClick={() => setDaikyuHalf(daikyuHalf === 'am' ? null : 'am')} />
-                  <Chip label="午後代休" selected={daikyuHalf === 'pm'} color={T.kinmuGreen} onClick={() => setDaikyuHalf(daikyuHalf === 'pm' ? null : 'pm')} />
-                </div>
-                <Field label="対象日（休日出勤した日）"><input type="date" value={daikyuDate} onChange={e => setDaikyuDate(e.target.value)} style={inputStyle} /></Field>
-              </div>
-            )}
 
             <div style={{ marginBottom: 20 }}>
               <label style={{ fontSize: 12, color: T.textSec, display: 'block', marginBottom: 4 }}>備考</label>
