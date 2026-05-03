@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ワールドクラブ ポータル 管理者マニュアル</title>
+<style>
+  :root { --primary: #1a3a5c; --primary-light: #e0eaf5; --primary-dark: #0f2440; --accent: #2563EB; --text: #1A1A1A; --text-sec: #6B7280; --bg: #F5F7FA; --border: #E8ECF0; --danger: #DC2626; --success: #16A34A; --warning: #CA8A04; --green: #1a4b24; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif; color: var(--text); background: var(--bg); line-height: 1.7; -webkit-font-smoothing: antialiased; }
+  .header { background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); color: #fff; padding: 40px 20px 32px; text-align: center; position: relative; overflow: hidden; }
+  .header::before { content: ""; position: absolute; top: -40px; right: -40px; width: 200px; height: 200px; background: rgba(255,255,255,0.06); border-radius: 50%; }
+  .header::after { content: ""; position: absolute; bottom: -60px; left: -20px; width: 160px; height: 160px; background: rgba(255,255,255,0.04); border-radius: 50%; }
+  .header h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; position: relative; }
+  .header p { font-size: 13px; opacity: 0.85; position: relative; }
+  .badge { display: inline-block; padding: 3px 12px; border-radius: 12px; font-size: 11px; font-weight: 600; background: rgba(255,255,255,0.2); margin-top: 8px; }
+  .container { max-width: 720px; margin: 0 auto; padding: 0 16px 60px; }
+  .toc { background: #fff; border-radius: 12px; padding: 20px 24px; margin: -20px 16px 24px; position: relative; z-index: 1; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+  .toc h2 { font-size: 14px; color: var(--primary); margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid var(--primary-light); }
+  .toc ol { padding-left: 20px; }
+  .toc li { margin-bottom: 6px; }
+  .toc a { color: var(--primary); text-decoration: none; font-size: 14px; font-weight: 500; }
+  .toc a:hover { text-decoration: underline; }
+  section { background: #fff; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+  section h2 { font-size: 18px; font-weight: 700; color: var(--primary); margin-bottom: 16px; padding-bottom: 10px; border-bottom: 2px solid var(--primary-light); display: flex; align-items: center; gap: 8px; }
+  section h2 .num { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: var(--primary); color: #fff; font-size: 13px; font-weight: 700; flex-shrink: 0; }
+  h3 { font-size: 15px; font-weight: 700; color: var(--text); margin: 18px 0 8px; padding-left: 10px; border-left: 3px solid var(--primary); }
+  p { font-size: 14px; color: var(--text-sec); margin-bottom: 10px; }
+  .steps { counter-reset: step; padding: 0; list-style: none; }
+  .steps li { position: relative; padding: 10px 12px 10px 44px; margin-bottom: 8px; background: var(--bg); border-radius: 8px; font-size: 14px; color: var(--text); }
+  .steps li::before { counter-increment: step; content: counter(step); position: absolute; left: 10px; top: 10px; width: 24px; height: 24px; border-radius: 50%; background: var(--primary); color: #fff; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .note { padding: 12px 16px; border-radius: 8px; font-size: 13px; margin: 12px 0; }
+  .note-info { background: #EFF6FF; border-left: 4px solid var(--accent); color: #1E40AF; }
+  .note-warn { background: #FFFBEB; border-left: 4px solid var(--warning); color: #92400E; }
+  .note-danger { background: #FEF2F2; border-left: 4px solid var(--danger); color: #991B1B; }
+  .note-success { background: #F0FDF4; border-left: 4px solid var(--success); color: #166534; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-right: 4px; }
+  .tag-green { background: #DCFCE7; color: var(--green); }
+  .tag-blue { background: #DBEAFE; color: #1D4ED8; }
+  .tag-red { background: #FEE2E2; color: var(--danger); }
+  .tag-yellow { background: #FEF3C7; color: #92400E; }
+  .tag-purple { background: #EDE9FE; color: #6D28D9; }
+  .key-table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+  .key-table th { background: var(--primary); color: #fff; padding: 8px 12px; text-align: left; font-weight: 600; }
+  .key-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  .key-table tr:last-child td { border-bottom: none; }
+  .key-table tr:nth-child(even) td { background: var(--bg); }
+  .nav-map { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+  .nav-map .group { background: var(--bg); border-radius: 8px; padding: 12px; }
+  .nav-map .group-title { font-size: 13px; font-weight: 700; color: var(--primary); margin-bottom: 6px; }
+  .nav-map .group ul { list-style: none; padding: 0; }
+  .nav-map .group li { font-size: 12px; color: var(--text-sec); padding: 2px 0; }
+  .footer { text-align: center; padding: 24px; font-size: 12px; color: var(--text-sec); }
+  @media print {
+    body { background: #fff; }
+    .header { background: var(--primary) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    section { box-shadow: none; border: 1px solid var(--border); break-inside: avoid; }
+    .toc { box-shadow: none; border: 1px solid var(--border); }
+  }
+  @media (max-width: 480px) {
+    .header h1 { font-size: 19px; }
+    section { padding: 18px 16px; }
+    .container { padding: 0 8px 40px; }
+    .toc { margin: -20px 8px 20px; }
+    .nav-map { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>ワールドクラブ ポータル</h1>
+  <p>管理者マニュアル</p>
+  <span class="badge">小川靖志（WC001）向け</span>
+</div>
+
+<div class="container">
+
+<div class="toc">
+  <h2>目次</h2>
+  <ol>
+    <li><a href="#login">ログイン・画面構成</a></li>
+    <li><a href="#shift">シフト管理（希望確認・確定）</a></li>
+    <li><a href="#requests">申請承認（残業・有給・欠勤遅刻早退）</a></li>
+    <li><a href="#payroll">給与管理（再計算・確定・明細配布）</a></li>
+    <li><a href="#paidleave">有給管理</a></li>
+    <li><a href="#attendance">従業員の出勤簿確認</a></li>
+    <li><a href="#daily">日次一覧・月次サマリ</a></li>
+  </ol>
+</div>
+
+<section id="login">
+  <h2><span class="num">1</span> ログイン・画面構成</h2>
+  <h3>ログイン方法</h3>
+  <ol class="steps">
+    <li>ブラウザでポータルのURLを開きます</li>
+    <li>社員コード <strong>WC001</strong> を入力します</li>
+    <li>暗証番号（4桁）を入力して「ログイン」をタップします</li>
+  </ol>
+  <h3>管理タブの構成</h3>
+  <p>画面下部の「管理」タブをタップすると、2段構成のメニューが表示されます。</p>
+  <div class="nav-map">
+    <div class="group">
+      <div class="group-title">勤怠</div>
+      <ul>
+        <li>個人出勤簿</li>
+        <li>日次一覧</li>
+        <li>月次サマリ</li>
+        <li>シフト管理</li>
+        <li>有給管理</li>
+      </ul>
+    </div>
+    <div class="group">
+      <div class="group-title">申請</div>
+      <ul>
+        <li>残業</li>
+        <li>有給</li>
+        <li>欠勤遅刻早退</li>
+      </ul>
+    </div>
+    <div class="group">
+      <div class="group-title">給与管理</div>
+      <ul>
+        <li>月次計算</li>
+        <li>給与マスタ</li>
+      </ul>
+    </div>
+    <div class="group">
+      <div class="group-title">お知らせ</div>
+      <ul>
+        <li>お知らせ一覧</li>
+      </ul>
+    </div>
+  </div>
+  <div class="note note-info">各グループの横に<span class="tag tag-red" style="font-size:10px;">3</span>のような赤いバッジが出ている場合、未処理の申請があります。</div>
+</section>
+
+<section id="shift">
+  <h2><span class="num">2</span> シフト管理</h2>
+  <p>勤怠グループの<strong>「シフト管理」</strong>を開きます。縦軸に従業員名、横軸に日付の一覧表が表示されます。</p>
+  <h3>色の意味</h3>
+  <table class="key-table">
+    <tr><th>色</th><th>意味</th></tr>
+    <tr><td><span class="tag tag-yellow">黄色</span></td><td>公休申請中（従業員からの希望）</td></tr>
+    <tr><td><span class="tag tag-green">緑色</span></td><td>公休確定済み</td></tr>
+    <tr><td><span class="tag tag-blue">青色</span></td><td>有給</td></tr>
+    <tr><td><span class="tag tag-red">赤色</span></td><td>差し戻し済み</td></tr>
+    <tr><td>灰色</td><td>出勤日</td></tr>
+  </table>
+  <h3>申請の承認・差し戻し</h3>
+  <ol class="steps">
+    <li>黄色セル（申請中）をタップします</li>
+    <li>ポップアップが表示されるので<strong>「承認」</strong>または<strong>「差し戻し」</strong>を選択します</li>
+    <li>承認すると緑色（公休確定）に変わります</li>
+  </ol>
+  <h3>直接公休設定</h3>
+  <ol class="steps">
+    <li>空きセル（灰色）をタップします</li>
+    <li>直接公休ON/OFFを切り替えられます</li>
+  </ol>
+  <h3>シフト確定</h3>
+  <ol class="steps">
+    <li>全ての承認・調整が終わったら<strong>「確定」</strong>ボタンをタップします</li>
+    <li>確定するとattendance_dailyに一括で書き込まれます</li>
+  </ol>
+  <div class="note note-warn">従業員からの公休希望は<strong>毎月25日が締切</strong>です。月末までにシフトを確定してください。</div>
+  <div class="note note-info">本部メンバー（W02桑原・W49岩永・W67池邉）はシフト一覧に表示されません。</div>
+</section>
+
+<section id="requests">
+  <h2><span class="num">3</span> 申請承認</h2>
+  <p><strong>「申請」</strong>グループを開くと、サブタブ「残業」「有給」「欠勤遅刻早退」に分かれています。</p>
+  <h3>残業申請の承認</h3>
+  <ol class="steps">
+    <li>「残業」サブタブを開きます</li>
+    <li>未処理の残業申請が一覧で表示されます</li>
+    <li>申請内容（日付・理由）を確認し、<strong>「承認」</strong>または<strong>「却下」</strong>をタップします</li>
+    <li>却下時は処理コメント（却下理由）を入力してから却下してください</li>
+  </ol>
+  <div class="note note-success">残業申請を承認すると、給与計算で残業時間が<strong>1.25倍</strong>で自動計算されます。</div>
+  <h3>有給申請の承認</h3>
+  <ol class="steps">
+    <li>「有給」サブタブを開きます</li>
+    <li>未処理の有給申請を確認し、承認または却下します</li>
+  </ol>
+  <h3>欠勤・遅刻・早退の承認</h3>
+  <ol class="steps">
+    <li>「欠勤遅刻早退」サブタブを開きます</li>
+    <li>未処理の申請を確認し、承認または却下します</li>
+  </ol>
+  <div class="note note-info">フィルタボタン（未処理・承認・却下・全件）で表示を切り替えられます。各ボタンの横に件数が表示されます。</div>
+</section>
+
+<section id="payroll">
+  <h2><span class="num">4</span> 給与管理</h2>
+  <p><strong>「給与管理」</strong>グループの「月次計算」を開きます。</p>
+  <h3>月次給与の計算</h3>
+  <ol class="steps">
+    <li>対象月を選択します（デフォルトは当月）</li>
+    <li><strong>「再計算」</strong>ボタンをタップします</li>
+    <li>全従業員の出勤データから給与が自動計算されます</li>
+    <li>計算結果が一覧テーブルで表示されます</li>
+  </ol>
+  <h3>テーブルの主な列</h3>
+  <table class="key-table">
+    <tr><th>列</th><th>内容</th></tr>
+    <tr><td>出勤日数</td><td>期間中の出勤日数</td></tr>
+    <tr><td>勤務時間</td><td>総勤務時間（H:MM形式）</td></tr>
+    <tr><td>残業時間</td><td>8時間超の残業時間</td></tr>
+    <tr><td>平日給与</td><td>平日勤務分の給与</td></tr>
+    <tr><td>休日給与</td><td>土日祝勤務分の給与</td></tr>
+    <tr><td>残業手当</td><td>残業時間 x 時給 x 1.25</td></tr>
+    <tr><td>総支給額</td><td>支給合計</td></tr>
+    <tr><td>控除計</td><td>社保・雇保・所得税・住民税の合計</td></tr>
+    <tr><td><strong>差引支給額</strong></td><td>総支給額 - 控除計（手取り額）</td></tr>
+  </table>
+  <div class="note note-warn">計算結果はdraft（下書き）として保存されます。内容を確認して問題なければ「確定」してください。</div>
+  <h3>個別値の修正</h3>
+  <p>セルをタップすると直接編集できます。交通費・控除項目などを個別に修正可能です。</p>
+  <h3>給与明細の配布</h3>
+  <ol class="steps">
+    <li>各従業員の行の右端にある<strong>「明細」</strong>ボタンをタップします</li>
+    <li>給与明細PDFがプレビュー表示されます</li>
+    <li>印刷またはPDF保存して配布してください</li>
+  </ol>
+  <h3>給与マスタ</h3>
+  <p>「給与マスタ」サブタブでは、各従業員の基本時給・手当等のマスタデータを管理します。</p>
+</section>
+
+<section id="paidleave">
+  <h2><span class="num">5</span> 有給管理</h2>
+  <p>勤怠グループの<strong>「有給管理」</strong>を開きます。</p>
+  <ol class="steps">
+    <li>全従業員の有給残日数が一覧で表示されます</li>
+    <li>付与日数・使用日数・残日数を確認できます</li>
+  </ol>
+  <div class="note note-danger">有給残日数の直接編集は池邉（W67）の承認が必要です。自動計算はDBトリガーが行います。</div>
+</section>
+
+<section id="attendance">
+  <h2><span class="num">6</span> 従業員の出勤簿確認</h2>
+  <p>勤怠グループの<strong>「個人出勤簿」</strong>を開きます。</p>
+  <ol class="steps">
+    <li>画面上部のプルダウンで確認したい<strong>従業員</strong>を選択します</li>
+    <li>対象月を選択します</li>
+    <li>月間の出勤・退勤・事由・実働時間が一覧で表示されます</li>
+  </ol>
+  <h3>管理者による修正</h3>
+  <ol class="steps">
+    <li>修正したいセルをタップします</li>
+    <li>打刻時刻や事由を直接編集できます</li>
+    <li>管理者メモを入力して保存します</li>
+  </ol>
+  <div class="note note-info">表示期間は<strong>21日〜翌月20日</strong>の月度単位です。</div>
+</section>
+
+<section id="daily">
+  <h2><span class="num">7</span> 日次一覧・月次サマリ</h2>
+  <h3>日次一覧</h3>
+  <p>勤怠グループの<strong>「日次一覧」</strong>を開きます。指定した日付の全従業員の出勤状況を横一覧で確認できます。</p>
+  <ul class="steps">
+    <li>日付を選択すると、その日の全員の出勤・退勤・事由が表示されます</li>
+    <li>打刻漏れや事由未登録の従業員をすぐに確認できます</li>
+  </ul>
+  <h3>月次サマリ</h3>
+  <p>勤怠グループの<strong>「月次サマリ」</strong>を開きます。月間の集計データが一覧で表示されます。</p>
+  <table class="key-table">
+    <tr><th>項目</th><th>内容</th></tr>
+    <tr><td>出勤日数</td><td>月間の出勤日数</td></tr>
+    <tr><td>実働合計</td><td>月間の実働時間合計</td></tr>
+    <tr><td>残業合計</td><td>月間の残業時間合計</td></tr>
+    <tr><td>遅刻回数</td><td>遅刻の回数</td></tr>
+    <tr><td>早退回数</td><td>早退の回数</td></tr>
+    <tr><td>有給使用</td><td>有給使用日数</td></tr>
+  </table>
+  <div class="note note-info">このデータが給与計算の元になります。給与計算前に必ず確認してください。</div>
+</section>
+
+</div>
+
+<div class="footer">
+  <p>&copy; 2026 ワールドクラブ｜管理者マニュアル v1.0</p>
+</div>
+
+</body>
+</html>
