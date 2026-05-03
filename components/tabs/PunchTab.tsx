@@ -510,6 +510,29 @@ export default function PunchTab({ employee }: { employee: any }) {
     const todayDate = new Date()
 
     setSaving(true)
+
+    if (previewReason === '有給（全日）') {
+      await supabase.from('leave_requests').delete().eq('employee_id', employee.id).eq('attendance_date', todayStr).eq('type', 'yukyu')
+      const { error } = await supabase.from('leave_requests').insert({
+        company_id: employee.company_id, store_id: employee.store_id,
+        employee_id: employee.id, attendance_date: todayStr,
+        type: 'yukyu', status: 'pending', reason: '有給（全日）', request_comment: memoNote || null,
+      })
+      setSaving(false)
+      if (error) { showAlert('有給申請に失敗しました: ' + error.message); return }
+      const { error: crErr } = await supabase.from('change_requests').insert({
+        company_id: employee.company_id, employee_id: employee.id,
+        category: '有給申請', detail: `${todayStr} 有給（全日）${memoNote ? '\n' + memoNote : ''}`, status: '未処理',
+      })
+      if (crErr) { console.error('change_requests insert failed:', crErr); showAlert('申請は登録しましたが、管理者への通知に失敗しました: ' + crErr.message); }
+      setModalOpen(false); fetchTodayRecord(employee.id); setMessage({ text: '有給申請を提出しました', ok: true })
+      fetch(PUSH_URL, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "wc_leave_request", payload: { company_id: employee.company_id, employee_name: employee.full_name, reason: previewReason, attendance_date: todayStr } }),
+      }).catch(() => {})
+      return
+    }
+
     const { error } = await supabase.from('attendance_daily').upsert({
       employee_id: employee.id, company_id: employee.company_id,
       attendance_date: todayStr, day_of_week: DOW[todayDate.getDay()],
@@ -517,7 +540,7 @@ export default function PunchTab({ employee }: { employee: any }) {
     }, { onConflict: 'employee_id,attendance_date' })
     setSaving(false)
     if (!error) {
-      const catMap: Record<string, string> = { '有給（全日）': '有給申請', '遅刻': '遅刻申請', '早退': '早退申請', '欠勤': '欠勤申請' }
+      const catMap: Record<string, string> = { '遅刻': '遅刻申請', '早退': '早退申請', '欠勤': '欠勤申請' }
       const reqCategory = catMap[previewReason] || previewReason
       const { error: crErr } = await supabase.from('change_requests').insert({
         company_id: employee.company_id, employee_id: employee.id,
@@ -529,15 +552,7 @@ export default function PunchTab({ employee }: { employee: any }) {
       setModalOpen(false); fetchTodayRecord(employee.id); setMessage({ text: '申請を登録しました', ok: true })
       fetch(PUSH_URL, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "wc_leave_request",
-          payload: {
-            company_id: employee.company_id,
-            employee_name: employee.full_name,
-            reason: previewReason,
-            attendance_date: todayStr,
-          },
-        }),
+        body: JSON.stringify({ type: "wc_leave_request", payload: { company_id: employee.company_id, employee_name: employee.full_name, reason: previewReason, attendance_date: todayStr } }),
       }).catch(() => {})
     }
     else { showAlert('登録に失敗しました: ' + error.message) }

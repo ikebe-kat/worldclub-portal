@@ -412,7 +412,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
       approved_by: employee.id,
       approver_id: employee.id,
       approved_at: new Date().toISOString(),
-    }).select().single();
+    }).select().maybeSingle();
 
     if (error) {
       console.error("[ShiftSub] leave_requests insert error:", error);
