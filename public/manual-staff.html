@@ -90,6 +90,7 @@
 <div class="toc">
   <h2>目次</h2>
   <ol>
+    <li><a href="#setup">はじめに（初期設定）</a></li>
     <li><a href="#login">ログイン方法</a></li>
     <li><a href="#punch">打刻（出勤・退勤）</a></li>
     <li><a href="#break">休憩について</a></li>
@@ -100,8 +101,24 @@
   </ol>
 </div>
 
+<section id="setup">
+  <h2><span class="num">1</span> はじめに（初期設定）</h2>
+  <p>ワールドクラブ ポータルは<strong>PWA（Progressive Web App）</strong>です。Apple Store・Google Playのアプリと同じようにスマホのホーム画面から起動でき、プッシュ通知も届きます。</p>
+  <h3>通知を必ずONにしてください</h3>
+  <p>初回ログイン時に「通知を許可しますか？」と表示されます。<strong>必ず「許可」</strong>を選んでください。打刻忘れアラート・申請の承認/却下通知・お知らせ配信など、重要な連絡がプッシュ通知で届きます。</p>
+  <div class="note note-danger">通知をOFFにすると、打刻忘れや申請結果の通知が届きません。iPhoneの場合は「設定 → Safari → 通知」もONにしてください。</div>
+  <h3>スマホ：ホーム画面に追加</h3>
+  <ol class="steps">
+    <li><strong>iPhone</strong>：Safariで開く → 下部の共有ボタン（□↑）→「ホーム画面に追加」</li>
+    <li><strong>Android</strong>：Chromeで開く →「ホーム画面に追加」または「アプリをインストール」</li>
+  </ol>
+  <div class="note note-info">ホーム画面に追加すると、アプリのアイコンから直接起動でき、通常のアプリと同じ操作感で使えます。</div>
+  <h3>PC：ブラウザまたはアプリとして利用</h3>
+  <p>PCでも使えます。ブラウザ（Chrome・Edge）でそのままアクセスするか、アドレスバーの「インストール」ボタンからデスクトップアプリとしてインストールできます。</p>
+</section>
+
 <section id="login">
-  <h2><span class="num">1</span> ログイン方法</h2>
+  <h2><span class="num">2</span> ログイン方法</h2>
   <ol class="steps">
     <li>スマートフォンのブラウザでポータルのURLを開きます</li>
     <li>自分の<strong>社員コード</strong>を入力します（例: WC002）</li>
@@ -111,7 +128,7 @@
 </section>
 
 <section id="punch">
-  <h2><span class="num">2</span> 打刻（出勤・退勤）</h2>
+  <h2><span class="num">3</span> 打刻（出勤・退勤）</h2>
   <p>ログイン後のトップ画面に、大きな打刻ボタンが表示されます。</p>
   <h3>出勤打刻</h3>
   <ol class="steps">
@@ -129,7 +146,7 @@
 </section>
 
 <section id="break">
-  <h2><span class="num">3</span> 休憩について</h2>
+  <h2><span class="num">4</span> 休憩について</h2>
   <p>正社員の休憩時間は<strong>60分固定</strong>です。</p>
   <div class="note note-diff">パート社員のように休憩時間を選択する画面は<strong>表示されません</strong>。自動で60分が適用されるため、操作は不要です。</div>
   <table class="key-table">
@@ -140,7 +157,7 @@
 </section>
 
 <section id="leave">
-  <h2><span class="num">4</span> 各種申請</h2>
+  <h2><span class="num">5</span> 各種申請</h2>
   <p>トップ画面下部に申請ボタンが並んでいます。</p>
   <table class="key-table">
     <tr><th>ボタン</th><th>用途</th></tr>
@@ -161,7 +178,7 @@
 </section>
 
 <section id="attendance">
-  <h2><span class="num">5</span> 出勤簿の見方</h2>
+  <h2><span class="num">6</span> 出勤簿の見方</h2>
   <p>画面下部のタブから<strong>「出勤簿」</strong>をタップすると、月間の出勤記録が一覧で表示されます。</p>
   <h3>表の見方</h3>
   <table class="key-table">
@@ -184,7 +201,7 @@
 </section>
 
 <section id="shift">
-  <h2><span class="num">6</span> シフト希望の提出</h2>
+  <h2><span class="num">7</span> シフト希望の提出</h2>
   <p>翌月の公休希望（お休みしたい日）を事前に提出できます。</p>
   <ol class="steps">
     <li>出勤簿画面で、翌月のカレンダーに移動します</li>
@@ -197,7 +214,7 @@
 </section>
 
 <section id="documents">
-  <h2><span class="num">7</span> 書類の受け取り</h2>
+  <h2><span class="num">8</span> 書類の受け取り</h2>
   <p>給与明細や源泉徴収票などの書類は、管理者がポータルから配布します。</p>
   <ol class="steps">
     <li>画面下部のタブから<strong>「管理」</strong>をタップします</li>

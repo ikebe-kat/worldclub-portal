@@ -79,6 +79,7 @@
 <div class="toc">
   <h2>目次</h2>
   <ol>
+    <li><a href="#setup">はじめに（初期設定）</a></li>
     <li><a href="#login">ログイン・画面構成</a></li>
     <li><a href="#shift">シフト管理（希望確認・確定）</a></li>
     <li><a href="#requests">申請承認（残業・有給・欠勤遅刻早退）</a></li>
@@ -89,8 +90,24 @@
   </ol>
 </div>
 
+<section id="setup">
+  <h2><span class="num">1</span> はじめに（初期設定）</h2>
+  <p>ワールドクラブ ポータルは<strong>PWA（Progressive Web App）</strong>です。Apple Store・Google Playのアプリと同じようにスマホのホーム画面から起動でき、プッシュ通知も届きます。</p>
+  <h3>通知を必ずONにしてください</h3>
+  <p>初回ログイン時に「通知を許可しますか？」と表示されます。<strong>必ず「許可」</strong>を選んでください。従業員からの申請通知・打刻忘れアラート・シフト申請など、管理に必要な通知がすべてプッシュで届きます。</p>
+  <div class="note note-danger">通知をOFFにすると、従業員からの申請（残業・有給・欠勤等）の通知が届きません。iPhoneの場合は「設定 → Safari → 通知」もONにしてください。</div>
+  <h3>スマホ：ホーム画面に追加</h3>
+  <ol class="steps">
+    <li><strong>iPhone</strong>：Safariで開く → 下部の共有ボタン（□↑）→「ホーム画面に追加」</li>
+    <li><strong>Android</strong>：Chromeで開く →「ホーム画面に追加」または「アプリをインストール」</li>
+  </ol>
+  <div class="note note-info">ホーム画面に追加すると、アプリのアイコンから直接起動でき、通常のアプリと同じ操作感で使えます。</div>
+  <h3>PC：ブラウザまたはアプリとして利用</h3>
+  <p>PCでも使えます。ブラウザ（Chrome・Edge）でそのままアクセスするか、アドレスバーの「インストール」ボタンからデスクトップアプリとしてインストールできます。</p>
+</section>
+
 <section id="login">
-  <h2><span class="num">1</span> ログイン・画面構成</h2>
+  <h2><span class="num">2</span> ログイン・画面構成</h2>
   <h3>ログイン方法</h3>
   <ol class="steps">
     <li>ブラウザでポータルのURLを開きます</li>
@@ -136,7 +153,7 @@
 </section>
 
 <section id="shift">
-  <h2><span class="num">2</span> シフト管理</h2>
+  <h2><span class="num">3</span> シフト管理</h2>
   <p>勤怠グループの<strong>「シフト管理」</strong>を開きます。縦軸に従業員名、横軸に日付の一覧表が表示されます。</p>
   <h3>色の意味</h3>
   <table class="key-table">
@@ -168,7 +185,7 @@
 </section>
 
 <section id="requests">
-  <h2><span class="num">3</span> 申請承認</h2>
+  <h2><span class="num">4</span> 申請承認</h2>
   <p><strong>「申請」</strong>グループを開くと、サブタブ「残業」「有給」「欠勤遅刻早退」に分かれています。</p>
   <h3>残業申請の承認</h3>
   <ol class="steps">
@@ -192,7 +209,7 @@
 </section>
 
 <section id="payroll">
-  <h2><span class="num">4</span> 給与管理</h2>
+  <h2><span class="num">5</span> 給与管理</h2>
   <p><strong>「給与管理」</strong>グループの「月次計算」を開きます。</p>
   <h3>月次給与の計算</h3>
   <ol class="steps">
@@ -228,7 +245,7 @@
 </section>
 
 <section id="paidleave">
-  <h2><span class="num">5</span> 有給管理</h2>
+  <h2><span class="num">6</span> 有給管理</h2>
   <p>勤怠グループの<strong>「有給管理」</strong>を開きます。</p>
   <ol class="steps">
     <li>全従業員の有給残日数が一覧で表示されます</li>
@@ -238,7 +255,7 @@
 </section>
 
 <section id="attendance">
-  <h2><span class="num">6</span> 従業員の出勤簿確認</h2>
+  <h2><span class="num">7</span> 従業員の出勤簿確認</h2>
   <p>勤怠グループの<strong>「個人出勤簿」</strong>を開きます。</p>
   <ol class="steps">
     <li>画面上部のプルダウンで確認したい<strong>従業員</strong>を選択します</li>
@@ -255,7 +272,7 @@
 </section>
 
 <section id="daily">
-  <h2><span class="num">7</span> 日次一覧・月次サマリ</h2>
+  <h2><span class="num">8</span> 日次一覧・月次サマリ</h2>
   <h3>日次一覧</h3>
   <p>勤怠グループの<strong>「日次一覧」</strong>を開きます。指定した日付の全従業員の出勤状況を横一覧で確認できます。</p>
   <ul class="steps">
