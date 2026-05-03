@@ -69,7 +69,184 @@ interface DialogState {
 }
 
 /* ══════════════════════════════════════ */
+/* ══════════════════════════════════════ */
+/* ── シフト希望サブタブ ── */
+/* ══════════════════════════════════════ */
+const ShiftWishView = ({ employee }: { employee: any }) => {
+  const today = new Date();
+  const nextYr = today.getMonth() === 11 ? today.getFullYear() + 1 : today.getFullYear();
+  const nextMo = today.getMonth() === 11 ? 1 : today.getMonth() + 2;
+  const nextMonthStr = `${nextYr}-${String(nextMo).padStart(2, "0")}`;
+  const daysInMonth = new Date(nextYr, nextMo, 0).getDate();
+  const isAfter25 = today.getDate() >= 26;
+
+  const [requests, setRequests] = useState<Record<string, { id: string; status: string }>>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<any>(null);
+  useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 2000); return () => clearTimeout(t); }, [toast]);
+
+  const fetchData = useCallback(async () => {
+    if (!employee?.id) return;
+    setLoading(true);
+    const from = `${nextYr}-${String(nextMo).padStart(2, "0")}-01`;
+    const to = `${nextYr}-${String(nextMo).padStart(2, "0")}-${daysInMonth}`;
+    const { data } = await supabase.from("leave_requests")
+      .select("id, attendance_date, status")
+      .eq("employee_id", employee.id)
+      .eq("type", "shift_koukyuu")
+      .gte("attendance_date", from).lte("attendance_date", to);
+    const map: Record<string, { id: string; status: string }> = {};
+    (data || []).forEach((r: any) => { map[r.attendance_date] = { id: r.id, status: r.status }; });
+    setRequests(map);
+
+    const { data: subData } = await supabase.from("shift_submissions")
+      .select("submitted_at").eq("employee_id", employee.id).eq("target_month", nextMonthStr).maybeSingle();
+    setSubmitted(!!subData);
+    setLoading(false);
+  }, [employee?.id, nextYr, nextMo, daysInMonth, nextMonthStr]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const toggleDay = async (dateStr: string) => {
+    const existing = requests[dateStr];
+    setSaving(dateStr);
+    if (existing) {
+      await supabase.from("leave_requests").delete().eq("id", existing.id);
+    } else {
+      await supabase.from("leave_requests").insert({
+        company_id: employee.company_id, store_id: employee.store_id,
+        employee_id: employee.id, attendance_date: dateStr,
+        type: "shift_koukyuu", status: "pending", reason: "公休（全日）",
+      });
+    }
+    setSaving(null);
+    fetchData();
+  };
+
+  const lastOgawaNotifyRef = useRef<number>(0);
+  const handleSubmit = async () => {
+    if (submitting) return;
+    if (submitted) {
+      setDialog({ message: "提出済みです。再提出しますか？", mode: "confirm", onOk: () => { setDialog(null); doSubmit(true); }, confirmLabel: "はい" });
+      return;
+    }
+    doSubmit(false);
+  };
+
+  const doSubmit = async (isResubmit: boolean) => {
+    setSubmitting(true);
+    const nowIso = new Date().toISOString();
+    if (isResubmit) {
+      await supabase.from("shift_submissions").update({ submitted_at: nowIso }).eq("employee_id", employee.id).eq("target_month", nextMonthStr);
+    } else {
+      await supabase.from("shift_submissions").insert({ company_id: employee.company_id, employee_id: employee.id, target_month: nextMonthStr, created_at: nowIso, submitted_at: nowIso });
+    }
+    setSubmitting(false);
+    setSubmitted(true);
+    setToast(isResubmit ? "再提出しました" : "シフト希望を提出しました");
+    const now = Date.now();
+    if (now - lastOgawaNotifyRef.current > 3000) {
+      lastOgawaNotifyRef.current = now;
+      const WC_NOTIFY_CODES = ["WC001", "W67", "W49"];
+      const { data: emps } = await supabase.from("employees").select("id, employee_code").eq("company_id", employee.company_id).in("employee_code", WC_NOTIFY_CODES);
+      for (const emp of (emps || [])) {
+        fetch(PUSH_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "wc_leave_request", payload: { company_id: employee.company_id, employee_name: employee.full_name, reason: "シフト希望提出", attendance_date: nextMonthStr } }) }).catch(() => {});
+      }
+    }
+  };
+
+  const days = Array.from({ length: daysInMonth }, (_, i) => {
+    const d = i + 1;
+    const dateStr = `${nextYr}-${String(nextMo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    const dt = new Date(nextYr, nextMo - 1, d);
+    const dow = dt.getDay();
+    return { d, dateStr, dow };
+  });
+
+  const requestCount = Object.keys(requests).length;
+
+  if (loading) return <div style={{ textAlign: "center", padding: 40, color: T.textMuted, fontSize: 14 }}>読み込み中...</div>;
+
+  return (
+    <div style={{ padding: "16px 12px", maxWidth: 720, margin: "0 auto" }}>
+      <div style={{ textAlign: "center", marginBottom: 12 }}>
+        <span style={{ fontSize: 17, fontWeight: 700, color: T.text }}>{nextYr}年{nextMo}月</span>
+        <span style={{ fontSize: 12, color: T.textSec, marginLeft: 8 }}>シフト希望</span>
+      </div>
+
+      {isAfter25 && (
+        <div style={{ backgroundColor: "#FEF3C7", border: "1px solid #F59E0B", borderRadius: 6, padding: "10px 14px", fontSize: 13, color: "#92400E", fontWeight: 600, marginBottom: 12, textAlign: "center" }}>
+          25日を過ぎています。早めに提出してください。
+        </div>
+      )}
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <span style={{ fontSize: 13, color: T.textSec }}>公休希望: <strong style={{ color: T.primary }}>{requestCount}日</strong></span>
+        <button onClick={handleSubmit} disabled={submitting} style={{
+          padding: "8px 20px", borderRadius: 6, border: "none",
+          backgroundColor: submitted ? T.primary : T.primary,
+          color: "#fff", fontSize: 13, fontWeight: 700, cursor: submitting ? "default" : "pointer", opacity: submitting ? 0.6 : 1,
+        }}>
+          {submitting ? "送信中..." : submitted ? "提出済み ✓（再提出）" : "シフト希望を提出"}
+        </button>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, marginBottom: 8 }}>
+        {["日","月","火","水","木","金","土"].map(d => (
+          <div key={d} style={{ textAlign: "center", fontSize: 11, fontWeight: 600, color: d === "日" ? T.holidayRed : d === "土" ? T.yukyuBlue : T.textSec, padding: "4px 0" }}>{d}</div>
+        ))}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2 }}>
+        {Array.from({ length: days[0].dow }, (_, i) => <div key={`empty-${i}`} />)}
+        {days.map(({ d, dateStr, dow }) => {
+          const req = requests[dateStr];
+          const isRequested = !!req;
+          const isApproved = req?.status === "approved";
+          const isReturned = req?.status === "returned";
+          const isSaving = saving === dateStr;
+          const bgColor = isApproved ? "#D1FAE5" : isReturned ? "#FEE2E2" : isRequested ? "#FEF3C7" : dow === 0 ? "#FFF5F5" : dow === 6 ? "#F0F4FF" : "#fff";
+          const borderColor = isApproved ? "#10B981" : isReturned ? "#EF4444" : isRequested ? "#F59E0B" : T.border;
+          return (
+            <button key={dateStr} onClick={() => toggleDay(dateStr)} disabled={isSaving || isApproved}
+              style={{
+                aspectRatio: "1", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                border: `2px solid ${borderColor}`, borderRadius: 8, backgroundColor: bgColor,
+                cursor: isSaving || isApproved ? "default" : "pointer", opacity: isSaving ? 0.5 : 1,
+                transition: "all 0.15s",
+              }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: dow === 0 ? T.holidayRed : dow === 6 ? T.yukyuBlue : T.text }}>{d}</span>
+              {isApproved && <span style={{ fontSize: 8, color: "#065F46", fontWeight: 700 }}>確定</span>}
+              {isRequested && !isApproved && !isReturned && <span style={{ fontSize: 8, color: "#92400E", fontWeight: 700 }}>希望</span>}
+              {isReturned && <span style={{ fontSize: 8, color: "#DC2626", fontWeight: 700 }}>差戻</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      <div style={{ display: "flex", gap: 12, marginTop: 16, justifyContent: "center", flexWrap: "wrap" }}>
+        {[{ color: "#FEF3C7", border: "#F59E0B", label: "公休希望" }, { color: "#D1FAE5", border: "#10B981", label: "承認済み" }, { color: "#FEE2E2", border: "#EF4444", label: "差し戻し" }].map(l => (
+          <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <div style={{ width: 14, height: 14, borderRadius: 4, backgroundColor: l.color, border: `2px solid ${l.border}` }} />
+            <span style={{ fontSize: 11, color: T.textSec }}>{l.label}</span>
+          </div>
+        ))}
+      </div>
+
+      {dialog && <Dialog message={dialog.message} mode={dialog.mode} confirmLabel={dialog.confirmLabel} onOk={dialog.onOk} onCancel={() => setDialog(null)} />}
+      {toast && (
+        <div style={{ position: "fixed", bottom: 32, left: "50%", transform: "translateX(-50%)", backgroundColor: T.primary, color: "#fff", padding: "10px 24px", borderRadius: 4, fontSize: 13, fontWeight: 600, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", zIndex: 3000 }}>{toast}</div>
+      )}
+    </div>
+  );
+};
+
 export default function AttendanceTab({ employee }: { employee: any }) {
+  const [activeSubTab, setActiveSubTab] = useState<"attendance" | "shift_wish">("attendance");
   const _cp = currentPeriodMonth();
   const [yr, setYr] = useState(_cp.yr);
   const [mo, setMo] = useState(_cp.mo);
@@ -673,7 +850,38 @@ export default function AttendanceTab({ employee }: { employee: any }) {
   };
 
   /* ══════════ JSX ══════════ */
+  if (activeSubTab === "shift_wish") {
+    return (
+      <div>
+        <div style={{ display: "flex", gap: 0, marginBottom: 0, borderBottom: `2px solid ${T.border}`, padding: "0 12px" }}>
+          {[{ id: "attendance" as const, label: "出勤簿" }, { id: "shift_wish" as const, label: "シフト希望" }].map(t => (
+            <button key={t.id} onClick={() => setActiveSubTab(t.id)} style={{
+              padding: "10px 20px", border: "none", backgroundColor: "transparent", cursor: "pointer",
+              fontSize: 14, fontWeight: activeSubTab === t.id ? 700 : 400,
+              color: activeSubTab === t.id ? T.primary : T.textSec,
+              borderBottom: activeSubTab === t.id ? `3px solid ${T.primary}` : "3px solid transparent",
+            }}>{t.label}</button>
+          ))}
+        </div>
+        <ShiftWishView employee={employee} />
+      </div>
+    );
+  }
+
   return (
+    <div>
+      {employee?.employee_code !== "WC001" && (
+        <div style={{ display: "flex", gap: 0, marginBottom: 0, borderBottom: `2px solid ${T.border}`, padding: "0 12px" }}>
+          {[{ id: "attendance" as const, label: "出勤簿" }, { id: "shift_wish" as const, label: "シフト希望" }].map(t => (
+            <button key={t.id} onClick={() => setActiveSubTab(t.id)} style={{
+              padding: "10px 20px", border: "none", backgroundColor: "transparent", cursor: "pointer",
+              fontSize: 14, fontWeight: activeSubTab === t.id ? 700 : 400,
+              color: activeSubTab === t.id ? T.primary : T.textSec,
+              borderBottom: activeSubTab === t.id ? `3px solid ${T.primary}` : "3px solid transparent",
+            }}>{t.label}</button>
+          ))}
+        </div>
+      )}
     <div style={{ padding: "16px 12px", maxWidth: 720, margin: "0 auto" }}>
       {/* 月ナビ */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, gap: 8, flexWrap: "wrap" }}>
@@ -682,36 +890,6 @@ export default function AttendanceTab({ employee }: { employee: any }) {
           <span style={{ fontSize: 15, fontWeight: 700, color: T.text, minWidth: 100, textAlign: "center" }}>{yr}年{mo}月度</span>
           <button onClick={() => go(1)} style={{ width: 30, height: 30, border: `1px solid ${T.border}`, borderRadius: "6px", backgroundColor: "#fff", cursor: "pointer", fontSize: 13, color: T.textSec }}>▶</button>
         </div>
-        {(() => {
-          // WC001（小川）は提出フロー不要
-          if (employee?.employee_code === "WC001") return null;
-          // 翌月の出勤簿を表示中のときだけボタンを出す
-          if (yr !== nextRealYear || mo !== nextRealMonth) return null;
-          // 確定済みなら非表示
-          if (shiftConf) return null;
-          const label =
-            submitted && resubmitMode ? `${nextRealMonth}月 再提出する` :
-            submitted ? `${nextRealMonth}月 シフト提出済み✓` :
-            submissionLocked ? `${nextRealMonth}月 締切済み` :
-            `${nextRealMonth}月のシフトを提出する`;
-          const disabled = submitting || (submissionLocked && !submitted);
-          return (
-            <button
-              onClick={handleShiftSubmit}
-              disabled={disabled}
-              style={{
-                padding: "8px 14px", borderRadius: 6, border: "none",
-                backgroundColor: submitted ? T.primary : disabled ? T.border : T.primary,
-                color: submitted ? "#fff" : disabled ? T.textMuted : "#fff",
-                fontSize: 12, fontWeight: 700,
-                cursor: disabled ? "default" : "pointer",
-                opacity: submitting ? 0.6 : 1,
-              }}
-            >
-              {submitting ? "送信中..." : label}
-            </button>
-          );
-        })()}
       </div>
 
       {/* シフト確定バナー（未来月のみ表示） */}
@@ -931,6 +1109,7 @@ export default function AttendanceTab({ employee }: { employee: any }) {
       )}
 
       <style>{`@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}`}</style>
+    </div>
     </div>
   );
 }
