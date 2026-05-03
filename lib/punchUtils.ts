@@ -80,7 +80,7 @@ export async function punchIn(
       { onConflict: "employee_id,date" }  // UNIQUE制約のカラム
     )
     .select("id, rounded_in")
-    .single();
+    .maybeSingle();
 
   if (error) throw error;
   return { rounded };

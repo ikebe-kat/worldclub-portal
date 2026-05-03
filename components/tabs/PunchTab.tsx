@@ -279,6 +279,10 @@ export default function PunchTab({ employee }: { employee: any }) {
     setOvertimeStatus('pending')
     setOvertimeReason('')
     setMessage({ text: '残業申請を提出しました（小川さん承認待ち）', ok: true })
+    fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-push`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'wc_leave_request', payload: { company_id: employee.company_id, employee_name: employee.full_name, reason: '残業申請', attendance_date: today } }),
+    }).catch(() => {})
   }
 
   // ─── 打刻処理 ─────────────────────────────────────────────────────────────

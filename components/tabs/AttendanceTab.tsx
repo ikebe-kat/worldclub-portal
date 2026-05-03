@@ -149,7 +149,10 @@ const ShiftWishView = ({ employee }: { employee: any }) => {
 
     setSaving(true);
     const existing = requests[modal.dateStr];
-    if (existing) await supabase.from("leave_requests").delete().eq("id", existing.id);
+    if (existing) {
+      const { error: delErr } = await supabase.from("leave_requests").delete().eq("id", existing.id);
+      if (delErr) { setSaving(false); setDialog({ message: "既存データの削除に失敗: " + delErr.message, mode: "alert", onOk: () => setDialog(null) }); return; }
+    }
 
     const reasonMap: Record<WishType, string> = {
       shift_koukyuu: "公休（全日）",
@@ -157,12 +160,13 @@ const ShiftWishView = ({ employee }: { employee: any }) => {
       shift_chikoku: `${wishTime} ${wishReason.trim()}`,
       shift_soutai: `${wishTime} ${wishReason.trim()}`,
     };
-    await supabase.from("leave_requests").insert({
+    const { error: insErr } = await supabase.from("leave_requests").insert({
       company_id: employee.company_id, store_id: employee.store_id,
       employee_id: employee.id, attendance_date: modal.dateStr,
       type: selType, status: "pending", reason: reasonMap[selType],
     });
     setSaving(false);
+    if (insErr) { setDialog({ message: "保存に失敗: " + insErr.message, mode: "alert", onOk: () => setDialog(null) }); return; }
     setModal(null);
     fetchData();
   };

@@ -526,6 +526,40 @@ serve(async (req) => {
     }
 
     // ============================
+    // WC: シフト差し戻し通知 → 該当従業員
+    // ============================
+    if (type === "shift_returned") {
+      const { employee_id, attendance_date, leave_type } = payload;
+      const kindLabel = leave_type === "yukyu" ? "有給" : "公休";
+      targets.push({
+        employee_id,
+        title: `${kindLabel}希望が差し戻されました`,
+        body: `${shortDate(attendance_date)}の${kindLabel}希望が差し戻されました`,
+        tag: "shift-returned",
+        url: "/home",
+      });
+    }
+
+    // ============================
+    // WC: シフト確定通知 → 全従業員
+    // ============================
+    if (type === "shift_confirmed") {
+      const { company_id, target_month } = payload;
+      const { allEmps } = await getEmpsAndStores(company_id);
+      const WC_NOTIFY_CODES = ["W02", "W49", "W67"];
+      for (const emp of allEmps) {
+        if (WC_NOTIFY_CODES.includes(emp.employee_code)) continue;
+        targets.push({
+          employee_id: emp.id,
+          title: `${target_month}のシフトが確定しました`,
+          body: "出勤簿タブで確認してください",
+          tag: "shift-confirmed",
+          url: "/home",
+        });
+      }
+    }
+
+    // ============================
     // 通知送信
     // ============================
     let sent = 0;

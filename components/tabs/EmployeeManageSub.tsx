@@ -169,7 +169,7 @@ const EditForm = ({ emp, stores, isNew, onClose, onSaved, companyId }: { emp: Pa
 /* ── 退職処理モーダル ── */
 /* ══════════════════════════════════════ */
 const ResignModal = ({ emp, onClose, onSaved }: { emp: EmpRow; onClose: () => void; onSaved: (msg: string) => void }) => {
-  const [resignDate, setResignDate] = useState(new Date().toISOString().slice(0, 10));
+  const [resignDate, setResignDate] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; });
   const [saving, setSaving] = useState(false);
   const handleResign = async () => {
     setSaving(true);
