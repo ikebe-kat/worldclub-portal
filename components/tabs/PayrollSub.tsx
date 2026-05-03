@@ -463,7 +463,7 @@ function CalcView({ employee }: { employee: any }) {
                     <td style={{ ...tdNum, color: T.danger, fontWeight: 600, backgroundColor: "#FCA5A5" }}>{yen(r.total_deduction)}</td>
                     {ec("dependents", String(r.dependents), tdNum)}
                     {/* 29 差引支給額（派生・編集不可） */}
-                    <td style={{ ...tdNum, fontWeight: 700, color: T.primary, backgroundColor: "#DDD6FE", position: "sticky", right: 52, zIndex: 1, minWidth: 80, boxShadow: "-2px 0 4px rgba(0,0,0,0.1)" }}>{yen(r.net_amount)}</td>
+                    <td style={{ ...tdNum, fontSize: 15, fontWeight: 700, color: T.primary, backgroundColor: "#DDD6FE", position: "sticky", right: 52, zIndex: 1, minWidth: 80, boxShadow: "-2px 0 4px rgba(0,0,0,0.1)" }}>{yen(r.net_amount)}</td>
                     <td style={{ ...tdNarrow, position: "sticky", right: 0, zIndex: 1, backgroundColor: "#fff", minWidth: 52 }}>
                       <button onClick={() => printOne(r)} style={{
                         padding: "4px 8px", borderRadius: 4, border: `1px solid ${T.border}`,
