@@ -122,7 +122,7 @@ const AddEventModal = ({ employee, perm, empCode, myCalGroup, allowedGroups, onC
   const [startDate, setStartDate] = useState(isEdit ? editEvent!.start_date : (defaultDate || todayStr));
   const [endDate, setEndDate] = useState(isEdit ? editEvent!.end_date : (defaultDate || todayStr));
   const [startTime, setStartTime] = useState(isEdit && editEvent!.start_time ? editEvent!.start_time.slice(0, 5) : "09:30");
-  const [endTime, setEndTime] = useState(isEdit && editEvent!.end_time ? editEvent!.end_time.slice(0, 5) : "18:00");
+  const [endTime, setEndTime] = useState(isEdit && editEvent!.end_time ? editEvent!.end_time.slice(0, 5) : "10:30");
   const [repeatType, setRepeatType] = useState(isEdit ? (editEvent!.repeat_type || "none") : "none");
   const [targetCalendar, setTargetCalendar] = useState(
     isEdit ? editEvent!.target_calendar : (defaultTargetCal && defaultTargetCal !== "all" ? defaultTargetCal : myCalGroup)
