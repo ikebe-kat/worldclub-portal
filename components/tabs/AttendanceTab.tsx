@@ -523,7 +523,8 @@ export default function AttendanceTab({ employee }: { employee: any }) {
   /* ── 事由登録 ── */
   const submitReason = async () => {
     if (!modalDay || !previewReason) return;
-    if (!note.trim()) { showAlert("理由を入力してください"); return; }
+    const needsNote = previewReason !== "公休（全日）";
+    if (needsNote && !note.trim()) { showAlert("理由を入力してください"); return; }
 
     if (selKinmu.includes("出張")) {
       if (!shucchoFrom) { showAlert("開始日を選択してください"); return; }
@@ -873,11 +874,13 @@ export default function AttendanceTab({ employee }: { employee: any }) {
               </>
             )}
 
+            {!selOvertime && previewReason !== "公休（全日）" && (
             <div style={{ marginBottom: 20 }}>
               <label style={{ fontSize: 12, color: T.textSec, display: "block", marginBottom: 4 }}>理由（必須）</label>
               <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="例：熱があって遅刻しました"
                 style={{ width: "100%", padding: "10px 12px", borderRadius: "6px", border: `1px solid ${note.trim() ? T.border : T.danger}`, fontSize: 13, resize: "vertical", minHeight: 60, boxSizing: "border-box" }} />
             </div>
+            )}
 
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => setModalDay(null)} style={{ flex: 1, padding: "12px", borderRadius: "6px", border: `1px solid ${T.border}`, backgroundColor: "#fff", color: T.textSec, fontSize: 14, cursor: "pointer" }}>閉じる</button>
@@ -889,7 +892,8 @@ export default function AttendanceTab({ employee }: { employee: any }) {
               ) : (() => {
                 const isShinsei = previewReason === "公休（全日）" || previewReason === "有給（全日）";
                 const locked = isShinsei && modalDay && isKoukyuLocked(modalDay.dateStr);
-                const disabled = saving || !previewReason || locked || !note.trim();
+                const noteRequired = previewReason !== "公休（全日）";
+                const disabled = saving || !previewReason || locked || (noteRequired && !note.trim());
                 const label = locked ? "締切済み" : saving ? (isShinsei ? "申請中..." : "登録中...") : (isShinsei ? "申請" : "登録");
                 return (
                   <button onClick={submitReason} disabled={disabled} style={{ flex: 1, padding: "12px", borderRadius: "6px", border: "none", backgroundColor: disabled ? T.border : T.primary, color: disabled ? T.textMuted : "#fff", fontSize: 14, fontWeight: 600, cursor: disabled ? "default" : "pointer" }}>{label}</button>
