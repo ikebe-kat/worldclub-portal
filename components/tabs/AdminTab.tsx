@@ -11,27 +11,37 @@ import SharoushiSub from "@/components/tabs/SharoushiSub";
 import EmployeeManageSub from "@/components/tabs/EmployeeManageSub";
 import SettingsSub from "@/components/tabs/SettingsSub";
 import ShiftSub from "@/components/tabs/ShiftSub";
-import OvertimeApprovalSub from "@/components/tabs/OvertimeApprovalSub";
 import PayrollSub from "@/components/tabs/PayrollSub";
 
 interface EmpOption { id: string; code: string; name: string; store_id: string; store_name: string; department: string | null; role: string | null; hire_date: string | null; paid_leave_grant_date: string | null; holiday_calendar: string | null; }
 interface AttRow { id: string; attendance_date: string; day_of_week: string | null; punch_in: string | null; punch_out: string | null; reason: string | null; break_minutes: number | null; late_minutes: number | null; early_leave_minutes: number | null; actual_hours: number | null; scheduled_hours: number | null; overtime_hours: number | null; over_under: number | null; employee_note: string | null; admin_memo: string | null; is_holiday: boolean | null; work_pattern_code: string | null; }
 
-type SubTab = "notifications" | "paidleave" | "shift" | "wc_overtime" | "wc_payroll" | "sharoushi" | "individual" | "daily" | "monthly" | "requests" | "documents" | "employee_manage" | "settings";
-const ALL_SUB_TABS: { id: SubTab; label: string; visibleTo: "owner_only" | "super_only" | "all" | "owner_or_kondo" | "wc_owner" }[] = [
-  { id: "notifications", label: "お知らせ", visibleTo: "owner_or_kondo" },
-  { id: "paidleave", label: "有給管理", visibleTo: "owner_or_kondo" },
-  { id: "shift", label: "シフト管理", visibleTo: "owner_or_kondo" },
-  { id: "wc_overtime", label: "残業承認", visibleTo: "wc_owner" },
-  { id: "wc_payroll", label: "給与管理", visibleTo: "wc_owner" },
-  { id: "sharoushi", label: "社労士出力", visibleTo: "owner_only" },
-  { id: "individual", label: "個人出勤簿", visibleTo: "all" },
-  { id: "daily", label: "日次一覧", visibleTo: "all" },
-  { id: "monthly", label: "月次サマリ", visibleTo: "all" },
-  { id: "requests", label: "申請管理", visibleTo: "super_only" },
-  { id: "documents", label: "書類配布", visibleTo: "super_only" },
-  { id: "employee_manage", label: "従業員管理", visibleTo: "super_only" },
-  { id: "settings", label: "設定", visibleTo: "owner_only" },
+type SubTab = "notifications" | "paidleave" | "shift" | "sharoushi" | "individual" | "daily" | "monthly" | "req_overtime" | "req_yukyu" | "req_other" | "pay_monthly" | "pay_master" | "documents" | "employee_manage" | "settings";
+type GroupId = "notifications" | "kintai" | "request" | "payroll" | "admin";
+type Visibility = "owner_only" | "super_only" | "all" | "wc_owner";
+const ALL_SUB_TABS: { id: SubTab; label: string; group: GroupId; visibleTo: Visibility }[] = [
+  { id: "notifications",   label: "お知らせ",     group: "notifications", visibleTo: "all" },
+  { id: "individual",      label: "個人出勤簿",   group: "kintai",        visibleTo: "all" },
+  { id: "daily",           label: "日次一覧",     group: "kintai",        visibleTo: "all" },
+  { id: "monthly",         label: "月次サマリ",   group: "kintai",        visibleTo: "all" },
+  { id: "shift",           label: "シフト管理",   group: "kintai",        visibleTo: "wc_owner" },
+  { id: "paidleave",       label: "有給管理",     group: "kintai",        visibleTo: "wc_owner" },
+  { id: "sharoushi",       label: "社労士出力",   group: "kintai",        visibleTo: "owner_only" },
+  { id: "req_overtime",    label: "残業",         group: "request",       visibleTo: "wc_owner" },
+  { id: "req_yukyu",       label: "有給",         group: "request",       visibleTo: "wc_owner" },
+  { id: "req_other",       label: "欠勤遅刻早退", group: "request",       visibleTo: "wc_owner" },
+  { id: "pay_monthly",     label: "月次計算",     group: "payroll",       visibleTo: "wc_owner" },
+  { id: "pay_master",      label: "給与マスタ",   group: "payroll",       visibleTo: "wc_owner" },
+  { id: "employee_manage", label: "従業員一覧",   group: "admin",         visibleTo: "super_only" },
+  { id: "documents",       label: "書類配布",     group: "admin",         visibleTo: "super_only" },
+  { id: "settings",        label: "設定",         group: "admin",         visibleTo: "owner_only" },
+];
+const GROUPS: { id: GroupId; label: string }[] = [
+  { id: "notifications", label: "お知らせ" },
+  { id: "kintai",        label: "勤怠" },
+  { id: "request",       label: "申請" },
+  { id: "payroll",       label: "給与管理" },
+  { id: "admin",         label: "社内管理" },
 ];
 const OWNER_CODES = ["W02", "W67"];
 const SUPER_CODES = ["W02", "W49", "W67"];
@@ -1060,7 +1070,7 @@ const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
   "却下": { bg: "#FEE2E2", color: "#991B1B" },
 };
 
-const RequestsSub = ({ employee }: { employee: any }) => {
+const RequestsSub = ({ employee, categoryFilter }: { employee: any; categoryFilter?: string[] }) => {
   const [requests, setRequests] = useState<ChangeReq[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("未処理");
@@ -1082,10 +1092,15 @@ const RequestsSub = ({ employee }: { employee: any }) => {
 
   useEffect(() => { fetchRequests(); }, [fetchRequests]);
 
+  const catFiltered = useMemo(() => {
+    if (!categoryFilter) return requests;
+    return requests.filter(r => categoryFilter.some(cf => r.category.includes(cf)));
+  }, [requests, categoryFilter]);
+
   const filtered = useMemo(() => {
-    if (filter === "全件") return requests;
-    return requests.filter(r => r.status === filter);
-  }, [requests, filter]);
+    if (filter === "全件") return catFiltered;
+    return catFiltered.filter(r => r.status === filter);
+  }, [catFiltered, filter]);
 
   const handleProcess = async (req: ChangeReq, newStatus: "承認" | "却下") => {
     setProcessing(req.id);
@@ -1093,6 +1108,17 @@ const RequestsSub = ({ employee }: { employee: any }) => {
       status: newStatus, reviewer_note: reviewNotes[req.id] || null,
       reviewed_by: employee.id, reviewed_at: new Date().toISOString(), updated_at: new Date().toISOString(),
     }).eq("id", req.id);
+    if (!error && req.category === "残業申請") {
+      const dateMatch = req.detail?.match(/^(\d{4}-\d{2}-\d{2})/);
+      const otStatus = newStatus === "承認" ? "approved" : "rejected";
+      const updatePayload: Record<string, any> = {
+        status: otStatus, approved_by: employee.id, approved_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      };
+      if (newStatus === "却下") updatePayload.reject_reason = reviewNotes[req.id] || null;
+      let q = supabase.from("wc_overtime_requests").update(updatePayload).eq("employee_id", req.employee_id).eq("status", "pending");
+      if (dateMatch) q = q.eq("attendance_date", dateMatch[1]);
+      await q;
+    }
     setProcessing(null);
     if (error) { setDialogState({ message: "処理に失敗しました", mode: "alert", onOk: () => setDialogState(null) }); }
     else { fetchRequests(); }
@@ -1107,9 +1133,9 @@ const RequestsSub = ({ employee }: { employee: any }) => {
 
   const counts = useMemo(() => {
     let pending = 0, approved = 0, rejected = 0;
-    requests.forEach(r => { if (r.status === "未処理") pending++; else if (r.status === "承認") approved++; else if (r.status === "却下") rejected++; });
-    return { pending, approved, rejected, total: requests.length };
-  }, [requests]);
+    catFiltered.forEach(r => { if (r.status === "未処理") pending++; else if (r.status === "承認") approved++; else if (r.status === "却下") rejected++; });
+    return { pending, approved, rejected, total: catFiltered.length };
+  }, [catFiltered]);
 
   const filterBtns: { label: string; value: string; count: number; color: string }[] = [
     { label: "未処理", value: "未処理", count: counts.pending, color: "#92400E" },
@@ -1291,62 +1317,110 @@ export default function AdminTab({ employee }: { employee: any }) {
   const isSuper = SUPER_CODES.includes(myCode);
   const isWcOwner = myCode === "WC001";
   const visibleTabs = ALL_SUB_TABS.filter(t => {
-    if (t.id === "shift") return isOwner || isWcOwner;
     if (t.visibleTo === "wc_owner") return isWcOwner || isSuper;
     if (t.visibleTo === "owner_only") return isOwner;
-    if (t.visibleTo === "owner_or_kondo") return isOwner;
     if (t.visibleTo === "super_only") return isOwner || isSuper || isWcOwner;
     return true;
   });
-  const defaultTab = isWcOwner ? "shift" : isOwner ? "notifications" : "individual";
+  const visibleGroups = GROUPS.filter(g => visibleTabs.some(t => t.group === g.id));
+  const defaultTab: SubTab = isWcOwner ? "shift" : isOwner ? "notifications" : "individual";
   const [sub, setSub] = useState<SubTab>(defaultTab);
-  const [overtimePendingCount, setOvertimePendingCount] = useState(0);
+  const [activeGroup, setActiveGroup] = useState<GroupId>(
+    visibleTabs.find(t => t.id === defaultTab)?.group || visibleGroups[0]?.id || "notifications"
+  );
 
   useEffect(() => {
+    const tabsInGroup = visibleTabs.filter(t => t.group === activeGroup);
+    if (tabsInGroup.length === 0) return;
+    if (!tabsInGroup.some(t => t.id === sub)) {
+      setSub(tabsInGroup[0].id);
+    }
+  }, [activeGroup]);
+
+  const groupTabs = visibleTabs.filter(t => t.group === activeGroup);
+  const isSingleTabGroup = groupTabs.length <= 1;
+
+  const [subBadges, setSubBadges] = useState<Record<string, number>>({});
+  useEffect(() => {
     if (!employee?.company_id) return;
-    const fetchCount = async () => {
-      const { count } = await supabase
-        .from("wc_overtime_requests")
-        .select("id", { count: "exact", head: true })
-        .eq("company_id", employee.company_id)
-        .eq("status", "pending");
-      setOvertimePendingCount(count || 0);
+    const fetchBadges = async () => {
+      const badges: Record<string, number> = {};
+      const { count: otCount } = await supabase.from("wc_overtime_requests").select("id", { count: "exact", head: true }).eq("company_id", employee.company_id).eq("status", "pending");
+      if ((otCount || 0) > 0) badges["req_overtime"] = otCount || 0;
+      const { count: crCount } = await supabase.from("change_requests").select("id", { count: "exact", head: true }).eq("company_id", employee.company_id).eq("status", "未処理");
+      if ((crCount || 0) > 0) {
+        const { data: crData } = await supabase.from("change_requests").select("category").eq("company_id", employee.company_id).eq("status", "未処理");
+        let yukyu = 0, other = 0;
+        (crData || []).forEach((r: any) => {
+          if (r.category.includes("有給")) yukyu++;
+          else if (!r.category.includes("残業")) other++;
+        });
+        if (yukyu > 0) badges["req_yukyu"] = yukyu;
+        if (other > 0) badges["req_other"] = other;
+      }
+      setSubBadges(badges);
     };
-    fetchCount();
-    const ch = supabase.channel("wc_overtime_badge")
-      .on("postgres_changes", { event: "*", schema: "public", table: "wc_overtime_requests", filter: `company_id=eq.${employee.company_id}` },
-        () => fetchCount())
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
+    fetchBadges();
+    const ch1 = supabase.channel("wc_overtime_badge").on("postgres_changes", { event: "*", schema: "public", table: "wc_overtime_requests", filter: `company_id=eq.${employee.company_id}` }, () => fetchBadges()).subscribe();
+    const ch2 = supabase.channel("wc_cr_badge").on("postgres_changes", { event: "*", schema: "public", table: "change_requests", filter: `company_id=eq.${employee.company_id}` }, () => fetchBadges()).subscribe();
+    return () => { supabase.removeChannel(ch1); supabase.removeChannel(ch2); };
   }, [employee?.company_id]);
-  // 給与管理タブは Excel 横長一覧を出すので、960px 制約は外して画面幅近くまで広げ、
-  // ただし常識的な左右 12px の余白は確保する（box-sizing でその余白が viewport から内側に効く）。
-  // テーブル側は table-layout:fixed と小フォント・ヘッダー折り返しで 30列を viewport-24px 内に収める。
+
+  const groupBadge = (gid: GroupId): number => {
+    return visibleTabs.filter(t => t.group === gid).reduce((sum, t) => sum + (subBadges[t.id] || 0), 0);
+  };
+
   return (
-    <div style={{
-      padding: "16px 12px",
-      maxWidth: 960,
-      boxSizing: "border-box",
-      margin: "0 auto",
-    }}>
-      <div style={{
-        display: "flex", gap: 4, marginBottom: 16,
-        borderBottom: `1px solid ${T.border}`, overflowX: "auto",
-      }}>
-        {visibleTabs.map(t => (<button key={t.id} onClick={() => setSub(t.id)} style={{ padding: "10px 14px", border: "none", backgroundColor: "transparent", cursor: "pointer", fontSize: 13, fontWeight: sub === t.id ? 700 : 400, color: sub === t.id ? T.primary : T.textSec, borderBottom: sub === t.id ? `3px solid ${T.primary}` : "3px solid transparent", transition: "all 0.2s", whiteSpace: "nowrap", position: "relative" }}>{t.label}{t.id === "wc_overtime" && overtimePendingCount > 0 && <span style={{ position: "absolute", top: 2, right: 0, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: "#DC2626", color: "#fff", fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px", lineHeight: 1 }}>{overtimePendingCount}</span>}</button>))}
+    <div style={{ padding: "16px 12px", maxWidth: 960, boxSizing: "border-box", margin: "0 auto" }}>
+      <div style={{ display: "flex", gap: 4, marginBottom: 8, borderBottom: `2px solid ${T.border}`, flexWrap: "wrap" }}>
+        {visibleGroups.map(g => {
+          const active = activeGroup === g.id;
+          const gb = groupBadge(g.id);
+          return (
+            <button key={g.id} onClick={() => setActiveGroup(g.id)} style={{
+              padding: "10px 16px", border: "none", backgroundColor: active ? T.primary + "12" : "transparent",
+              cursor: "pointer", fontSize: 14, fontWeight: active ? 700 : 500,
+              color: active ? T.primary : T.textSec,
+              borderBottom: active ? `3px solid ${T.primary}` : "3px solid transparent",
+              borderRadius: "6px 6px 0 0", transition: "all 0.15s", position: "relative",
+            }}>
+              {g.label}
+              {gb > 0 && <span style={{ position: "absolute", top: 4, right: 4, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: "#EF4444", color: "#fff", fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 4px", lineHeight: 1 }}>{gb}</span>}
+            </button>
+          );
+        })}
       </div>
+      {!isSingleTabGroup && (
+        <div style={{ display: "flex", gap: 4, marginBottom: 16, borderBottom: `1px solid ${T.border}`, flexWrap: "wrap" }}>
+          {groupTabs.map(t => (
+            <button key={t.id} onClick={() => setSub(t.id)} style={{
+              padding: "8px 12px", border: "none", backgroundColor: "transparent", cursor: "pointer",
+              fontSize: 13, fontWeight: sub === t.id ? 700 : 400,
+              color: sub === t.id ? T.primary : T.textSec,
+              borderBottom: sub === t.id ? `3px solid ${T.primary}` : "3px solid transparent",
+              transition: "all 0.15s", position: "relative",
+            }}>
+              {t.label}
+              {(subBadges[t.id] || 0) > 0 && <span style={{ position: "absolute", top: 2, right: 2, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: "#EF4444", color: "#fff", fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 4px", lineHeight: 1 }}>{subBadges[t.id]}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+      {isSingleTabGroup && <div style={{ marginBottom: 16 }} />}
       {sub === "notifications" && <NotificationsSub employee={employee} />}
-      {sub === "paidleave" && <PaidLeaveSub employee={employee} />}
-      {sub === "shift" && <ShiftSub employee={employee} />}
-      {sub === "wc_overtime" && <OvertimeApprovalSub employee={employee} />}
-      {sub === "wc_payroll" && <PayrollSub employee={employee} />}
-      {sub === "sharoushi" && <SharoushiSub employee={employee} />}
       {sub === "individual" && <IndividualSub employee={employee} />}
       {sub === "daily" && <DailySub employee={employee} />}
       {sub === "monthly" && <MonthlySub employee={employee} />}
-      {sub === "requests" && <RequestsSub employee={employee} />}
-      {sub === "documents" && <DocumentsSub employee={employee} />}
+      {sub === "shift" && <ShiftSub employee={employee} />}
+      {sub === "paidleave" && <PaidLeaveSub employee={employee} />}
+      {sub === "sharoushi" && <SharoushiSub employee={employee} />}
+      {sub === "req_overtime" && <RequestsSub employee={employee} categoryFilter={["残業"]} />}
+      {sub === "req_yukyu" && <RequestsSub employee={employee} categoryFilter={["有給"]} />}
+      {sub === "req_other" && <RequestsSub employee={employee} categoryFilter={["欠勤", "遅刻", "早退"]} />}
+      {sub === "pay_monthly" && <PayrollSub employee={employee} />}
+      {sub === "pay_master" && <PayrollSub employee={employee} />}
       {sub === "employee_manage" && <EmployeeManageSub employee={employee} />}
+      {sub === "documents" && <DocumentsSub employee={employee} />}
       {sub === "settings" && <SettingsSub employee={employee} />}
     </div>
   );
