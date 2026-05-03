@@ -490,6 +490,21 @@ serve(async (req) => {
     }
 
     // ============================
+    // WC: 申請承認/却下通知 → 該当従業員
+    // ============================
+    if (type === "wc_request_processed") {
+      const { employee_id, category, status } = payload;
+      const label = status === "承認" ? "承認されました" : "却下されました";
+      targets.push({
+        employee_id,
+        title: `${category}が${label}`,
+        body: status === "却下" ? "詳細はポータルで確認してください" : "",
+        tag: "wc-request-processed",
+        url: "/home",
+      });
+    }
+
+    // ============================
     // WC: 情報変更申請通知 → W67のみ
     // ============================
     if (type === "wc_info_change_request") {

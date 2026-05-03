@@ -517,6 +517,10 @@ export default function AttendanceTab({ employee }: { employee: any }) {
       category: "残業申請", detail: `${modalDay.dateStr} 残業申請\n${overtimeReason.trim()}`, status: "未処理",
     });
     if (crErr) { console.error("change_requests insert failed:", crErr); showAlert("残業申請は登録しましたが、管理者への通知に失敗しました: " + crErr.message); }
+    fetch(PUSH_URL, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "wc_leave_request", payload: { company_id: employee.company_id, employee_name: employee.full_name, reason: "残業申請", attendance_date: modalDay.dateStr } }),
+    }).catch(() => {});
     setModalDay(null); loadData();
   };
 
@@ -598,6 +602,10 @@ export default function AttendanceTab({ employee }: { employee: any }) {
         detail: `${modalDay.dateStr} ${previewReason}${note ? "\n" + note : ""}`, status: "未処理",
       });
       if (crErr) { console.error("change_requests insert failed:", crErr); showAlert("申請は登録しましたが、管理者への通知に失敗しました: " + crErr.message); }
+      fetch(PUSH_URL, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "wc_leave_request", payload: { company_id: employee.company_id, employee_name: employee.full_name, reason: previewReason, attendance_date: modalDay.dateStr } }),
+      }).catch(() => {});
       setModalDay(null); loadData();
       return;
     }
@@ -616,14 +624,11 @@ export default function AttendanceTab({ employee }: { employee: any }) {
         category: reqCat, detail: `${modalDay.dateStr} ${previewReason}${note ? "\n" + note : ""}`, status: "未処理",
       });
       if (crErr) { console.error("change_requests insert failed:", crErr); showAlert("申請は登録しましたが、管理者への通知に失敗しました: " + crErr.message); }
+      fetch(PUSH_URL, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "wc_leave_request", payload: { company_id: employee.company_id, employee_name: employee.full_name, reason: previewReason, attendance_date: modalDay.dateStr } }),
+      }).catch(() => {});
       setModalDay(null); loadData();
-      if (previewReason && (previewReason.includes("有給") || previewReason.includes("希望休") || previewReason.includes("代休") || previewReason.includes("出張"))) {
-        const storeName = employee.store_name || "";
-        fetch("https://pktqlbpdjemmomfanvgt.supabase.co/functions/v1/send-push", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "attendance_reason_set", payload: { company_id: employee.company_id, employee_id: employee.id, employee_name: employee.full_name, reason: previewReason, attendance_date: modalDay.dateStr, store_name: storeName } }),
-        }).catch(() => {});
-      }
     }
     else { showAlert("登録に失敗しました: " + error.message); }
   };
