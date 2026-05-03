@@ -448,6 +448,9 @@ export default function ShiftSub({ employee }: { employee: any }) {
     if (processingReqRef.current.has(reqId)) return;
     processingReqRef.current.add(reqId);
     try {
+      const approvedEmpId = pendingDialog.emp.id;
+      const approvedDate = dateStr(yr, mo, pendingDialog.day);
+      const approvedType = pendingDialog.reqType;
       setLeaveReqs(prev => prev.map(r => r.id === reqId ? { ...r, status: "approved", reject_reason: null } : r));
       setPendingDialog(null);
       const { error } = await supabase.from("leave_requests").update({
@@ -459,6 +462,13 @@ export default function ShiftSub({ employee }: { employee: any }) {
         updated_at: new Date().toISOString(),
       }).eq("id", reqId);
       if (error) { console.error(error); loadData(); }
+      else {
+        const kindLabel = approvedType === "yukyu" ? "有給" : "公休";
+        fetch(PUSH_URL, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "request_processed", payload: { employee_id: approvedEmpId, title: `${kindLabel}申請 承認`, body: `${formatJpDate(approvedDate)}の${kindLabel}申請が承認されました` } }),
+        }).catch(() => {});
+      }
     } finally {
       processingReqRef.current.delete(reqId);
     }
