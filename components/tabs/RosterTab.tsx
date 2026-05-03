@@ -285,9 +285,7 @@ const ProfileModal = ({ emp, viewerPerm, viewerCode, isSelf, companyId, onClose,
   const can = (section: ProfileSection) =>
     canSeeProfile(viewerPerm, viewerCode, isSelf, emp.store_id, section);
 
-  const birthdayDisplay = emp.birth_date
-    ? (can("detail") ? emp.birth_date : emp.birth_date.slice(5))
-    : null;
+  const birthdayDisplay = emp.birth_date || null;
 
   const tenureYears = emp.hire_date
     ? Math.floor((Date.now() - new Date(emp.hire_date).getTime()) / (365.25 * 86400000))
@@ -337,9 +335,9 @@ const ProfileModal = ({ emp, viewerPerm, viewerCode, isSelf, companyId, onClose,
               <Avatar name={emp.full_name} size={64} style={{ border: "3px solid rgba(255,255,255,0.3)" }} />
               <div>
                 <div style={{ fontSize: 20, fontWeight: 700 }}>{emp.full_name}</div>
-                <div style={{ fontSize: 12, opacity: 0.8 }}>{emp.full_name_kana || ""}</div>
+                {can("detail") && <div style={{ fontSize: 12, opacity: 0.8 }}>{emp.full_name_kana || ""}</div>}
                 <div style={{ fontSize: 11, opacity: 0.65, marginTop: 4 }}>
-                  {emp.store_short} ・ {emp.department || "—"} ・ {emp.position || "—"}
+                  {can("detail") ? `${emp.store_short} ・ ${emp.department || "—"} ・ ${emp.position || "—"}` : (emp.department || "—")}
                 </div>
               </div>
             </div>
@@ -365,11 +363,11 @@ const ProfileModal = ({ emp, viewerPerm, viewerCode, isSelf, companyId, onClose,
               <div style={{ width: 3, height: 13, backgroundColor: T.primary, borderRadius: 2 }} />
               <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>基本情報</span>
             </div>
-            <Info l="社員番号" v={emp.employee_code} />
-            <Info l="店舗" v={emp.store_short} />
-            <Info l="部署" v={emp.department} />
-            <Info l="役職" v={emp.position} />
-            <Info l="誕生日" v={birthdayDisplay} />
+            {can("detail") && <Info l="社員番号" v={emp.employee_code} />}
+            {can("detail") && <Info l="店舗" v={emp.store_short} />}
+            <Info l="担当業務" v={emp.department} />
+            {can("detail") && <Info l="役職" v={emp.position} />}
+            <Info l="生年月日" v={birthdayDisplay} />
 
             {/* 詳細情報 */}
             {can("detail") && (
