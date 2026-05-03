@@ -142,11 +142,12 @@ const CHANGE_CATEGORIES = [
 interface ChangeRequestModalProps {
   employeeId: string;
   companyId: string;
+  employeeName: string;
   onClose: () => void;
   onSuccess: () => void;
 }
 
-const ChangeRequestModal = ({ employeeId, companyId, onClose, onSuccess }: ChangeRequestModalProps) => {
+const ChangeRequestModal = ({ employeeId, companyId, employeeName, onClose, onSuccess }: ChangeRequestModalProps) => {
   const [category, setCategory] = useState<string | null>(null);
   const [detail, setDetail] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -188,6 +189,12 @@ const ChangeRequestModal = ({ employeeId, companyId, onClose, onSuccess }: Chang
     setSaving(false);
 
     if (insertErr) { setError("申請の送信に失敗しました"); return; }
+    try {
+      await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-push`, {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}` },
+        body: JSON.stringify({ type: "wc_info_change_request", payload: { company_id: companyId, employee_name: employeeName, category } }),
+      });
+    } catch (_) {}
     onSuccess();
   };
 
@@ -438,6 +445,7 @@ const ProfileModal = ({ emp, viewerPerm, viewerCode, isSelf, companyId, onClose,
         <ChangeRequestModal
           employeeId={emp.id}
           companyId={companyId}
+          employeeName={emp.full_name}
           onClose={() => setShowChangeModal(false)}
           onSuccess={() => { setShowChangeModal(false); setDialogMsg("申請を送信しました"); }}
         />

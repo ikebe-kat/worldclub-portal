@@ -16,7 +16,7 @@ import PayrollSub from "@/components/tabs/PayrollSub";
 interface EmpOption { id: string; code: string; name: string; store_id: string; store_name: string; department: string | null; role: string | null; hire_date: string | null; paid_leave_grant_date: string | null; holiday_calendar: string | null; }
 interface AttRow { id: string; attendance_date: string; day_of_week: string | null; punch_in: string | null; punch_out: string | null; reason: string | null; break_minutes: number | null; late_minutes: number | null; early_leave_minutes: number | null; actual_hours: number | null; scheduled_hours: number | null; overtime_hours: number | null; over_under: number | null; employee_note: string | null; admin_memo: string | null; is_holiday: boolean | null; work_pattern_code: string | null; }
 
-type SubTab = "notifications" | "paidleave" | "shift" | "sharoushi" | "individual" | "daily" | "monthly" | "req_overtime" | "req_yukyu" | "req_other" | "pay_monthly" | "pay_master" | "documents" | "employee_manage" | "settings";
+type SubTab = "notifications" | "paidleave" | "shift" | "sharoushi" | "individual" | "daily" | "monthly" | "req_overtime" | "req_yukyu" | "req_other" | "req_info_change" | "pay_monthly" | "pay_master" | "documents" | "employee_manage" | "settings";
 type GroupId = "notifications" | "kintai" | "request" | "payroll" | "admin";
 type Visibility = "owner_only" | "super_only" | "all" | "wc_owner";
 const ALL_SUB_TABS: { id: SubTab; label: string; group: GroupId; visibleTo: Visibility }[] = [
@@ -30,6 +30,7 @@ const ALL_SUB_TABS: { id: SubTab; label: string; group: GroupId; visibleTo: Visi
   { id: "req_overtime",    label: "残業",         group: "request",       visibleTo: "wc_owner" },
   { id: "req_yukyu",       label: "有給",         group: "request",       visibleTo: "wc_owner" },
   { id: "req_other",       label: "欠勤遅刻早退", group: "request",       visibleTo: "wc_owner" },
+  { id: "req_info_change", label: "情報変更",     group: "request",       visibleTo: "super_only" },
   { id: "pay_monthly",     label: "月次計算",     group: "payroll",       visibleTo: "wc_owner" },
   { id: "pay_master",      label: "給与マスタ",   group: "payroll",       visibleTo: "wc_owner" },
   { id: "employee_manage", label: "従業員一覧",   group: "admin",         visibleTo: "super_only" },
@@ -1350,13 +1351,16 @@ export default function AdminTab({ employee }: { employee: any }) {
       const { count: crCount } = await supabase.from("change_requests").select("id", { count: "exact", head: true }).eq("company_id", employee.company_id).eq("status", "未処理");
       if ((crCount || 0) > 0) {
         const { data: crData } = await supabase.from("change_requests").select("category").eq("company_id", employee.company_id).eq("status", "未処理");
-        let yukyu = 0, other = 0;
+        let yukyu = 0, other = 0, infoChange = 0;
+        const INFO_CATS = ["住所変更", "口座変更", "扶養追加", "扶養削除", "その他"];
         (crData || []).forEach((r: any) => {
           if (r.category.includes("有給")) yukyu++;
+          else if (INFO_CATS.includes(r.category)) infoChange++;
           else if (!r.category.includes("残業")) other++;
         });
         if (yukyu > 0) badges["req_yukyu"] = yukyu;
         if (other > 0) badges["req_other"] = other;
+        if (infoChange > 0) badges["req_info_change"] = infoChange;
       }
       setSubBadges(badges);
     };
@@ -1417,6 +1421,7 @@ export default function AdminTab({ employee }: { employee: any }) {
       {sub === "req_overtime" && <RequestsSub employee={employee} categoryFilter={["残業"]} />}
       {sub === "req_yukyu" && <RequestsSub employee={employee} categoryFilter={["有給"]} />}
       {sub === "req_other" && <RequestsSub employee={employee} categoryFilter={["欠勤", "遅刻", "早退"]} />}
+      {sub === "req_info_change" && <RequestsSub employee={employee} categoryFilter={["住所変更", "口座変更", "扶養追加", "扶養削除", "その他"]} />}
       {sub === "pay_monthly" && <PayrollSub employee={employee} />}
       {sub === "pay_master" && <PayrollSub employee={employee} />}
       {sub === "employee_manage" && <EmployeeManageSub employee={employee} />}

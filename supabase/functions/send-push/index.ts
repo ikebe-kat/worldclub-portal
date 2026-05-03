@@ -490,6 +490,27 @@ serve(async (req) => {
     }
 
     // ============================
+    // WC: 情報変更申請通知 → W67のみ
+    // ============================
+    if (type === "wc_info_change_request") {
+      const { company_id, employee_name, category } = payload;
+      const { allEmps } = await getEmpsAndStores(company_id);
+      const W67_CODES = ["W67"];
+      for (const code of W67_CODES) {
+        const emp = allEmps.find((e: any) => e.employee_code === code);
+        if (emp) {
+          targets.push({
+            employee_id: emp.id,
+            title: `${lastName(employee_name)}が情報変更を申請`,
+            body: category || "情報変更申請",
+            tag: "wc-info-change",
+            url: "/home",
+          });
+        }
+      }
+    }
+
+    // ============================
     // 通知送信
     // ============================
     let sent = 0;
