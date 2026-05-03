@@ -83,7 +83,7 @@
     <li><a href="#login">ログイン・画面構成</a></li>
     <li><a href="#shift">シフト管理（希望確認・確定）</a></li>
     <li><a href="#requests">申請承認（残業・有給・欠勤遅刻早退）</a></li>
-    <li><a href="#payroll">給与管理（再計算・確定・明細配布）</a></li>
+    <li><a href="#payroll">給与管理（確認・明細配布）</a></li>
     <li><a href="#paidleave">有給管理</a></li>
     <li><a href="#attendance">従業員の出勤簿確認</a></li>
     <li><a href="#daily">日次一覧・月次サマリ</a></li>
@@ -212,38 +212,14 @@
 
 <section id="payroll">
   <h2><span class="num">5</span> 給与管理</h2>
-  <p><strong>「給与管理」</strong>グループの「月次計算」を開きます。</p>
-  <h3>月次給与の計算</h3>
-  <ol class="steps">
-    <li>対象月を選択します（デフォルトは当月）</li>
-    <li><strong>「再計算」</strong>ボタンをタップします</li>
-    <li>全従業員の出勤データから給与が自動計算されます</li>
-    <li>計算結果が一覧テーブルで表示されます</li>
-  </ol>
-  <h3>テーブルの主な列</h3>
-  <table class="key-table">
-    <tr><th>列</th><th>内容</th></tr>
-    <tr><td>出勤日数</td><td>期間中の出勤日数</td></tr>
-    <tr><td>勤務時間</td><td>総勤務時間（H:MM形式）</td></tr>
-    <tr><td>残業時間</td><td>8時間超の残業時間</td></tr>
-    <tr><td>平日給与</td><td>平日勤務分の給与</td></tr>
-    <tr><td>休日給与</td><td>土日祝勤務分の給与</td></tr>
-    <tr><td>残業手当</td><td>残業時間 x 時給 x 1.25</td></tr>
-    <tr><td>総支給額</td><td>支給合計</td></tr>
-    <tr><td>控除計</td><td>社保・雇保・所得税・住民税の合計</td></tr>
-    <tr><td><strong>差引支給額</strong></td><td>総支給額 - 控除計（手取り額）</td></tr>
-  </table>
-  <div class="note note-warn">計算結果はdraft（下書き）として保存されます。内容を確認して問題なければ「確定」してください。</div>
-  <h3>個別値の修正</h3>
-  <p>セルをタップすると直接編集できます。交通費・控除項目などを個別に修正可能です。</p>
+  <p><strong>「給与管理」</strong>グループの「月次計算」を開くと、池邉が確定した給与データを確認できます。</p>
   <h3>給与明細の配布</h3>
   <ol class="steps">
     <li>各従業員の行の右端にある<strong>「明細」</strong>ボタンをタップします</li>
     <li>給与明細PDFがプレビュー表示されます</li>
     <li>印刷またはPDF保存して配布してください</li>
   </ol>
-  <h3>給与マスタ</h3>
-  <p>「給与マスタ」サブタブでは、各従業員の基本時給・手当等のマスタデータを管理します。</p>
+  <div class="note note-info">給与の計算・確定・修正は池邉が行います。小川さんは確定後のデータ確認と明細配布のみです。</div>
 </section>
 
 <section id="paidleave">
