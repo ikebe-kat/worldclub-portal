@@ -83,12 +83,12 @@ const PinChangeModal = ({ employeeId, onClose, onSuccess }: PinModalProps) => {
 
     // 現在のPIN確認
     const { data: emp } = await supabase
-      .from("employees").select("pin").eq("id", employeeId).maybeSingle();
+      .from("employee_pins").select("pin").eq("employee_id", employeeId).maybeSingle();
     if (!emp || emp.pin !== currentPin) { setError("現在のPINが正しくありません"); return; }
 
     setSaving(true);
     const { error: updateErr } = await supabase
-      .from("employees").update({ pin: newPin }).eq("id", employeeId);
+      .from("employee_pins").update({ pin: newPin }).eq("employee_id", employeeId);
     setSaving(false);
 
     if (updateErr) { setError("更新に失敗しました"); return; }
