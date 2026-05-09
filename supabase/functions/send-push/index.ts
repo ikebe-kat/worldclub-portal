@@ -17,6 +17,8 @@ const lastName = (fullName: string) => (fullName || "").split(/\s+/)[0] || fullN
 const ALL_CALENDAR_CODES = ["002", "018", "067", "003", "009", "006", "049"];
 const GYOMU_DEPTS = ["人事", "経理", "DX"];
 const HAMAMURA_CODE = "095";
+const WC_COMPANY_ID = "c2d368f0-aa9b-4f70-b082-43ec07723d6c";
+const WC_NOTIFY_CODES_REASON = ["WC001", "W67", "W49"];
 
 const calMap: Record<string, string> = {
   "all": "全店舗", "kengun": "健軍", "ozu": "大津", "yatsushiro": "八代", "gyomu": "業務部",
@@ -180,16 +182,24 @@ serve(async (req) => {
 
       const { allEmps, storeMap } = await getEmpsAndStores(company_id);
 
-      const empObj = allEmps.find((e: any) => e.id === employee_id);
-      const empStoreName = empObj ? (storeMap[empObj.store_id] || "") : "";
-      const empDept = empObj?.department || "";
-      const empCode = empObj?.employee_code || "";
-      const targetCal = resolveCalendarGroup(empCode, empDept, empStoreName);
+      if (company_id === WC_COMPANY_ID) {
+        targets.push({ employee_id, title, body, tag: "attendance-reason", url: "/home" });
+        for (const code of WC_NOTIFY_CODES_REASON) {
+          const mgr = allEmps.find((e: any) => e.employee_code === code && e.id !== employee_id);
+          if (mgr) targets.push({ employee_id: mgr.id, title, body, tag: "attendance-reason", url: "/home" });
+        }
+      } else {
+        const empObj = allEmps.find((e: any) => e.id === employee_id);
+        const empStoreName = empObj ? (storeMap[empObj.store_id] || "") : "";
+        const empDept = empObj?.department || "";
+        const empCode = empObj?.employee_code || "";
+        const targetCal = resolveCalendarGroup(empCode, empDept, empStoreName);
 
-      for (const emp of allEmps) {
-        const sn = storeMap[emp.store_id] || "";
-        if (matchCalendar(emp.employee_code, sn, emp.department || "", targetCal)) {
-          targets.push({ employee_id: emp.id, title, body, tag: "attendance-reason", url: "/home" });
+        for (const emp of allEmps) {
+          const sn = storeMap[emp.store_id] || "";
+          if (matchCalendar(emp.employee_code, sn, emp.department || "", targetCal)) {
+            targets.push({ employee_id: emp.id, title, body, tag: "attendance-reason", url: "/home" });
+          }
         }
       }
     }
@@ -221,16 +231,25 @@ serve(async (req) => {
       const body = `${storeShort}：${lastName(employee_name)}　${dateShort}`;
 
       const { allEmps, storeMap } = await getEmpsAndStores(company_id);
-      const empObj = allEmps.find((e: any) => e.id === employee_id);
-      const empStoreName = empObj ? (storeMap[empObj.store_id] || "") : "";
-      const empDept = empObj?.department || "";
-      const empCode = empObj?.employee_code || "";
-      const targetCal = resolveCalendarGroup(empCode, empDept, empStoreName);
 
-      for (const emp of allEmps) {
-        const sn = storeMap[emp.store_id] || "";
-        if (matchCalendar(emp.employee_code, sn, emp.department || "", targetCal)) {
-          targets.push({ employee_id: emp.id, title, body, tag: "attendance-reason", url: "/home" });
+      if (company_id === WC_COMPANY_ID) {
+        targets.push({ employee_id, title, body, tag: "attendance-reason", url: "/home" });
+        for (const code of WC_NOTIFY_CODES_REASON) {
+          const mgr = allEmps.find((e: any) => e.employee_code === code && e.id !== employee_id);
+          if (mgr) targets.push({ employee_id: mgr.id, title, body, tag: "attendance-reason", url: "/home" });
+        }
+      } else {
+        const empObj = allEmps.find((e: any) => e.id === employee_id);
+        const empStoreName = empObj ? (storeMap[empObj.store_id] || "") : "";
+        const empDept = empObj?.department || "";
+        const empCode = empObj?.employee_code || "";
+        const targetCal = resolveCalendarGroup(empCode, empDept, empStoreName);
+
+        for (const emp of allEmps) {
+          const sn = storeMap[emp.store_id] || "";
+          if (matchCalendar(emp.employee_code, sn, emp.department || "", targetCal)) {
+            targets.push({ employee_id: emp.id, title, body, tag: "attendance-reason", url: "/home" });
+          }
         }
       }
     }
