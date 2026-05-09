@@ -466,7 +466,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
         const kindLabel = approvedType === "yukyu" ? "有給" : "公休";
         fetch(PUSH_URL, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "request_processed", payload: { employee_id: approvedEmpId, title: `${kindLabel}申請 承認`, body: `${formatJpDate(approvedDate)}の${kindLabel}申請が承認されました` } }),
+          body: JSON.stringify({ type: "request_processed", payload: { employee_id: approvedEmpId, category: `${kindLabel}申請`, status: "承認" } }),
         }).catch(() => {});
       }
     } finally {
@@ -814,8 +814,8 @@ export default function ShiftSub({ employee }: { employee: any }) {
         type: "request_processed",
         payload: {
           employee_id: req.employee_id,
-          title: `${kindLabel}申請 承認`,
-          body: `${formatJpDate(req.attendance_date)}の${kindLabel}申請が承認されました`,
+          category: `${kindLabel}申請`,
+          status: "承認",
         },
       }),
     }).catch(() => {});
