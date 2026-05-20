@@ -111,3 +111,38 @@
 2. 原因不明のままコードを修正するな。推測修正は事故を拡大する
 3. 全アプリが同時に遅い=共通インフラ（DB/Supabase）の問題。フロントコードではない
 4. 「5分で直せるバグがなぜ起きる」→知識不足で防げたことを防がなかったClaudeの責任
+
+---
+
+## 【2026/05/09 重大インシデント】環境変数を勝手に変更するな
+
+### 事象
+- Claudeがワールドクラブの通知バグ修正中に、確認なくVercelのProduction環境変数にSUPABASE_SERVICE_ROLE_KEYを勝手に追加した
+- .env.localにもservice_role keyを勝手に追加した
+- 池邉さんに一切の事前確認をしなかった
+
+### 教訓
+1. 環境変数（Vercel環境変数・.env.local・Supabase設定）を勝手に追加・変更・削除するな
+2. 環境変数に関わる操作は全て「〜を追加してよいですか？」と事前確認してから実行しろ
+3. コードの修正指示があっても、環境変数の変更が伴う場合は別途確認しろ
+4. 本番環境に影響する設定変更を無断で行うな。確認を取るコストはゼロ、事故のコストは無限大
+
+---
+
+## 【絶対ルール】松浦さん（WC015）の休憩時間
+
+### 事実
+- 松浦さんだけ休憩40分（wc_payroll_settings.break_minutes_fixed=40）
+- 他のWCパートは一律60分（break_minutes_fixedがNULL→self_reported使用）
+
+### トリガー仕様（wc_trg_99_calc_attendance_daily → wc_fn_calc_attendance_daily）
+- wc_payroll_settingsのbreak_minutes_fixedを参照して休憩分を決定する
+- break_minutes_fixedがNOT NULLならその値を使用（松浦=40）
+- NULLならbreak_minutes_self_reportedを使用
+
+### 再発防止ルール
+- 松浦さんの休憩を60分にするバグが何度も再発している。絶対に再発させるな
+- wc_fn_calc_attendance_dailyを修正する場合、必ずbreak_minutes_fixedの参照ロジックを維持すること
+- paid_leave_grants等への書き込み時にトリガーが再発火してbreak_minutesを上書きするリスクがある
+- WCのattendance_dailyに対するINSERT/UPDATEを行う際は、必ず松浦さんの休憩が40分のままか確認すること
+- 確認SQL: `SELECT attendance_date, break_minutes FROM attendance_daily WHERE employee_id = (SELECT id FROM employees WHERE employee_code = 'WC015' AND company_id = 'c2d368f0-aa9b-4f70-b082-43ec07723d6c') AND attendance_date >= '2026-05-01' ORDER BY attendance_date;`

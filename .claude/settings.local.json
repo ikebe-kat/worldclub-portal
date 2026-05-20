@@ -8,7 +8,10 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git push:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(where psql *)",
+      "Bash(where supabase *)",
+      "mcp__plugin_supabase_supabase__execute_sql"
     ]
   }
 }

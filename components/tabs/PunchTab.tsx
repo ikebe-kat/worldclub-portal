@@ -345,7 +345,7 @@ export default function PunchTab({ employee }: { employee: any }) {
               work_pattern_code: employee.work_pattern_code,
               punch_in_raw: rawTimestamp,
               punch_in: rounded,
-              break_minutes: 60,
+              break_minutes: fixedBreak ?? 60,
               break_minutes_self_reported: fixedBreak,
             })
             .select('id, punch_in, punch_out, reason, break_minutes_self_reported')
@@ -378,7 +378,7 @@ export default function PunchTab({ employee }: { employee: any }) {
               work_pattern_code: employee.work_pattern_code,
               punch_out_raw: rawTimestamp,
               punch_out: rounded,
-              break_minutes: 60,
+              break_minutes: fixedBreak ?? 60,
               break_minutes_self_reported: fixedBreak,
             })
             .select('id, punch_in, punch_out, reason, break_minutes_self_reported')
