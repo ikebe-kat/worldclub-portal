@@ -1,5 +1,5 @@
-// KAT WORLD 勤怠管理 — Service Worker
-const CACHE_NAME = "kat-kintai-v1";
+// ワールドクラブ 社内ポータル — Service Worker
+const CACHE_NAME = "worldclub-portal-v1";
 
 // プッシュ通知受信
 self.addEventListener("push", (event) => {
@@ -7,14 +7,14 @@ self.addEventListener("push", (event) => {
   const data = event.data.json();
   const options = {
     body: data.body || "",
-    icon: "/katkintai.png",
-    badge: "/katkintai.png",
-    tag: data.tag || "kat-notification",
+    icon: "/worldclub-logo.png",
+    badge: "/worldclub-logo.png",
+    tag: data.tag || "worldclub-notification",
     data: { url: data.url || "/" },
     vibrate: [200, 100, 200],
   };
   event.waitUntil(
-    self.registration.showNotification(data.title || "KAT WORLD", options)
+    self.registration.showNotification(data.title || "ワールドクラブ", options)
   );
 });
 
