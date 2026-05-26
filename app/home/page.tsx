@@ -52,6 +52,29 @@ export default function HomePage() {
   const [docsBadge, setDocsBadge] = useState(0);
   const [adminBadge, setAdminBadge] = useState(0);
 
+  const refreshEmployee = useCallback(async () => {
+    const stored = localStorage.getItem("employee");
+    if (!stored) return;
+    let cached: any;
+    try { cached = JSON.parse(stored); } catch { return; }
+    if (!cached?.id) return;
+    try {
+      const { data } = await supabase.from("employees")
+        .select("*, stores(store_name)")
+        .eq("id", cached.id)
+        .maybeSingle();
+      if (data) {
+        const storeName = (data as any).stores?.store_name ?? cached.store_name;
+        const { stores: _, ...rest } = data as any;
+        const merged = { ...cached, ...rest, store_name: storeName };
+        setEmployee(merged);
+        localStorage.setItem("employee", JSON.stringify(merged));
+      }
+    } catch (e) {
+      console.error("[home] refreshEmployee threw:", e);
+    }
+  }, []);
+
   useEffect(() => {
     const stored = localStorage.getItem("employee");
     if (!stored) {
@@ -61,7 +84,14 @@ export default function HomePage() {
     const emp = JSON.parse(stored);
     setEmployee(emp);
     if (emp.employee_code === "W02" || emp.employee_code === "W49") setTab("calendar");
-  }, []);
+    refreshEmployee();
+  }, [refreshEmployee]);
+
+  useEffect(() => {
+    const onFocus = () => refreshEmployee();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [refreshEmployee]);
 
   /* ── バッジ件数取得 ── */
   const fetchBadges = useCallback(async () => {
