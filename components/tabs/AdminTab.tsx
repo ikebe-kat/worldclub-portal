@@ -29,7 +29,7 @@ const ALL_SUB_TABS: { id: SubTab; label: string; group: GroupId; visibleTo: Visi
   { id: "sharoushi",       label: "社労士出力",   group: "kintai",        visibleTo: "owner_only" },
   { id: "req_overtime",    label: "残業",         group: "request",       visibleTo: "wc_owner" },
   { id: "req_yukyu",       label: "有給",         group: "request",       visibleTo: "wc_owner" },
-  { id: "req_other",       label: "欠勤遅刻早退", group: "request",       visibleTo: "wc_owner" },
+  { id: "req_other",       label: "欠勤遅刻早退公休", group: "request",       visibleTo: "wc_owner" },
   { id: "req_info_change", label: "情報変更",     group: "request",       visibleTo: "super_only" },
   { id: "pay_monthly",     label: "月次計算",     group: "payroll",       visibleTo: "wc_owner" },
   { id: "pay_master",      label: "給与マスタ",   group: "payroll",       visibleTo: "wc_owner" },
@@ -1427,7 +1427,7 @@ export default function AdminTab({ employee }: { employee: any }) {
       {sub === "sharoushi" && <SharoushiSub employee={employee} />}
       {sub === "req_overtime" && <RequestsSub employee={employee} categoryFilter={["残業"]} />}
       {sub === "req_yukyu" && <RequestsSub employee={employee} categoryFilter={["有給"]} />}
-      {sub === "req_other" && <RequestsSub employee={employee} categoryFilter={["欠勤", "遅刻", "早退"]} />}
+      {sub === "req_other" && <RequestsSub employee={employee} categoryFilter={["欠勤", "遅刻", "早退", "公休"]} />}
       {sub === "req_info_change" && <RequestsSub employee={employee} categoryFilter={["住所変更", "口座変更", "扶養追加", "扶養削除", "その他"]} />}
       {sub === "pay_monthly" && <PayrollSub employee={employee} />}
       {sub === "pay_master" && <PayrollSub employee={employee} />}
