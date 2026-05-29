@@ -1,5 +1,6 @@
 // ワールドクラブ 社内ポータル — Service Worker
-const CACHE_NAME = "worldclub-portal-v1";
+const SW_VERSION = "w1";
+const CACHE_NAME = "worldclub-portal-" + SW_VERSION;
 
 // プッシュ通知受信
 self.addEventListener("push", (event) => {
@@ -32,8 +33,25 @@ self.addEventListener("notificationclick", (event) => {
   );
 });
 
-// インストール
+// インストール: 即座にアクティブ化
 self.addEventListener("install", () => self.skipWaiting());
+
+// アクティブ化: 旧キャッシュ削除 + 全クライアント制御
 self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    caches.keys().then((names) =>
+      Promise.all(
+        names.filter((n) => n.startsWith("worldclub-portal-") && n !== CACHE_NAME).map((n) => caches.delete(n))
+      )
+    ).then(() => self.clients.claim())
+  );
+});
+
+// fetch: ナビゲーションリクエストは常にネットワーク優先
+self.addEventListener("fetch", (event) => {
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request).catch(() => caches.match(event.request))
+    );
+  }
 });

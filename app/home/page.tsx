@@ -164,6 +164,30 @@ export default function HomePage() {
   useEffect(() => { if (employee) fetchBadges(); }, [employee, fetchBadges]);
 
   useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const checkUpdate = () => {
+      navigator.serviceWorker.getRegistration().then((reg) => {
+        if (reg) reg.update().catch(() => {});
+      });
+    };
+    const onFocus = () => checkUpdate();
+    window.addEventListener("focus", onFocus);
+    const interval = setInterval(checkUpdate, 3 * 60 * 1000);
+    let refreshing = false;
+    const onControllerChange = () => {
+      if (refreshing) return;
+      refreshing = true;
+      window.location.reload();
+    };
+    navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      clearInterval(interval);
+      navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!employee?.id) return;
     const channel = supabase.channel("badge-updates")
       .on("postgres_changes", { event: "*", schema: "public", table: "attendance_daily" }, () => fetchBadges())
