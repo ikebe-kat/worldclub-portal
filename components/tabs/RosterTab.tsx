@@ -481,6 +481,7 @@ export default function RosterTab({ employee }: { employee: any }) {
       .from("employees")
       .select("id, employee_code, full_name, full_name_kana, email, phone, gender, birth_date, hire_date, employment_type, position, department, grade, role, store_id, skills, photo_url")
       .eq("company_id", employee.company_id)
+      .eq("is_active", true)
       .order("employee_code");
     const mapped: EmpRecord[] = (empData || []).map((e: any) => {
       const rawStoreName = storeNameMap[e.store_id] || "";
