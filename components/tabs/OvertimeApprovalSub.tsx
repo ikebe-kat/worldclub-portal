@@ -41,7 +41,8 @@ export default function OvertimeApprovalSub({ employee }: { employee: any }) {
     const { data: empData } = await supabase
       .from("employees")
       .select("id, employee_code, full_name")
-      .eq("company_id", COMPANY_ID);
+      .eq("company_id", COMPANY_ID)
+      .eq("is_active", true);
     const empMap: Record<string, { code: string; name: string }> = {};
     (empData || []).forEach((e: any) => { empMap[e.id] = { code: e.employee_code, name: e.full_name }; });
 

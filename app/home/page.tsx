@@ -128,7 +128,7 @@ export default function HomePage() {
     const perm = getPermLevel(employee.role || null);
     if (perm === "super" || perm === "admin") {
       const { data: allEmps } = await supabase.from("employees")
-        .select("id, store_id, department").eq("company_id", employee.company_id);
+        .select("id, store_id, department").eq("company_id", employee.company_id).eq("is_active", true);
 
       const myCode = employee.employee_code || "";
       const targetIds = (allEmps || [])

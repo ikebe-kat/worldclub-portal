@@ -44,10 +44,11 @@ export default function PaidLeaveSub({ employee }: { employee: any }) {
 
     const { data: ed } = await supabase
       .from("employees")
-      .select("id, employee_code, full_name, store_id, is_active")
+      .select("id, employee_code, full_name, store_id")
       .eq("company_id", COMPANY_ID)
+      .eq("is_active", true)
       .order("employee_code");
-    const emps = (ed || []).filter((e: any) => e.is_active !== false && !["W02","W49","W67"].includes(e.employee_code));
+    const emps = (ed || []).filter((e: any) => !["W02","W49","W67"].includes(e.employee_code));
 
     const { data: balData, error: balErr } = await supabase
       .from("paid_leave_balances")
