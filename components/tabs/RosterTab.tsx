@@ -393,7 +393,6 @@ const ProfileModal = ({ emp, viewerCode, isSelf, companyId, onClose, onRefresh }
                   <div style={{ width: 3, height: 13, backgroundColor: "#00A37B", borderRadius: 2 }} />
                   <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>詳細情報</span>
                 </div>
-                <Info l="生年月日" v={emp.birth_date} />
                 <Info l="性別" v={emp.gender} />
                 <Info l="入社日" v={emp.hire_date} />
                 {tenureYears !== null && <Info l="勤続年数" v={`${tenureYears}年`} />}
