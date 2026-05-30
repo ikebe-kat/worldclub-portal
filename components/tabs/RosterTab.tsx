@@ -1,17 +1,29 @@
-﻿"use client";
+"use client";
 // ═══════════════════════════════════════════
-// components/tabs/RosterTab.tsx — 名簿タブ（マイページ機能実装済み）
+// components/tabs/RosterTab.tsx — 名簿タブ
+// プライバシー方針：
+//   一覧カードは「苗字 + 部署 + 社員コード」のみ表示。
+//   詳細プロフィールは W02/W49/W67/WC001 + 本人だけが開ける。
+//   それ以外の閲覧者には他人の機微情報をクライアントに送らない。
 // ═══════════════════════════════════════════
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
-import { T, CAL_GROUPS } from "@/lib/constants";
+import { T } from "@/lib/constants";
 import { Avatar, Badge } from "@/components/ui";
 import Dialog from "@/components/ui/Dialog";
 import { supabase } from "@/lib/supabase";
-import { getPermLevel, canSeeProfile } from "@/lib/permissions";
+import { canSeeProfile, canViewOthersProfile } from "@/lib/permissions";
 import type { ProfileSection } from "@/lib/permissions";
 
-// ── 型定義 ──────────────────────────────
-interface EmpRecord {
+// ── 一覧用 最小レコード（クライアントに送る情報を最小化） ──
+interface EmpListItem {
+  id: string;
+  employee_code: string;
+  full_name: string;
+  department: string | null;
+}
+
+// ── プロフィールモーダル用 詳細レコード（権限がある時だけ取得） ──
+interface EmpDetail {
   id: string;
   employee_code: string;
   full_name: string;
@@ -28,24 +40,27 @@ interface EmpRecord {
   role: string | null;
   store_id: string | null;
   store_short: string;
-  group_id: string;
   skills: string | null;
-  photo_url: string | null;
 }
 
-// ── store_nameから短縮名とグループIDを判定 ──
-function resolveStore(storeName: string | null): { short: string; groupId: string } {
-  if (!storeName) return { short: "—", groupId: "gyomu" };
+// ── store_nameから短縮名を判定（詳細モーダル表示用） ──
+function resolveStoreShort(storeName: string | null): string {
+  if (!storeName) return "—";
   const n = storeName.toLowerCase();
-  if (n.includes("八代")) return { short: "八代", groupId: "yatsushiro" };
-  if (n.includes("健軍")) return { short: "健軍", groupId: "kengun" };
-  if (n.includes("大津") || n.includes("菊陽")) return { short: "大津", groupId: "ozu" };
-  if (n.includes("本社")) return { short: "本社", groupId: "gyomu" };
-  if (n.includes("経理")) return { short: "業務部", groupId: "gyomu" };
-  if (n.includes("人事")) return { short: "業務部", groupId: "gyomu" };
-  if (n.includes("dx")) return { short: "業務部", groupId: "gyomu" };
-  if (n.includes("御領")) return { short: "御領", groupId: "gyomu" };
-  return { short: storeName, groupId: "gyomu" };
+  if (n.includes("八代")) return "八代";
+  if (n.includes("健軍")) return "健軍";
+  if (n.includes("大津") || n.includes("菊陽")) return "大津";
+  if (n.includes("本社")) return "本社";
+  if (n.includes("経理") || n.includes("人事") || n.includes("dx")) return "業務部";
+  if (n.includes("御領")) return "御領";
+  return storeName;
+}
+
+// ── 苗字抽出（空白で分割した先頭。空白なしならそのまま） ──
+function lastNameOf(fullName: string): string {
+  if (!fullName) return "";
+  const parts = fullName.trim().split(/\s+/);
+  return parts[0] || fullName;
 }
 
 // ── 情報行 ──────────────────────────────
@@ -261,11 +276,10 @@ const ChangeRequestModal = ({ employeeId, companyId, employeeName, onClose, onSu
 };
 
 // ══════════════════════════════════════════
-// プロフィールモーダル
+// プロフィールモーダル（権限がある時だけ表示される）
 // ══════════════════════════════════════════
 interface ProfileModalProps {
-  emp: EmpRecord;
-  viewerPerm: "super" | "admin" | "employee";
+  emp: EmpDetail;
   viewerCode: string;
   isSelf: boolean;
   companyId: string;
@@ -273,7 +287,7 @@ interface ProfileModalProps {
   onRefresh: () => void;
 }
 
-const ProfileModal = ({ emp, viewerPerm, viewerCode, isSelf, companyId, onClose, onRefresh }: ProfileModalProps) => {
+const ProfileModal = ({ emp, viewerCode, isSelf, companyId, onClose, onRefresh }: ProfileModalProps) => {
   const [showPinModal, setShowPinModal] = useState(false);
   const [showChangeModal, setShowChangeModal] = useState(false);
   const [editingSkills, setEditingSkills] = useState(false);
@@ -283,7 +297,7 @@ const ProfileModal = ({ emp, viewerPerm, viewerCode, isSelf, companyId, onClose,
   const [dialogMsg, setDialogMsg] = useState<string | null>(null);
 
   const can = (section: ProfileSection) =>
-    canSeeProfile(viewerPerm, viewerCode, isSelf, emp.store_id, section);
+    canSeeProfile("employee", viewerCode, isSelf, emp.store_id, section);
 
   const birthdayDisplay = emp.birth_date || null;
 
@@ -462,82 +476,85 @@ const ProfileModal = ({ emp, viewerPerm, viewerCode, isSelf, companyId, onClose,
 // ══════════════════════════════════════════
 export default function RosterTab({ employee }: { employee: any }) {
   const [q, setQ] = useState("");
-  const [sf, setSf] = useState("all");
-  const [selE, setSelE] = useState<EmpRecord | null>(null);
-  const [allEmps, setAllEmps] = useState<EmpRecord[]>([]);
+  const [selE, setSelE] = useState<EmpDetail | null>(null);
+  const [allEmps, setAllEmps] = useState<EmpListItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchData = useCallback(async () => {
+  const myCode: string = employee?.employee_code || "";
+  const canViewOthers = canViewOthersProfile(myCode);
+
+  // ── 一覧用：機微情報を含めない最小カラムだけ取得 ──
+  const fetchList = useCallback(async () => {
     if (!employee?.company_id) return;
     setLoading(true);
-
-    const { data: storesData } = await supabase
-      .from("stores").select("id, store_name").eq("company_id", employee.company_id);
-
-    const storeNameMap: Record<string, string> = {};
-    (storesData || []).forEach((s: any) => { storeNameMap[s.id] = s.store_name || ""; });
-
     const { data: empData } = await supabase
       .from("employees")
-      .select("id, employee_code, full_name, full_name_kana, email, phone, gender, birth_date, hire_date, employment_type, position, department, grade, role, store_id, skills, photo_url")
+      .select("id, employee_code, full_name, department")
       .eq("company_id", employee.company_id)
       .eq("is_active", true)
       .order("employee_code");
-    const mapped: EmpRecord[] = (empData || []).map((e: any) => {
-      const rawStoreName = storeNameMap[e.store_id] || "";
-      const { short, groupId } = resolveStore(rawStoreName);
-      const isHQ = ["W02","W49","W67"].includes(e.employee_code);
-      return { ...e, store_short: isHQ ? "本部" : short, group_id: groupId };
-    });
-
-    setAllEmps(mapped);
+    setAllEmps((empData || []) as EmpListItem[]);
     setLoading(false);
   }, [employee?.company_id]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { fetchList(); }, [fetchList]);
 
-  const me = useMemo(() => allEmps.find((e) => e.id === employee?.id) || null, [allEmps, employee?.id]);
-  const myPerm = getPermLevel(me?.role || null);
-  const myCode = me?.employee_code || "";
+  // ── プロフィールを開く（権限がある時だけ詳細を別取得） ──
+  const openProfile = async (targetId: string) => {
+    const isSelf = targetId === employee?.id;
+    if (!isSelf && !canViewOthers) return; // 一般社員が他人をタップ → 何も開かない
 
-  const storeCounts = useMemo(() => {
-    const c: Record<string, number> = {};
-    allEmps.forEach((e) => {
-      if (e.id === employee?.id) return;
-      c[e.group_id] = (c[e.group_id] || 0) + 1;
-    });
-    return c;
-  }, [allEmps, employee?.id]);
+    const { data: detailRow } = await supabase
+      .from("employees")
+      .select("id, employee_code, full_name, full_name_kana, email, phone, gender, birth_date, hire_date, employment_type, position, department, grade, role, store_id, skills, stores(store_name)")
+      .eq("id", targetId)
+      .eq("company_id", employee.company_id)
+      .maybeSingle();
+    if (!detailRow) return;
+
+    const storeName: string = (detailRow as any).stores?.store_name || "";
+    const isHQ = ["W02", "W49", "W67"].includes(detailRow.employee_code);
+    const detail: EmpDetail = {
+      id: detailRow.id,
+      employee_code: detailRow.employee_code,
+      full_name: detailRow.full_name,
+      full_name_kana: detailRow.full_name_kana,
+      email: detailRow.email,
+      phone: detailRow.phone,
+      gender: detailRow.gender,
+      birth_date: detailRow.birth_date,
+      hire_date: detailRow.hire_date,
+      employment_type: detailRow.employment_type,
+      position: detailRow.position,
+      department: detailRow.department,
+      grade: detailRow.grade,
+      role: detailRow.role,
+      store_id: detailRow.store_id,
+      store_short: isHQ ? "本部" : resolveStoreShort(storeName),
+      skills: detailRow.skills,
+    };
+    setSelE(detail);
+  };
 
   const filtered = useMemo(() =>
     allEmps.filter((e) => {
       if (e.id === employee?.id) return false;
-      if (q) {
-        const query = q.toLowerCase();
-        if (!e.full_name.includes(q) && !e.full_name_kana?.toLowerCase().includes(query)) return false;
-      }
-      if (sf !== "all" && e.group_id !== sf) return false;
+      if (q && !e.full_name.includes(q)) return false;
       return true;
     }),
-  [allEmps, q, sf, employee?.id]);
-
-  // selEが更新された時にallEmpsから最新を反映
-  useEffect(() => {
-    if (selE) {
-      const updated = allEmps.find((e) => e.id === selE.id);
-      if (updated && updated.skills !== selE.skills) setSelE(updated);
-    }
-  }, [allEmps, selE]);
+  [allEmps, q, employee?.id]);
 
   if (loading) {
     return <div style={{ padding: "40px 16px", textAlign: "center", color: T.textMuted, fontSize: 14 }}>読み込み中...</div>;
   }
 
+  const myDeptDisplay: string = employee?.department || "—";
+
   return (
     <div style={{ padding: "24px 12px", maxWidth: 840, margin: "0 auto" }}>
-      {me && (
+      {employee && (
         <div
-          onClick={() => setSelE(me)}
+          onClick={() => openProfile(employee.id)}
           style={{
             display: "flex", alignItems: "center", gap: 12,
             padding: "14px 16px", backgroundColor: T.goldLight,
@@ -545,11 +562,11 @@ export default function RosterTab({ employee }: { employee: any }) {
             marginBottom: 16, cursor: "pointer", transition: "box-shadow 0.2s",
           }}
         >
-          <Avatar name={me.full_name} size={48} />
+          <Avatar name={employee.full_name} size={48} />
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: T.text }}>{me.full_name}</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: T.text }}>{employee.full_name}</div>
             <div style={{ fontSize: 12, color: T.textSec }}>
-              {me.store_short} ・ {me.department || "—"} ・ {me.position || "—"}
+              {myDeptDisplay}
             </div>
           </div>
           <Badge bg={T.gold} color="#78350F">マイページ</Badge>
@@ -559,48 +576,40 @@ export default function RosterTab({ employee }: { employee: any }) {
       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
         <input type="text" placeholder="名前で検索..." value={q} onChange={(e) => setQ(e.target.value)}
           style={{ flex: 1, padding: "9px 12px", borderRadius: "6px", border: `1px solid ${T.border}`, fontSize: 13 }} />
-        <select value={sf} onChange={(e) => setSf(e.target.value)}
-          style={{ padding: "9px 12px", borderRadius: "6px", border: `1px solid ${T.border}`, fontSize: 12, color: T.textSec }}>
-          <option value="all">全店舗 ({allEmps.length - 1})</option>
-          {CAL_GROUPS.filter((g) => g.id !== "all").map((g) => (
-            <option key={g.id} value={g.id}>{g.label} ({storeCounts[g.id] || 0})</option>
-          ))}
-        </select>
       </div>
       <div style={{ fontSize: 12, color: T.textMuted, marginBottom: 12 }}>{filtered.length}名</div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10 }}>
-        {filtered.map((e) => (
-          <div
-            key={e.id}
-            onClick={() => setSelE(e)}
-            style={{
-              backgroundColor: "#fff", borderRadius: "8px",
-              padding: "16px 10px", border: `1px solid ${T.border}`,
-              cursor: "pointer", textAlign: "center", transition: "all 0.2s",
-            }}
-            onMouseEnter={(ev) => { ev.currentTarget.style.boxShadow = "0 4px 14px rgba(0,0,0,0.07)"; ev.currentTarget.style.borderColor = T.gold; }}
-            onMouseLeave={(ev) => { ev.currentTarget.style.boxShadow = "none"; ev.currentTarget.style.borderColor = T.border; }}
-          >
-            {e.photo_url ? <img src={e.photo_url} alt="" style={{ width: 52, height: 52, borderRadius: "50%", objectFit: "cover", margin: "0 auto 8px", display: "block" }} /> : <Avatar name={e.full_name} size={52} style={{ margin: "0 auto 8px" }} />}
-            <div style={{ fontSize: 13, fontWeight: 700, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.full_name}</div>
-            <div style={{ fontSize: 11, color: T.primary, fontWeight: 600, marginTop: 2 }}>{e.store_short}</div>
-            <div style={{ fontSize: 11, color: T.textSec }}>{e.department || "—"}</div>
-            <div style={{ fontSize: 11, color: T.textSec }}>{e.position || "—"}</div>
-            <div style={{ fontSize: 10, color: T.textPH, marginTop: 2 }}>{e.employee_code}</div>
-          </div>
-        ))}
+        {filtered.map((e) => {
+          const clickable = canViewOthers;
+          return (
+            <div
+              key={e.id}
+              onClick={clickable ? () => openProfile(e.id) : undefined}
+              style={{
+                backgroundColor: "#fff", borderRadius: "8px",
+                padding: "16px 10px", border: `1px solid ${T.border}`,
+                cursor: clickable ? "pointer" : "default", textAlign: "center", transition: "all 0.2s",
+              }}
+              onMouseEnter={clickable ? (ev) => { ev.currentTarget.style.boxShadow = "0 4px 14px rgba(0,0,0,0.07)"; ev.currentTarget.style.borderColor = T.gold; } : undefined}
+              onMouseLeave={clickable ? (ev) => { ev.currentTarget.style.boxShadow = "none"; ev.currentTarget.style.borderColor = T.border; } : undefined}
+            >
+              <div style={{ fontSize: 15, fontWeight: 700, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 6 }}>{lastNameOf(e.full_name)}</div>
+              <div style={{ fontSize: 12, color: T.textSec, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.department || "—"}</div>
+              <div style={{ fontSize: 10, color: T.textPH, marginTop: 4 }}>{e.employee_code}</div>
+            </div>
+          );
+        })}
       </div>
 
       {selE && (
         <ProfileModal
           emp={selE}
-          viewerPerm={myPerm}
           viewerCode={myCode}
           isSelf={selE.id === employee?.id}
           companyId={employee?.company_id || ""}
           onClose={() => setSelE(null)}
-          onRefresh={fetchData}
+          onRefresh={() => { if (selE) openProfile(selE.id); }}
         />
       )}
     </div>

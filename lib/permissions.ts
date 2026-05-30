@@ -58,22 +58,28 @@ export function canDeleteEvent(
 // ══════════════════════════════════════════
 // 名簿権限
 // ══════════════════════════════════════════
+// 詳細プロフィール（写真・生年月日・電話・メール等）を見れるのは
+// 代表(W02) / 岩永(W49) / 池邉(W67) / 小川(WC001) の 4 名 + 本人のみ。
+// それ以外（一般社員）は他人の詳細を一切見れない（モーダル自体を開かせない）。
+
+export const ROSTER_DETAIL_VIEWER_CODES = ["W02", "W49", "W67", "WC001"];
+
+export function canViewOthersProfile(viewerCode: string | null | undefined): boolean {
+  return !!viewerCode && ROSTER_DETAIL_VIEWER_CODES.includes(viewerCode);
+}
 
 export type ProfileSection = "basic" | "detail" | "sensitive";
 
 export function canSeeProfile(
-  viewerPerm: PermLevel,
+  _viewerPerm: PermLevel,
   viewerCode: string,
   isSelf: boolean,
-  targetStoreId: string | null,
+  _targetStoreId: string | null,
   section: ProfileSection,
 ): boolean {
   if (isSelf) return section !== "sensitive";
-  if (viewerPerm === "super") return true;
-  if (viewerPerm === "admin") {
-    return section !== "sensitive";
-  }
-  return section === "basic";
+  if (canViewOthersProfile(viewerCode)) return section !== "sensitive";
+  return false;
 }
 
 // ══════════════════════════════════════════
