@@ -53,33 +53,6 @@ const fmTime = (t: string | null) => t ? t.slice(0,5) : "—";
 const fmHours = (n: number) => { const h = Math.floor(Math.abs(n) / 60); const m = Math.abs(n) % 60; return `${n < 0 ? "-" : ""}${h}:${String(Math.round(m)).padStart(2,"0")}`; };
 const fmDecimal = (n: number | null) => { if (n == null) return "—"; const tot = Math.round(Math.abs(n) * 60); const h = Math.floor(tot / 60); const m = tot % 60; return `${n < 0 ? "-" : ""}${h}:${String(m).padStart(2,"0")}`; };
 
-function storeShort(name: string | null, dept?: string | null) {
-  if (dept && ["人事", "経理", "DX", "人事総務"].some(d => dept.includes(d))) return "業務部";
-  if (!name) return "—";
-  if (name.includes("八代")) return "八代";
-  if (name.includes("健軍")) return "健軍";
-  if (name.includes("大津") || name.includes("菊陽")) return "大津";
-  if (name.includes("本社") || name.includes("経理") || name.includes("人事") || name.includes("DX")) return "業務部";
-  if (name.includes("御領")) return "御領";
-  return name;
-}
-
-const HAMAMURA_CODE = "095";
-function matchStoreFilter(emp: EmpOption, filter: string): boolean {
-  if (filter === "all") return true;
-  if (emp.code === HAMAMURA_CODE) return filter === "業務部" || filter === "健軍";
-  return storeShort(emp.store_name, emp.department) === filter;
-}
-
-const STORE_FILTER_OPTIONS = [
-  { value: "all", label: "全店舗" },
-  { value: "八代", label: "八代" },
-  { value: "大津", label: "大津" },
-  { value: "健軍", label: "健軍" },
-  { value: "業務部", label: "業務部" },
-  { value: "御領", label: "御領" },
-];
-
 /* ── 4桁時間入力コンポーネント ── */
 const TimeInput = ({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) => {
   const [raw, setRaw] = useState("");
@@ -384,7 +357,6 @@ const IndividualSub = ({ employee }: { employee: any }) => {
   const myCode = employee?.employee_code || "";
   const [stores, setStores] = useState<{ id: string; name: string }[]>([]);
   const [emps, setEmps] = useState<EmpOption[]>([]);
-  const [storeFilter, setStoreFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [selectedEmp, setSelectedEmp] = useState<EmpOption | null>(null);
   const _cp = currentPeriodMonth();
@@ -411,10 +383,9 @@ const IndividualSub = ({ employee }: { employee: any }) => {
   const filteredEmps = useMemo(() => {
     let list = emps;
     if (perm === "admin") list = list.filter(e => canEditPunch(myCode, e.store_id, e.department));
-    if (storeFilter !== "all") list = list.filter(e => matchStoreFilter(e, storeFilter));
     if (search) list = list.filter(e => e.name.includes(search) || e.code.includes(search));
     return list;
-  }, [emps, storeFilter, search, perm, myCode]);
+  }, [emps, search, perm, myCode]);
 
   const fetchAttendance = useCallback(async (empId: string) => {
     setLoading(true);
@@ -505,7 +476,6 @@ const IndividualSub = ({ employee }: { employee: any }) => {
   return (
     <div>
       <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-        <select value={storeFilter} onChange={e => setStoreFilter(e.target.value)} style={{ padding: "9px 12px", borderRadius: 6, border: `1px solid ${T.border}`, fontSize: 12, color: T.textSec }}>{STORE_FILTER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
         <select value={selectedEmp?.id || ""} onChange={e => { const emp = emps.find(x => x.id === e.target.value); setSelectedEmp(emp || null); }} style={{ flex: 1, padding: "9px 12px", borderRadius: 6, border: `1px solid ${T.border}`, fontSize: 13, minWidth: 140 }}><option value="">従業員を選択</option>{filteredEmps.map(e => <option key={e.id} value={e.id}>{e.code} {e.name}</option>)}</select>
         <input type="text" placeholder="名前/CDで検索" value={search} onChange={e => setSearch(e.target.value)} style={{ padding: "9px 12px", borderRadius: 6, border: `1px solid ${T.border}`, fontSize: 13, width: 130 }} />
       </div>
@@ -513,7 +483,7 @@ const IndividualSub = ({ employee }: { employee: any }) => {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
           <div>
             <div style={{ fontSize: 16, fontWeight: 700, color: T.text }}>{selectedEmp.name}</div>
-            <div style={{ fontSize: 12, color: T.textSec }}>{storeShort(selectedEmp.store_name)} ・ {selectedEmp.department || "—"}</div>
+            <div style={{ fontSize: 12, color: T.textSec }}>{selectedEmp.department || "—"}</div>
             {isSuper && selectedEmp.hire_date && <div style={{ fontSize: 11, color: T.textMuted, marginTop: 2 }}>入社日: {selectedEmp.hire_date}</div>}
             {isSuper && selectedEmp.paid_leave_grant_date && <div style={{ fontSize: 11, color: T.yukyuBlue, marginTop: 1 }}>有給発生日: {selectedEmp.paid_leave_grant_date}</div>}
           </div>
@@ -691,7 +661,6 @@ const DailySub = ({ employee }: { employee: any }) => {
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
   const [selectedDate, setSelectedDate] = useState(todayStr);
-  const [storeFilter, setStoreFilter] = useState("all");
   const [stores, setStores] = useState<{ id: string; name: string }[]>([]);
   const [emps, setEmps] = useState<EmpOption[]>([]);
   const [rows, setRows] = useState<DailyRow[]>([]);
@@ -721,7 +690,6 @@ const DailySub = ({ employee }: { employee: any }) => {
     setLoading(true);
     let scopedEmps = emps;
     if (perm === "admin") scopedEmps = emps.filter(e => canEditPunch(myCode, e.store_id, e.department));
-    if (storeFilter !== "all") scopedEmps = scopedEmps.filter(e => matchStoreFilter(e, storeFilter));
     const empIds = scopedEmps.map(e => e.id);
     const empMap: Record<string, EmpOption> = {};
     scopedEmps.forEach(e => { empMap[e.id] = e; });
@@ -753,7 +721,7 @@ const DailySub = ({ employee }: { employee: any }) => {
     });
     setRows(allRows);
     setLoading(false);
-  }, [selectedDate, emps, storeFilter, perm, myCode, employee?.company_id]);
+  }, [selectedDate, emps, perm, myCode, employee?.company_id]);
 
   useEffect(() => { if (emps.length > 0) fetchDaily(); }, [fetchDaily, emps]);
 
@@ -813,7 +781,6 @@ const DailySub = ({ employee }: { employee: any }) => {
         <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} style={{ padding: "8px 12px", borderRadius: 6, border: `1px solid ${T.border}`, fontSize: 13 }} />
         <button onClick={() => goDay(1)} style={{ width: 30, height: 30, border: `1px solid ${T.border}`, borderRadius: 6, backgroundColor: "#fff", cursor: "pointer", fontSize: 13, color: T.textSec, display: "flex", alignItems: "center", justifyContent: "center" }}>▶</button>
         <button onClick={() => setSelectedDate(todayStr)} style={{ padding: "8px 12px", borderRadius: 6, border: `1px solid ${T.border}`, backgroundColor: "#fff", cursor: "pointer", fontSize: 12, color: T.primary, fontWeight: 600 }}>今日</button>
-        <select value={storeFilter} onChange={e => setStoreFilter(e.target.value)} style={{ padding: "8px 12px", borderRadius: 6, border: `1px solid ${T.border}`, fontSize: 12, color: T.textSec }}>{STORE_FILTER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
         <button onClick={() => { setSelectMode(!selectMode); setCheckedIds(new Set()); }} style={{ padding: "8px 12px", borderRadius: 6, border: selectMode ? `2px solid ${T.primary}` : `1px solid ${T.border}`, backgroundColor: selectMode ? T.primary + "15" : "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600, color: selectMode ? T.primary : T.textSec }}>{selectMode ? "選択解除" : "選択"}</button>
       </div>
       {selectMode && (
@@ -835,7 +802,7 @@ const DailySub = ({ employee }: { employee: any }) => {
       {loading ? (<div style={{ textAlign: "center", padding: "40px", color: T.textMuted, fontSize: 14 }}>読み込み中...</div>) : (
         <div style={{ borderRadius: 6, border: `1px solid ${T.border}`, overflow: "hidden" }}><div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 700 }}>
-            <thead><tr style={{ backgroundColor: T.primary }}>{[...(selectMode ? ["✓"] : []), "店舗","CD","氏名","出勤","退勤","事由","実労働","所定外","備考",""].map(h => <th key={h} style={{ padding: "8px 6px", color: "#fff", fontWeight: 600, fontSize: 11, textAlign: "center", whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
+            <thead><tr style={{ backgroundColor: T.primary }}>{[...(selectMode ? ["✓"] : []), "CD","氏名","出勤","退勤","事由","実労働","所定外","備考",""].map(h => <th key={h} style={{ padding: "8px 6px", color: "#fff", fontWeight: 600, fontSize: 11, textAlign: "center", whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
             <tbody>{rows.map(r => {
               const isOff = r.reason?.includes("希望休") || r.reason?.includes("代休") || r.is_holiday;
               const isYukyu = r.reason?.includes("有給");
@@ -843,7 +810,6 @@ const DailySub = ({ employee }: { employee: any }) => {
               return (
                 <tr key={r.id} style={{ backgroundColor: isOff ? "#FFF5F5" : isYukyu ? "#EFF6FF" : hasReason ? "#FFFDE7" : "#fff", borderBottom: `1px solid ${T.borderLight}` }}>
                   {selectMode && <td style={{ padding: "7px 4px", textAlign: "center" }}><input type="checkbox" checked={checkedIds.has(r.id)} onChange={e => { const next = new Set(checkedIds); if (e.target.checked) next.add(r.id); else next.delete(r.id); setCheckedIds(next); }} style={{ width: 16, height: 16, cursor: "pointer" }} /></td>}
-                  <td style={{ padding: "7px 6px", fontSize: 11, color: T.textSec, textAlign: "center", whiteSpace: "nowrap" }}>{storeShort(r.store_name)}</td>
                   <td style={{ padding: "7px 6px", fontSize: 11, color: T.textMuted, textAlign: "center" }}>{r.emp_code}</td>
                   <td style={{ padding: "7px 6px", fontWeight: 600, color: T.text, whiteSpace: "nowrap" }}>{r.emp_name}</td>
                   <td style={{ padding: "7px 6px", textAlign: "center", fontVariantNumeric: "tabular-nums", color: r.punch_in ? T.text : T.textPH }}>{fmTime(r.punch_in)}</td>
@@ -855,7 +821,7 @@ const DailySub = ({ employee }: { employee: any }) => {
                   <td style={{ padding: "5px", textAlign: "center" }}><button onClick={() => { setEditRow(r); setEditEmpName(r.emp_name); }} style={{ padding: "5px 10px", borderRadius: 4, border: "none", backgroundColor: T.primary, color: "#fff", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>修正</button></td>
                 </tr>);
             })}
-            {rows.length === 0 && <tr><td colSpan={selectMode ? 11 : 10} style={{ padding: "30px", textAlign: "center", color: T.textMuted, fontSize: 13 }}>データがありません</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={selectMode ? 10 : 9} style={{ padding: "30px", textAlign: "center", color: T.textMuted, fontSize: 13 }}>データがありません</td></tr>}
             </tbody>
           </table>
         </div></div>
@@ -892,7 +858,6 @@ const MonthlySub = ({ employee }: { employee: any }) => {
   const _cpM = currentPeriodMonth();
   const [yr, setYr] = useState(_cpM.yr);
   const [mo, setMo] = useState(_cpM.mo);
-  const [storeFilter, setStoreFilter] = useState("all");
   const [stores, setStores] = useState<{ id: string; name: string }[]>([]);
   const [emps, setEmps] = useState<EmpOption[]>([]);
   const [rows, setRows] = useState<MonthlyRow[]>([]);
@@ -922,7 +887,6 @@ const MonthlySub = ({ employee }: { employee: any }) => {
 
     let scopedEmps = emps;
     if (perm === "admin") scopedEmps = emps.filter(e => canEditPunch(myCode, e.store_id, e.department));
-    if (storeFilter !== "all") scopedEmps = scopedEmps.filter(e => matchStoreFilter(e, storeFilter));
 
     const empIds = scopedEmps.map(e => e.id);
     const empMap: Record<string, EmpOption> = {};
@@ -988,7 +952,7 @@ const MonthlySub = ({ employee }: { employee: any }) => {
 
     setRows(result);
     setLoading(false);
-  }, [yr, mo, emps, storeFilter, perm, myCode, employee?.company_id]);
+  }, [yr, mo, emps, perm, myCode, employee?.company_id]);
 
   useEffect(() => { if (emps.length > 0) fetchMonthly(); }, [fetchMonthly, emps]);
 
@@ -1004,18 +968,16 @@ const MonthlySub = ({ employee }: { employee: any }) => {
         <button onClick={() => goMonth(-1)} style={{ width: 30, height: 30, border: `1px solid ${T.border}`, borderRadius: 6, backgroundColor: "#fff", cursor: "pointer", fontSize: 13, color: T.textSec, display: "flex", alignItems: "center", justifyContent: "center" }}>◀</button>
         <span style={{ fontSize: 15, fontWeight: 700, color: T.text, minWidth: 100, textAlign: "center" }}>{yr}年{mo}月度</span>
         <button onClick={() => goMonth(1)} style={{ width: 30, height: 30, border: `1px solid ${T.border}`, borderRadius: 6, backgroundColor: "#fff", cursor: "pointer", fontSize: 13, color: T.textSec, display: "flex", alignItems: "center", justifyContent: "center" }}>▶</button>
-        <select value={storeFilter} onChange={e => setStoreFilter(e.target.value)} style={{ padding: "8px 12px", borderRadius: 6, border: `1px solid ${T.border}`, fontSize: 12, color: T.textSec }}>{STORE_FILTER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
         <div style={{ marginLeft: "auto", fontSize: 12, color: T.textSec }}>変形月所定: <strong style={{ color: T.text }}>{fmHours(varHours)}</strong></div>
       </div>
 
       {loading ? (<div style={{ textAlign: "center", padding: "40px", color: T.textMuted, fontSize: 14 }}>読み込み中...</div>) : (
         <div style={{ borderRadius: 6, border: `1px solid ${T.border}`, overflow: "hidden" }}><div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, minWidth: 860 }}>
-            <thead><tr style={{ backgroundColor: T.primary }}>{["店舗","CD","氏名","出勤","休日","希望休","欠勤","有給","総労働","月所定","所定外","残業","遅刻","早退"].map(h => <th key={h} style={{ padding: "8px 5px", color: "#fff", fontWeight: 600, fontSize: 11, textAlign: "center", whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
+            <thead><tr style={{ backgroundColor: T.primary }}>{["CD","氏名","出勤","休日","希望休","欠勤","有給","総労働","月所定","所定外","残業","遅刻","早退"].map(h => <th key={h} style={{ padding: "8px 5px", color: "#fff", fontWeight: 600, fontSize: 11, textAlign: "center", whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
             <tbody>
               {rows.map(r => (
                 <tr key={r.emp_code} style={{ borderBottom: `1px solid ${T.borderLight}`, backgroundColor: r.absences > 0 ? "#FFF5F5" : "#fff" }}>
-                  <td style={{ padding: "7px 5px", fontSize: 11, color: T.textSec, textAlign: "center", whiteSpace: "nowrap" }}>{storeShort(r.store_name)}</td>
                   <td style={{ padding: "7px 5px", fontSize: 11, color: T.textMuted, textAlign: "center" }}>{r.emp_code}</td>
                   <td style={{ padding: "7px 5px", fontWeight: 600, color: T.text, whiteSpace: "nowrap" }}>{r.emp_name}</td>
                   <td style={{ padding: "7px 5px", textAlign: "center", fontVariantNumeric: "tabular-nums" }}>{r.workDays}</td>
@@ -1033,7 +995,7 @@ const MonthlySub = ({ employee }: { employee: any }) => {
               ))}
               {rows.length > 0 && (
                 <tr style={{ backgroundColor: "#F8FAFC", borderTop: `2px solid ${T.border}`, fontWeight: 700 }}>
-                  <td colSpan={3} style={{ padding: "8px 5px", textAlign: "center", fontSize: 11, color: T.textSec }}>合計（{totals.count}名）</td>
+                  <td colSpan={2} style={{ padding: "8px 5px", textAlign: "center", fontSize: 11, color: T.textSec }}>合計（{totals.count}名）</td>
                   <td style={{ padding: "8px 5px", textAlign: "center", fontSize: 11 }}>{totals.wd}</td>
                   <td style={{ padding: "8px 5px", textAlign: "center", fontSize: 11 }}>—</td>
                   <td style={{ padding: "8px 5px", textAlign: "center", fontSize: 11, color: T.kibouYellow }}>{totals.kb}</td>
@@ -1047,7 +1009,7 @@ const MonthlySub = ({ employee }: { employee: any }) => {
                   <td style={{ padding: "8px 5px", textAlign: "center", fontSize: 11, color: T.warning }}>{totals.ea}</td>
                 </tr>
               )}
-              {rows.length === 0 && <tr><td colSpan={14} style={{ padding: "30px", textAlign: "center", color: T.textMuted, fontSize: 13 }}>データがありません</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={13} style={{ padding: "30px", textAlign: "center", color: T.textMuted, fontSize: 13 }}>データがありません</td></tr>}
             </tbody>
           </table>
         </div></div>
