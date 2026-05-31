@@ -1,10 +1,10 @@
 "use client";
 // ═══════════════════════════════════════════
 // components/tabs/RosterTab.tsx — 名簿タブ
-// プライバシー方針：
-//   一覧カードは「苗字 + 部署 + 社員コード」のみ表示。
-//   詳細プロフィールは W02/W49/W67/WC001 + 本人だけが開ける。
-//   それ以外の閲覧者には他人の機微情報をクライアントに送らない。
+// プライバシー方針：閲覧者で出し分け
+//   4名（W02/W49/W67/WC001）→ 元のフルUI（写真込みカード／写真入り詳細）
+//   一般社員 → 「苗字 + 部署 + 社員コード」だけ、他人の詳細は開けない
+//   一般社員向けクエリでは photo_url / birth_date 等の機微情報を取得しない
 // ═══════════════════════════════════════════
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { T } from "@/lib/constants";
@@ -14,12 +14,18 @@ import { supabase } from "@/lib/supabase";
 import { canSeeProfile, canViewOthersProfile } from "@/lib/permissions";
 import type { ProfileSection } from "@/lib/permissions";
 
-// ── 一覧用 最小レコード（クライアントに送る情報を最小化） ──
+// ── 一覧用レコード ──
+//   一般社員向けは {id, employee_code, full_name, department} のみ。
+//   4名閲覧者向けは追加で photo_url / position / store_short を含む（フルカード用）。
 interface EmpListItem {
   id: string;
   employee_code: string;
   full_name: string;
   department: string | null;
+  // 4名閲覧者向けの追加列（一般社員クエリでは undefined）
+  photo_url?: string | null;
+  position?: string | null;
+  store_short?: string;
 }
 
 // ── プロフィールモーダル用 詳細レコード（権限がある時だけ取得） ──
@@ -41,6 +47,7 @@ interface EmpDetail {
   store_id: string | null;
   store_short: string;
   skills: string | null;
+  photo_url: string | null;
 }
 
 // ── store_nameから短縮名を判定（詳細モーダル表示用） ──
@@ -346,7 +353,9 @@ const ProfileModal = ({ emp, viewerCode, isSelf, companyId, onClose, onRefresh }
               ×
             </button>
             <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-              <Avatar name={emp.full_name} size={64} style={{ border: "3px solid rgba(255,255,255,0.3)" }} />
+              {emp.photo_url
+                ? <img src={emp.photo_url} alt="" style={{ width: 64, height: 64, borderRadius: "50%", objectFit: "cover", border: "3px solid rgba(255,255,255,0.3)" }} />
+                : <Avatar name={emp.full_name} size={64} style={{ border: "3px solid rgba(255,255,255,0.3)" }} />}
               <div>
                 <div style={{ fontSize: 20, fontWeight: 700 }}>{emp.full_name}</div>
                 {can("detail") && <div style={{ fontSize: 12, opacity: 0.8 }}>{emp.full_name_kana || ""}</div>}
@@ -482,19 +491,48 @@ export default function RosterTab({ employee }: { employee: any }) {
   const myCode: string = employee?.employee_code || "";
   const canViewOthers = canViewOthersProfile(myCode);
 
-  // ── 一覧用：機微情報を含めない最小カラムだけ取得 ──
+  // ── 一覧用：閲覧者で取得列を分岐 ──
+  //   4名: フルカード用に photo_url / position / store_id（→store_short） も取得
+  //   一般: id/employee_code/full_name/department のみ（photo_url・birth_date は取らない）
   const fetchList = useCallback(async () => {
     if (!employee?.company_id) return;
     setLoading(true);
-    const { data: empData } = await supabase
-      .from("employees")
-      .select("id, employee_code, full_name, department")
-      .eq("company_id", employee.company_id)
-      .eq("is_active", true)
-      .order("employee_code");
-    setAllEmps((empData || []) as EmpListItem[]);
+    if (canViewOthers) {
+      const { data: storesData } = await supabase
+        .from("stores").select("id, store_name").eq("company_id", employee.company_id);
+      const storeNameMap: Record<string, string> = {};
+      (storesData || []).forEach((s: any) => { storeNameMap[s.id] = s.store_name || ""; });
+      const { data: empData } = await supabase
+        .from("employees")
+        .select("id, employee_code, full_name, department, position, store_id, photo_url")
+        .eq("company_id", employee.company_id)
+        .eq("is_active", true)
+        .order("employee_code");
+      const mapped: EmpListItem[] = (empData || []).map((e: any) => {
+        const isHQ = ["W02","W49","W67"].includes(e.employee_code);
+        const storeName = storeNameMap[e.store_id] || "";
+        return {
+          id: e.id,
+          employee_code: e.employee_code,
+          full_name: e.full_name,
+          department: e.department,
+          position: e.position,
+          photo_url: e.photo_url,
+          store_short: isHQ ? "本部" : resolveStoreShort(storeName),
+        };
+      });
+      setAllEmps(mapped);
+    } else {
+      const { data: empData } = await supabase
+        .from("employees")
+        .select("id, employee_code, full_name, department")
+        .eq("company_id", employee.company_id)
+        .eq("is_active", true)
+        .order("employee_code");
+      setAllEmps((empData || []) as EmpListItem[]);
+    }
     setLoading(false);
-  }, [employee?.company_id]);
+  }, [employee?.company_id, canViewOthers]);
 
   useEffect(() => { fetchList(); }, [fetchList]);
 
@@ -505,7 +543,7 @@ export default function RosterTab({ employee }: { employee: any }) {
 
     const { data: detailRow } = await supabase
       .from("employees")
-      .select("id, employee_code, full_name, full_name_kana, email, phone, gender, birth_date, hire_date, employment_type, position, department, grade, role, store_id, skills, stores(store_name)")
+      .select("id, employee_code, full_name, full_name_kana, email, phone, gender, birth_date, hire_date, employment_type, position, department, grade, role, store_id, skills, photo_url, stores(store_name)")
       .eq("id", targetId)
       .eq("company_id", employee.company_id)
       .maybeSingle();
@@ -531,6 +569,7 @@ export default function RosterTab({ employee }: { employee: any }) {
       store_id: detailRow.store_id,
       store_short: isHQ ? "本部" : resolveStoreShort(storeName),
       skills: detailRow.skills,
+      photo_url: (detailRow as any).photo_url ?? null,
     };
     setSelE(detail);
   };
@@ -548,6 +587,12 @@ export default function RosterTab({ employee }: { employee: any }) {
   }
 
   const myDeptDisplay: string = employee?.department || "—";
+  const myStoreShort: string = employee
+    ? (["W02","W49","W67"].includes(employee.employee_code)
+        ? "本部"
+        : resolveStoreShort(employee.store_name || ""))
+    : "—";
+  const myPositionDisplay: string = employee?.position || "—";
 
   return (
     <div style={{ padding: "24px 12px", maxWidth: 840, margin: "0 auto" }}>
@@ -565,7 +610,9 @@ export default function RosterTab({ employee }: { employee: any }) {
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: T.text }}>{employee.full_name}</div>
             <div style={{ fontSize: 12, color: T.textSec }}>
-              {myDeptDisplay}
+              {canViewOthers
+                ? `${myStoreShort} ・ ${myDeptDisplay} ・ ${myPositionDisplay}`
+                : myDeptDisplay}
             </div>
           </div>
           <Badge bg={T.gold} color="#78350F">マイページ</Badge>
@@ -580,18 +627,40 @@ export default function RosterTab({ employee }: { employee: any }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10 }}>
         {filtered.map((e) => {
-          const clickable = canViewOthers;
+          if (canViewOthers) {
+            // 4名閲覧者向け：元のフルカード（写真／氏名フル／店舗／部署／役職／社員コード）
+            return (
+              <div
+                key={e.id}
+                onClick={() => openProfile(e.id)}
+                style={{
+                  backgroundColor: "#fff", borderRadius: "8px",
+                  padding: "16px 10px", border: `1px solid ${T.border}`,
+                  cursor: "pointer", textAlign: "center", transition: "all 0.2s",
+                }}
+                onMouseEnter={(ev) => { ev.currentTarget.style.boxShadow = "0 4px 14px rgba(0,0,0,0.07)"; ev.currentTarget.style.borderColor = T.gold; }}
+                onMouseLeave={(ev) => { ev.currentTarget.style.boxShadow = "none"; ev.currentTarget.style.borderColor = T.border; }}
+              >
+                {e.photo_url
+                  ? <img src={e.photo_url} alt="" style={{ width: 52, height: 52, borderRadius: "50%", objectFit: "cover", margin: "0 auto 8px", display: "block" }} />
+                  : <Avatar name={e.full_name} size={52} style={{ margin: "0 auto 8px" }} />}
+                <div style={{ fontSize: 13, fontWeight: 700, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.full_name}</div>
+                <div style={{ fontSize: 11, color: T.primary, fontWeight: 600, marginTop: 2 }}>{e.store_short || "—"}</div>
+                <div style={{ fontSize: 11, color: T.textSec }}>{e.department || "—"}</div>
+                <div style={{ fontSize: 11, color: T.textSec }}>{e.position || "—"}</div>
+                <div style={{ fontSize: 10, color: T.textPH, marginTop: 2 }}>{e.employee_code}</div>
+              </div>
+            );
+          }
+          // 一般社員向け：苗字＋部署＋社員コードのみ。タップ不可。
           return (
             <div
               key={e.id}
-              onClick={clickable ? () => openProfile(e.id) : undefined}
               style={{
                 backgroundColor: "#fff", borderRadius: "8px",
                 padding: "16px 10px", border: `1px solid ${T.border}`,
-                cursor: clickable ? "pointer" : "default", textAlign: "center", transition: "all 0.2s",
+                cursor: "default", textAlign: "center", transition: "all 0.2s",
               }}
-              onMouseEnter={clickable ? (ev) => { ev.currentTarget.style.boxShadow = "0 4px 14px rgba(0,0,0,0.07)"; ev.currentTarget.style.borderColor = T.gold; } : undefined}
-              onMouseLeave={clickable ? (ev) => { ev.currentTarget.style.boxShadow = "none"; ev.currentTarget.style.borderColor = T.border; } : undefined}
             >
               <div style={{ fontSize: 15, fontWeight: 700, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 6 }}>{lastNameOf(e.full_name)}</div>
               <div style={{ fontSize: 12, color: T.textSec, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.department || "—"}</div>
