@@ -57,21 +57,36 @@ export function dateBasedDefaultPeriod(today: Date = new Date()): PeriodYM {
 /**
  * 「いまの提出対象月度」を返す。
  *   1. WC shift_confirmations の confirmed_at IS NOT NULL の最大 target_month があれば +1
- *   2. 無ければ dateBasedDefaultPeriod
+ *      （確定で次の月度へ進む）
+ *   2. 確定が0件なら、WC shift_submissions の最小 target_month を「そのまま」返す
+ *      （提出が集まってる月度に居座る。日付が進んでも確定があるまで動かない）
+ *   3. 確定も提出も0件のとき限定で dateBasedDefaultPeriod(today)
+ *      （立ち上げ最初の窓だけ日付で決定）
  */
 export async function getCurrentSubmissionPeriod(
   companyId: string,
   today: Date = new Date(),
 ): Promise<PeriodYM> {
-  const { data } = await supabase.from("shift_confirmations")
+  // 1. 最新確定があれば +1ヶ月
+  const { data: confs } = await supabase.from("shift_confirmations")
     .select("target_month")
     .eq("company_id", companyId)
     .not("confirmed_at", "is", null)
     .order("target_month", { ascending: false })
     .limit(1);
-  if (data && data.length > 0) {
-    return nextMonth(parseTargetMonth(data[0].target_month as string));
+  if (confs && confs.length > 0) {
+    return nextMonth(parseTargetMonth(confs[0].target_month as string));
   }
+  // 2. 確定0件 → 既存提出のうち最小の target_month に居座る
+  const { data: subs } = await supabase.from("shift_submissions")
+    .select("target_month")
+    .eq("company_id", companyId)
+    .order("target_month", { ascending: true })
+    .limit(1);
+  if (subs && subs.length > 0) {
+    return parseTargetMonth(subs[0].target_month as string);
+  }
+  // 3. 確定も提出も0件 → 立ち上げ初期窓を日付ベースで決定
   return dateBasedDefaultPeriod(today);
 }
 
