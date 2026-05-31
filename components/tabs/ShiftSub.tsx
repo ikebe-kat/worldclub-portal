@@ -8,7 +8,7 @@ import { T, DOW, stepMonth, periodRange } from "@/lib/constants";
 import Dialog from "@/components/ui/Dialog";
 import { supabase } from "@/lib/supabase";
 import {
-  getCurrentSubmissionPeriod, dateBasedDefaultPeriod, periodOfDateStr,
+  getCurrentSubmissionPeriod, periodOfDateStr,
   type PeriodYM,
 } from "@/lib/shiftPeriod";
 
@@ -99,15 +99,16 @@ const periodDowLocal = (yr: number, mo: number, idx: number): number =>
 
 
 export default function ShiftSub({ employee }: { employee: any }) {
-  // 初期月度は「いまの提出対象月度」（同期fallback = 日付ベース、useEffectでDB最新確定+1に上書き）
-  const initialPeriod: PeriodYM = dateBasedDefaultPeriod();
-  const [yr, setYr] = useState(initialPeriod.yr);
-  const [mo, setMo] = useState(initialPeriod.mo);
+  // 本物の月度が決まるまで periodReady=false（その間は描画しない＝チラつき防止）。
+  // yr/mo の placeholder は 0/0 だが、periodReady=false の間は JSX が早期 return する。
+  const [yr, setYr] = useState<number>(0);
+  const [mo, setMo] = useState<number>(0);
+  const [periodReady, setPeriodReady] = useState(false);
   useEffect(() => {
     let cancel = false;
     getCurrentSubmissionPeriod(COMPANY_ID).then(p => {
       if (cancel) return;
-      setYr(p.yr); setMo(p.mo);
+      setYr(p.yr); setMo(p.mo); setPeriodReady(true);
     });
     return () => { cancel = true; };
   }, []);
@@ -132,6 +133,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
 
   /* ── データ取得 ── */
   const loadData = useCallback(async (showLoading = false) => {
+    if (!periodReady) return;
     if (showLoading) setLoading(true);
     const monthStart = periodStart;
     const monthEnd = periodEnd;
@@ -234,7 +236,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
     setYukyuTargetMonthSet(targetMonthSet);
 
     setLoading(false);
-  }, [yr, mo, employee?.id]);
+  }, [yr, mo, employee?.id, periodReady]);
 
   useEffect(() => { loadData(true); }, [loadData]);
 
@@ -902,6 +904,11 @@ export default function ShiftSub({ employee }: { employee: any }) {
   const isOgawa = employee?.employee_code === "WC001";
   const YUKYU_VIEWERS = ["WC001", "W02", "W49", "W67"];
   const canViewYukyu = YUKYU_VIEWERS.includes(employee?.employee_code || "");
+
+  // ── 本物の月度が決まるまで描画しない（誤った月度を一瞬でも出さない） ──
+  if (!periodReady) {
+    return <div style={{ textAlign: "center", padding: 40, color: T.textSec, fontSize: 14 }}>読み込み中...</div>;
+  }
 
   return (
     <div>

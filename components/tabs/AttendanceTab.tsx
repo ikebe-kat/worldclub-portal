@@ -7,7 +7,7 @@ import { useSmoothSwipe } from "@/hooks/useSmoothSwipe";
 import type { MonthlySummary } from "@/lib/types";
 import Dialog from "@/components/ui/Dialog";
 import {
-  getCurrentSubmissionPeriod, dateBasedDefaultPeriod, formatTargetMonth,
+  getCurrentSubmissionPeriod, formatTargetMonth,
   isSubmissionClosed, submissionDeadline, periodBounds, periodLength, periodDateAt,
   periodOfDateStr,
   type PeriodYM,
@@ -91,22 +91,12 @@ const WISH_TYPES: WishType[] = ["shift_koukyuu", "yukyu", "shift_chikoku", "shif
 interface WishReq { id: string; type: WishType; status: string; reason: string | null; }
 
 const ShiftWishView = ({ employee }: { employee: any }) => {
-  // 提出対象月度（初期値=日付ベース、その後 DB の最新確定+1ヶ月で上書き）
-  const [period, setPeriod] = useState<PeriodYM>(() => dateBasedDefaultPeriod());
+  // 提出対象月度。本物が確定するまで null。null の間は何も描画しない（チラつき防止）。
+  const [period, setPeriod] = useState<PeriodYM | null>(null);
   useEffect(() => {
     if (!employee?.company_id) return;
     getCurrentSubmissionPeriod(employee.company_id).then(setPeriod);
   }, [employee?.company_id]);
-
-  const targetMonthStr = formatTargetMonth(period);
-  const { start: periodStart, end: periodEnd } = periodBounds(period);
-  const len = periodLength(period);
-  const closed = isSubmissionClosed(period);
-  const deadline = submissionDeadline(period);
-  const deadlineLabel = `${deadline.getMonth() + 1}/${deadline.getDate()}`;
-  const sd = new Date(periodStart + "T00:00:00");
-  const ed = new Date(periodEnd + "T00:00:00");
-  const rangeLabel = `${sd.getMonth() + 1}/${sd.getDate()}〜${ed.getMonth() + 1}/${ed.getDate()}`;
 
   const [requests, setRequests] = useState<Record<string, WishReq>>({});
   const [loading, setLoading] = useState(true);
@@ -119,11 +109,14 @@ const ShiftWishView = ({ employee }: { employee: any }) => {
   const [wishReason, setWishReason] = useState("");
   const [wishTime, setWishTime] = useState("");
   const [saving, setSaving] = useState(false);
+  const lastOgawaNotifyRef = useRef<number>(0);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 2000); return () => clearTimeout(t); }, [toast]);
 
   const fetchData = useCallback(async () => {
-    if (!employee?.id) return;
+    if (!employee?.id || !period) return;
     setLoading(true);
+    const { start: periodStart, end: periodEnd } = periodBounds(period);
+    const targetMonthStr = formatTargetMonth(period);
     const { data } = await supabase.from("leave_requests")
       .select("id, attendance_date, type, status, reason")
       .eq("employee_id", employee.id)
@@ -136,9 +129,25 @@ const ShiftWishView = ({ employee }: { employee: any }) => {
       .select("submitted_at").eq("employee_id", employee.id).eq("target_month", targetMonthStr).maybeSingle();
     setSubmitted(!!subData);
     setLoading(false);
-  }, [employee?.id, periodStart, periodEnd, targetMonthStr]);
+  }, [employee?.id, period]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // ── 本物の月度が決まるまで何も描画しない（誤った月度を一瞬でも出さない） ──
+  if (!period) {
+    return <div style={{ textAlign: "center", padding: 40, color: T.textMuted, fontSize: 14 }}>読み込み中...</div>;
+  }
+
+  // ── 月度確定後に派生値を計算 ──
+  const targetMonthStr = formatTargetMonth(period);
+  const { start: periodStart, end: periodEnd } = periodBounds(period);
+  const len = periodLength(period);
+  const closed = isSubmissionClosed(period);
+  const deadline = submissionDeadline(period);
+  const deadlineLabel = `${deadline.getMonth() + 1}/${deadline.getDate()}`;
+  const sd = new Date(periodStart + "T00:00:00");
+  const ed = new Date(periodEnd + "T00:00:00");
+  const rangeLabel = `${sd.getMonth() + 1}/${sd.getDate()}〜${ed.getMonth() + 1}/${ed.getDate()}`;
 
   const openModal = (dateStr: string, day: number, month: number, dow: number) => {
     if (closed) return; // 締切過ぎは編集不可
@@ -197,7 +206,6 @@ const ShiftWishView = ({ employee }: { employee: any }) => {
     fetchData();
   };
 
-  const lastOgawaNotifyRef = useRef<number>(0);
   const handleSubmit = async () => {
     if (submitting) return;
     if (closed) return; // 締切過ぎは提出不可
