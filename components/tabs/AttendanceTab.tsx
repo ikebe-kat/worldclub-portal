@@ -6,6 +6,12 @@ import { ReasonBadges } from "@/components/ui";
 import { useSmoothSwipe } from "@/hooks/useSmoothSwipe";
 import type { MonthlySummary } from "@/lib/types";
 import Dialog from "@/components/ui/Dialog";
+import {
+  getCurrentSubmissionPeriod, dateBasedDefaultPeriod, formatTargetMonth,
+  isSubmissionClosed, submissionDeadline, periodBounds, periodLength, periodDateAt,
+  periodOfDateStr,
+  type PeriodYM,
+} from "@/lib/shiftPeriod";
 
 const PUSH_URL = "https://pktqlbpdjemmomfanvgt.supabase.co/functions/v1/send-push";
 
@@ -85,12 +91,22 @@ const WISH_TYPES: WishType[] = ["shift_koukyuu", "yukyu", "shift_chikoku", "shif
 interface WishReq { id: string; type: WishType; status: string; reason: string | null; }
 
 const ShiftWishView = ({ employee }: { employee: any }) => {
-  const today = new Date();
-  const nextYr = today.getMonth() === 11 ? today.getFullYear() + 1 : today.getFullYear();
-  const nextMo = today.getMonth() === 11 ? 1 : today.getMonth() + 2;
-  const nextMonthStr = `${nextYr}-${String(nextMo).padStart(2, "0")}`;
-  const daysInMonth = new Date(nextYr, nextMo, 0).getDate();
-  const isAfter25 = today.getDate() >= 26;
+  // 提出対象月度（初期値=日付ベース、その後 DB の最新確定+1ヶ月で上書き）
+  const [period, setPeriod] = useState<PeriodYM>(() => dateBasedDefaultPeriod());
+  useEffect(() => {
+    if (!employee?.company_id) return;
+    getCurrentSubmissionPeriod(employee.company_id).then(setPeriod);
+  }, [employee?.company_id]);
+
+  const targetMonthStr = formatTargetMonth(period);
+  const { start: periodStart, end: periodEnd } = periodBounds(period);
+  const len = periodLength(period);
+  const closed = isSubmissionClosed(period);
+  const deadline = submissionDeadline(period);
+  const deadlineLabel = `${deadline.getMonth() + 1}/${deadline.getDate()}`;
+  const sd = new Date(periodStart + "T00:00:00");
+  const ed = new Date(periodEnd + "T00:00:00");
+  const rangeLabel = `${sd.getMonth() + 1}/${sd.getDate()}〜${ed.getMonth() + 1}/${ed.getDate()}`;
 
   const [requests, setRequests] = useState<Record<string, WishReq>>({});
   const [loading, setLoading] = useState(true);
@@ -98,7 +114,7 @@ const ShiftWishView = ({ employee }: { employee: any }) => {
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [dialog, setDialog] = useState<any>(null);
-  const [modal, setModal] = useState<{ dateStr: string; day: number; dow: number } | null>(null);
+  const [modal, setModal] = useState<{ dateStr: string; day: number; month: number; dow: number } | null>(null);
   const [selType, setSelType] = useState<WishType>("shift_koukyuu");
   const [wishReason, setWishReason] = useState("");
   const [wishTime, setWishTime] = useState("");
@@ -108,25 +124,24 @@ const ShiftWishView = ({ employee }: { employee: any }) => {
   const fetchData = useCallback(async () => {
     if (!employee?.id) return;
     setLoading(true);
-    const from = `${nextYr}-${String(nextMo).padStart(2, "0")}-01`;
-    const to = `${nextYr}-${String(nextMo).padStart(2, "0")}-${daysInMonth}`;
     const { data } = await supabase.from("leave_requests")
       .select("id, attendance_date, type, status, reason")
       .eq("employee_id", employee.id)
       .in("type", WISH_TYPES)
-      .gte("attendance_date", from).lte("attendance_date", to);
+      .gte("attendance_date", periodStart).lte("attendance_date", periodEnd);
     const map: Record<string, WishReq> = {};
     (data || []).forEach((r: any) => { map[r.attendance_date] = { id: r.id, type: r.type, status: r.status, reason: r.reason }; });
     setRequests(map);
     const { data: subData } = await supabase.from("shift_submissions")
-      .select("submitted_at").eq("employee_id", employee.id).eq("target_month", nextMonthStr).maybeSingle();
+      .select("submitted_at").eq("employee_id", employee.id).eq("target_month", targetMonthStr).maybeSingle();
     setSubmitted(!!subData);
     setLoading(false);
-  }, [employee?.id, nextYr, nextMo, daysInMonth, nextMonthStr]);
+  }, [employee?.id, periodStart, periodEnd, targetMonthStr]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const openModal = (dateStr: string, day: number, dow: number) => {
+  const openModal = (dateStr: string, day: number, month: number, dow: number) => {
+    if (closed) return; // 締切過ぎは編集不可
     const existing = requests[dateStr];
     if (existing?.status === "approved") return;
     setSelType(existing?.type || "shift_koukyuu");
@@ -138,7 +153,7 @@ const ShiftWishView = ({ employee }: { employee: any }) => {
       setWishTime("");
       setWishReason(existing?.type === "yukyu" ? (existing.reason || "") : "");
     }
-    setModal({ dateStr, day, dow });
+    setModal({ dateStr, day, month, dow });
   };
 
   const handleSave = async () => {
@@ -185,6 +200,7 @@ const ShiftWishView = ({ employee }: { employee: any }) => {
   const lastOgawaNotifyRef = useRef<number>(0);
   const handleSubmit = async () => {
     if (submitting) return;
+    if (closed) return; // 締切過ぎは提出不可
     if (submitted) {
       setDialog({ message: "提出済みです。再提出しますか？", mode: "confirm", onOk: () => { setDialog(null); doSubmit(true); }, confirmLabel: "はい" });
       return;
@@ -195,24 +211,24 @@ const ShiftWishView = ({ employee }: { employee: any }) => {
     setSubmitting(true);
     const nowIso = new Date().toISOString();
     if (isResubmit) {
-      await supabase.from("shift_submissions").update({ submitted_at: nowIso }).eq("employee_id", employee.id).eq("target_month", nextMonthStr);
+      await supabase.from("shift_submissions").update({ submitted_at: nowIso }).eq("employee_id", employee.id).eq("target_month", targetMonthStr);
     } else {
-      await supabase.from("shift_submissions").insert({ company_id: employee.company_id, employee_id: employee.id, target_month: nextMonthStr, created_at: nowIso, submitted_at: nowIso });
+      await supabase.from("shift_submissions").insert({ company_id: employee.company_id, employee_id: employee.id, target_month: targetMonthStr, created_at: nowIso, submitted_at: nowIso });
     }
     setSubmitting(false); setSubmitted(true);
     setToast(isResubmit ? "再提出しました" : "シフト希望を提出しました");
     const now = Date.now();
     if (now - lastOgawaNotifyRef.current > 3000) {
       lastOgawaNotifyRef.current = now;
-      fetch(PUSH_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "wc_leave_request", payload: { company_id: employee.company_id, employee_name: employee.full_name, reason: "シフト希望提出", attendance_date: nextMonthStr } }) }).catch(() => {});
+      fetch(PUSH_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "wc_leave_request", payload: { company_id: employee.company_id, employee_name: employee.full_name, reason: "シフト希望提出", attendance_date: targetMonthStr } }) }).catch(() => {});
     }
   };
 
-  const days = Array.from({ length: daysInMonth }, (_, i) => {
-    const d = i + 1;
-    const ds = `${nextYr}-${String(nextMo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-    const dt = new Date(nextYr, nextMo - 1, d);
-    return { d, dateStr: ds, dow: dt.getDay() };
+  const days = Array.from({ length: len }, (_, i) => {
+    const idx = i + 1;
+    const ds = periodDateAt(period, idx);
+    const dt = new Date(ds + "T00:00:00");
+    return { d: dt.getDate(), m: dt.getMonth() + 1, dateStr: ds, dow: dt.getDay() };
   });
 
   const counts = { koukyuu: 0, yukyu: 0, chikoku: 0, soutai: 0 };
@@ -227,14 +243,15 @@ const ShiftWishView = ({ employee }: { employee: any }) => {
 
   return (
     <div style={{ padding: "16px 12px", maxWidth: 720, margin: "0 auto" }}>
-      <div style={{ textAlign: "center", marginBottom: 12 }}>
-        <span style={{ fontSize: 17, fontWeight: 700, color: T.text }}>{nextYr}年{nextMo}月</span>
-        <span style={{ fontSize: 12, color: T.textSec, marginLeft: 8 }}>シフト希望</span>
+      <div style={{ textAlign: "center", marginBottom: 4 }}>
+        <span style={{ fontSize: 17, fontWeight: 700, color: T.text }}>{period.yr}年{period.mo}月度</span>
+        <span style={{ fontSize: 12, color: T.textSec, marginLeft: 8 }}>{rangeLabel}</span>
       </div>
+      <div style={{ textAlign: "center", marginBottom: 12, fontSize: 11, color: T.textMuted }}>シフト希望（提出締切 {deadlineLabel}）</div>
 
-      {isAfter25 && (
-        <div style={{ backgroundColor: "#FEF3C7", border: "1px solid #F59E0B", borderRadius: 6, padding: "10px 14px", fontSize: 13, color: "#92400E", fontWeight: 600, marginBottom: 12, textAlign: "center" }}>
-          25日を過ぎています。早めに提出してください。
+      {closed && (
+        <div style={{ backgroundColor: "#FEE2E2", border: "1px solid #EF4444", borderRadius: 6, padding: "10px 14px", fontSize: 13, color: "#991B1B", fontWeight: 700, marginBottom: 12, textAlign: "center" }}>
+          締切済み（{deadlineLabel}）— この月度は提出・修正できません
         </div>
       )}
 
@@ -245,11 +262,15 @@ const ShiftWishView = ({ employee }: { employee: any }) => {
           {counts.chikoku > 0 && <span>遅刻:<strong style={{ color: WISH_COLORS.shift_chikoku.text }}>{counts.chikoku}</strong></span>}
           {counts.soutai > 0 && <span>早退:<strong style={{ color: WISH_COLORS.shift_soutai.text }}>{counts.soutai}</strong></span>}
         </div>
-        <button onClick={handleSubmit} disabled={submitting} style={{
-          padding: "8px 20px", borderRadius: 6, border: "none", backgroundColor: T.primary,
-          color: "#fff", fontSize: 13, fontWeight: 700, cursor: submitting ? "default" : "pointer", opacity: submitting ? 0.6 : 1,
+        <button onClick={handleSubmit} disabled={submitting || closed} style={{
+          padding: "8px 20px", borderRadius: 6, border: "none",
+          backgroundColor: closed ? T.border : T.primary,
+          color: closed ? T.textMuted : "#fff",
+          fontSize: 13, fontWeight: 700,
+          cursor: (submitting || closed) ? "default" : "pointer",
+          opacity: submitting ? 0.6 : 1,
         }}>
-          {submitting ? "送信中..." : submitted ? "提出済み ✓（再提出）" : "シフト希望を提出"}
+          {closed ? "締切済み" : submitting ? "送信中..." : submitted ? "提出済み ✓（再提出）" : "シフト希望を提出"}
         </button>
       </div>
 
@@ -261,7 +282,7 @@ const ShiftWishView = ({ employee }: { employee: any }) => {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2 }}>
         {Array.from({ length: days[0].dow }, (_, i) => <div key={`empty-${i}`} />)}
-        {days.map(({ d, dateStr: ds, dow }) => {
+        {days.map(({ d, m, dateStr: ds, dow }) => {
           const req = requests[ds];
           const wc = req ? WISH_COLORS[req.type] : null;
           const isApproved = req?.status === "approved";
@@ -270,12 +291,14 @@ const ShiftWishView = ({ employee }: { employee: any }) => {
           const borderColor = isApproved ? "#10B981" : isReturned ? "#EF4444" : wc ? wc.border : T.border;
           const lbl = isApproved ? "確定" : isReturned ? "差戻" : req ? WISH_LABELS[req.type] : "";
           const lblColor = isApproved ? "#065F46" : isReturned ? "#DC2626" : wc ? wc.text : T.textMuted;
+          const disabled = isApproved || closed;
           return (
-            <button key={ds} onClick={() => openModal(ds, d, dow)} disabled={isApproved}
+            <button key={ds} onClick={() => openModal(ds, d, m, dow)} disabled={disabled}
               style={{
                 aspectRatio: "1", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
                 border: `2px solid ${borderColor}`, borderRadius: 8, backgroundColor: bgColor,
-                cursor: isApproved ? "default" : "pointer", transition: "all 0.15s", padding: 0,
+                cursor: disabled ? "default" : "pointer", transition: "all 0.15s", padding: 0,
+                opacity: closed && !req ? 0.55 : 1,
               }}>
               <span style={{ fontSize: 14, fontWeight: 600, color: dow === 0 ? T.holidayRed : dow === 6 ? T.yukyuBlue : T.text }}>{d}</span>
               {lbl && <span style={{ fontSize: 7, color: lblColor, fontWeight: 700, lineHeight: 1 }}>{lbl}</span>}
@@ -302,7 +325,7 @@ const ShiftWishView = ({ employee }: { employee: any }) => {
         <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.35)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 1100 }} onClick={() => setModal(null)}>
           <div style={{ backgroundColor: "#fff", borderRadius: "12px 12px 0 0", padding: "24px 20px", width: "100%", maxWidth: 440, animation: "slideUp 0.3s ease" }} onClick={e => e.stopPropagation()}>
             <div style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: T.border, margin: "0 auto 16px" }} />
-            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>{nextMo}月{modal.day}日（{DOW[modal.dow]}）</div>
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>{modal.month}月{modal.day}日（{DOW[modal.dow]}）</div>
             <div style={{ fontSize: 12, color: T.textSec, marginBottom: 14 }}>希望種別を選択</div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
@@ -368,9 +391,6 @@ export default function AttendanceTab({ employee }: { employee: any }) {
   const [holidays, setHolidays] = useState<string[]>([]);
   const [shiftConf, setShiftConf] = useState<{ confirmed_at: string; is_modified: boolean } | null>(null);
   const [nextShiftConf, setNextShiftConf] = useState<{ confirmed_at: string; is_modified: boolean } | null>(null);
-  const [nextSubmission, setNextSubmission] = useState<{ submitted_at: string } | null>(null);
-  const [resubmitMode, setResubmitMode] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   useEffect(() => {
     if (!toast) return;
@@ -498,18 +518,6 @@ export default function AttendanceTab({ employee }: { employee: any }) {
     setShiftConf(cur ? { confirmed_at: cur.confirmed_at, is_modified: !!cur.is_modified } : null);
     setNextShiftConf(nxt ? { confirmed_at: nxt.confirmed_at, is_modified: !!nxt.is_modified } : null);
 
-    // shift_submissions（実日付の翌月分の提出有無）
-    const _today = new Date();
-    const _ny = _today.getMonth() === 11 ? _today.getFullYear() + 1 : _today.getFullYear();
-    const _nm = _today.getMonth() === 11 ? 1 : _today.getMonth() + 2;
-    const _nextRealMonthStr = `${_ny}-${String(_nm).padStart(2, "0")}`;
-    const { data: subData } = await supabase.from("shift_submissions")
-      .select("submitted_at")
-      .eq("employee_id", employee.id)
-      .eq("target_month", _nextRealMonthStr)
-      .maybeSingle();
-    setNextSubmission(subData ? { submitted_at: subData.submitted_at } : null);
-
     if (employee.holiday_calendar) {
       const { data: holData } = await supabase
         .from("holiday_calendars").select("holiday_date")
@@ -606,107 +614,23 @@ export default function AttendanceTab({ employee }: { employee: any }) {
     return { wd, hd, ab, yu, kr: isKoukyuPart(employee?.employee_code || "") ? 999 : kibouQuota - ku, tw, sm: scheduledMin, df: tw - scheduledMin };
   }, [allDays, scheduledMin, kibouQuota]);
 
-  /* ── 翌月シフト希望提出 ── */
-  const today = new Date();
-  const nextRealYear = today.getMonth() === 11 ? today.getFullYear() + 1 : today.getFullYear();
-  const nextRealMonth = today.getMonth() === 11 ? 1 : today.getMonth() + 2;
-  const nextRealMonthStr = `${nextRealYear}-${String(nextRealMonth).padStart(2, "0")}`;
-  const submissionLocked = today.getDate() >= 26;
-  const submitted = !!nextSubmission;
-
-  const lastOgawaNotifyRef = useRef<number>(0);
-  const notifyOgawa = async () => {
-    const now = Date.now();
-    if (now - lastOgawaNotifyRef.current < 3000) return;
-    lastOgawaNotifyRef.current = now;
-    try {
-      const { data: ogawa } = await supabase.from("employees")
-        .select("id")
-        .eq("company_id", employee.company_id)
-        .eq("employee_code", "WC001")
-        .maybeSingle();
-      if (ogawa?.id) {
-        fetch(PUSH_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "shift_submitted",
-            payload: {
-              company_id: employee.company_id,
-              employee_id: ogawa.id,
-              employee_name: employee.full_name,
-              target_month: nextRealMonthStr,
-            },
-          }),
-        }).catch(() => {});
-      }
-    } catch {}
-  };
-
-  const handleShiftSubmit = async () => {
-    if (submitting) return;
-    if (submissionLocked && !submitted) return;
-
-    // 提出済み & 再提出モードでない → 修正確認ダイアログ
-    if (submitted && !resubmitMode) {
-      showConfirm("提出済みです。修正しますか？", () => {
-        setResubmitMode(true);
-      }, "はい");
-      return;
-    }
-
-    // 再提出モード → submitted_at のみ UPDATE（created_at は維持）
-    if (submitted && resubmitMode) {
-      setSubmitting(true);
-      const newAt = new Date().toISOString();
-      const { error } = await supabase.from("shift_submissions")
-        .update({ submitted_at: newAt })
-        .eq("employee_id", employee.id)
-        .eq("target_month", nextRealMonthStr);
-      setSubmitting(false);
-      if (error) { showAlert("再提出に失敗しました: " + error.message); return; }
-      setNextSubmission({ submitted_at: newAt });
-      setResubmitMode(false);
-      setToast("再提出しました");
-      notifyOgawa();
-      return;
-    }
-
-    // 新規提出
-    setSubmitting(true);
-    const nowIso = new Date().toISOString();
-    const { error } = await supabase.from("shift_submissions").insert({
-      company_id: employee.company_id,
-      employee_id: employee.id,
-      target_month: nextRealMonthStr,
-      created_at: nowIso,
-      submitted_at: nowIso,
-    });
-    setSubmitting(false);
-    if (error) { showAlert("提出に失敗しました: " + error.message); return; }
-    setNextSubmission({ submitted_at: nowIso });
-    notifyOgawa();
-  };
-
-  /* ── 公休申請の締切判定 ── */
+  /* ── 公休申請の締切判定（シフト提出と同じ「月度・締切」ロジックに統一） ──
+        - その日付が属する月度が「表示中の月度」なら shiftConf を見る
+        - その日付が属する月度が「表示中の月度+1」なら nextShiftConf を見る
+        - 上記いずれでもなければ、その月度の提出締切 ((mo-2)/25) を過ぎていればロック
+   */
   const isKoukyuLocked = useCallback((dateStr: string): boolean => {
     if (!dateStr) return false;
-    const [y, m] = dateStr.split("-").map(Number);
-    const targetMonth = `${y}-${String(m).padStart(2, "0")}`;
-    const today = new Date();
-    const curRealMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-    const [ny, nm] = stepMonth(today.getFullYear(), today.getMonth() + 1, 1);
-    const nextRealMonth = `${ny}-${String(nm).padStart(2, "0")}`;
-
-    // 当該月が確定済み
-    if (targetMonth === curRealMonth && shiftConf) return true;
-    if (targetMonth === nextRealMonth && nextShiftConf) return true;
-
-    // 25日以降は翌月分は締切
-    if (targetMonth === nextRealMonth && today.getDate() >= 25) return true;
-
+    const ms = periodOfDateStr(dateStr);                          // 例 "2026-08" = 8月度
+    const cm = `${yr}-${String(mo).padStart(2, "0")}`;             // 表示中の月度
+    const [ny, nm] = stepMonth(yr, mo, 1);
+    const nm2 = `${ny}-${String(nm).padStart(2, "0")}`;            // 表示中の翌月度
+    if (ms === cm && shiftConf) return true;
+    if (ms === nm2 && nextShiftConf) return true;
+    const [py, pmo] = ms.split("-").map(Number);
+    if (isSubmissionClosed({ yr: py, mo: pmo })) return true;
     return false;
-  }, [shiftConf, nextShiftConf]);
+  }, [shiftConf, nextShiftConf, yr, mo]);
 
   /* ── モーダル開く ── */
   const openModal = (day: any) => {

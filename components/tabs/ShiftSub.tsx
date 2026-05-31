@@ -4,9 +4,13 @@
 // 管理者（WC001）と本部メンバーのみアクセス
 // ═══════════════════════════════════════════
 import { useState, useEffect, useCallback, useRef } from "react";
-import { T, DOW, stepMonth } from "@/lib/constants";
+import { T, DOW, stepMonth, periodRange } from "@/lib/constants";
 import Dialog from "@/components/ui/Dialog";
 import { supabase } from "@/lib/supabase";
+import {
+  getCurrentSubmissionPeriod, dateBasedDefaultPeriod, periodOfDateStr,
+  type PeriodYM,
+} from "@/lib/shiftPeriod";
 
 const COMPANY_ID = "c2d368f0-aa9b-4f70-b082-43ec07723d6c";
 const STORE_ID   = "06027f43-fa49-4b2e-8009-903456b0ce33";
@@ -65,20 +69,48 @@ const formatJpDate = (iso: string): string => {
   return `${parseInt(m[2], 10)}月${parseInt(m[3], 10)}日`;
 };
 
-/* 月の日数 */
-const daysInMonth = (yr: number, mo: number) => new Date(yr, mo, 0).getDate();
+// 月度 (yr, mo) の総日数（21〜20範囲、約31日）
+const periodLenLocal = (yr: number, mo: number): number => {
+  const { start, end } = periodRange(yr, mo);
+  const s = new Date(start + "T00:00:00");
+  const e = new Date(end + "T00:00:00");
+  return Math.round((e.getTime() - s.getTime()) / 86400000) + 1;
+};
 
-/* 日付文字列生成 */
-const dateStr = (yr: number, mo: number, d: number) =>
-  `${yr}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+// 月度のidx番目(1始まり)の日付文字列
+const periodDateAtLocal = (yr: number, mo: number, idx: number): string => {
+  const { start } = periodRange(yr, mo);
+  const s = new Date(start + "T00:00:00");
+  s.setDate(s.getDate() + (idx - 1));
+  return `${s.getFullYear()}-${String(s.getMonth() + 1).padStart(2, "0")}-${String(s.getDate()).padStart(2, "0")}`;
+};
 
-/* 曜日取得 (0=日〜6=土) */
-const dowOf = (yr: number, mo: number, d: number) => new Date(yr, mo - 1, d).getDay();
+// 月度のidx番目のカレンダー日(1..31)
+const periodDayNumLocal = (yr: number, mo: number, idx: number): number =>
+  new Date(periodDateAtLocal(yr, mo, idx) + "T00:00:00").getDate();
+
+// 月度のidx番目のカレンダー月(1..12)
+const periodMonthNumLocal = (yr: number, mo: number, idx: number): number =>
+  new Date(periodDateAtLocal(yr, mo, idx) + "T00:00:00").getMonth() + 1;
+
+// 月度のidx番目の曜日(0..6)
+const periodDowLocal = (yr: number, mo: number, idx: number): number =>
+  new Date(periodDateAtLocal(yr, mo, idx) + "T00:00:00").getDay();
+
 
 export default function ShiftSub({ employee }: { employee: any }) {
-  const now = new Date();
-  const [yr, setYr] = useState(now.getFullYear());
-  const [mo, setMo] = useState(now.getMonth() + 1);
+  // 初期月度は「いまの提出対象月度」（同期fallback = 日付ベース、useEffectでDB最新確定+1に上書き）
+  const initialPeriod: PeriodYM = dateBasedDefaultPeriod();
+  const [yr, setYr] = useState(initialPeriod.yr);
+  const [mo, setMo] = useState(initialPeriod.mo);
+  useEffect(() => {
+    let cancel = false;
+    getCurrentSubmissionPeriod(COMPANY_ID).then(p => {
+      if (cancel) return;
+      setYr(p.yr); setMo(p.mo);
+    });
+    return () => { cancel = true; };
+  }, []);
   const [employees, setEmployees] = useState<Emp[]>([]);
   const [leaveReqs, setLeaveReqs] = useState<LeaveReq[]>([]);
   const [attData, setAttData] = useState<AttRow[]>([]);
@@ -93,13 +125,16 @@ export default function ShiftSub({ employee }: { employee: any }) {
   const [confirming, setConfirming] = useState(false);
   const [dialog, setDialog] = useState<{ message: string; mode: "alert" | "confirm"; confirmLabel?: string; confirmColor?: string; onOk: () => void } | null>(null);
 
-  const days = daysInMonth(yr, mo);
+  // 月度 (yr, mo) のセル数（21〜20、約31日）と開始/終了日
+  const days = periodLenLocal(yr, mo);
+  const periodStart = periodDateAtLocal(yr, mo, 1);
+  const periodEnd = periodDateAtLocal(yr, mo, days);
 
   /* ── データ取得 ── */
   const loadData = useCallback(async (showLoading = false) => {
     if (showLoading) setLoading(true);
-    const monthStart = dateStr(yr, mo, 1);
-    const monthEnd = dateStr(yr, mo, days);
+    const monthStart = periodStart;
+    const monthEnd = periodEnd;
 
     // 従業員一覧（is_active=true または NULL）
     const { data: emps } = await supabase.from("employees")
@@ -156,14 +191,14 @@ export default function ShiftSub({ employee }: { employee: any }) {
     setResubmittedIds(confirmedAt ? new Set() : resubmitted);
     setShiftConfirmedAt(confirmedAt);
 
-    // 有給申請（pending）：今日の月＋確定済みの翌月以降
+    // 有給申請（pending）：今日が属する月度＋確定済みの未来月度
     const _today = new Date();
-    const todayYr = _today.getFullYear();
-    const todayMo = _today.getMonth() + 1;
-    const todayMonthStr = `${todayYr}-${String(todayMo).padStart(2, "0")}`;
-    const todayMonthStart = dateStr(todayYr, todayMo, 1);
+    const todayDateStr = `${_today.getFullYear()}-${String(_today.getMonth() + 1).padStart(2, "0")}-${String(_today.getDate()).padStart(2, "0")}`;
+    const todayMonthStr = periodOfDateStr(todayDateStr);            // 例 "2026-06" = 6月度
+    const [_tYr, _tMo] = todayMonthStr.split("-").map(Number);
+    const todayMonthStart = periodDateAtLocal(_tYr, _tMo, 1);       // 今日の月度の開始日
 
-    // 確定済みの月一覧（今日の月より未来）
+    // 確定済みの月度一覧（今日の月度より未来）
     const { data: futureConfs } = await supabase.from("shift_confirmations")
       .select("target_month")
       .eq("company_id", COMPANY_ID)
@@ -174,13 +209,13 @@ export default function ShiftSub({ employee }: { employee: any }) {
       ...((futureConfs || []).map((c: any) => c.target_month) as string[]),
     ]);
 
-    // 候補月の中で最も未来の月末まで取得
-    let maxYr = todayYr, maxMo = todayMo;
+    // 候補月度の中で最も未来の月度末まで取得
+    let maxYr = _tYr, maxMo = _tMo;
     for (const ms of targetMonthSet) {
       const [y, m] = ms.split("-").map(Number);
       if (y > maxYr || (y === maxYr && m > maxMo)) { maxYr = y; maxMo = m; }
     }
-    const maxMonthEnd = dateStr(maxYr, maxMo, daysInMonth(maxYr, maxMo));
+    const maxMonthEnd = periodDateAtLocal(maxYr, maxMo, periodLenLocal(maxYr, maxMo));
 
     const { data: yReqsRaw } = await supabase.from("leave_requests")
       .select("id, employee_id, attendance_date, type, status, reject_reason, request_comment, created_at")
@@ -192,14 +227,14 @@ export default function ShiftSub({ employee }: { employee: any }) {
       .order("attendance_date");
 
     const yReqs = (yReqsRaw || []).filter((r: any) => {
-      const ms = r.attendance_date.slice(0, 7);
+      const ms = periodOfDateStr(r.attendance_date);              // 日付→月度ラベル
       return targetMonthSet.has(ms);
     });
     setYukyuReqs(yReqs);
     setYukyuTargetMonthSet(targetMonthSet);
 
     setLoading(false);
-  }, [yr, mo, days, employee?.id]);
+  }, [yr, mo, employee?.id]);
 
   useEffect(() => { loadData(true); }, [loadData]);
 
@@ -217,7 +252,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
         (payload: any) => {
           const row = payload?.new;
           if (!row) return;
-          const inMonth = row.attendance_date >= dateStr(yr, mo, 1) && row.attendance_date <= dateStr(yr, mo, days);
+          const inMonth = row.attendance_date >= periodStart && row.attendance_date <= periodEnd;
           if (inMonth && (row.type === "shift_koukyuu" || row.type === "yukyu")) {
             setLeaveReqs(prev => prev.some(r => r.id === row.id) ? prev : [...prev, row]);
           }
@@ -267,7 +302,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
 
   /* ── セル状態判定（共通） ── */
   const computeCellState = (empId: string, day: number): CellState => {
-    const ds = dateStr(yr, mo, day);
+    const ds = periodDateAtLocal(yr, mo, day);
     const yukyuReq = leaveReqs.find(r => r.employee_id === empId && r.attendance_date === ds && r.type === "yukyu");
     if (yukyuReq) {
       if (yukyuReq.status === "approved") return "yukyu";
@@ -348,7 +383,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
 
   const handleCellTapInner = async (emp: Emp, day: number) => {
 
-    const ds = dateStr(yr, mo, day);
+    const ds = periodDateAtLocal(yr, mo, day);
     const state = getCellState(emp.id, day);
 
     // 有給確定済みは変更不可
@@ -433,7 +468,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
   const [rejectReasonInput, setRejectReasonInput] = useState("");
 
   const handlePendingTap = (emp: Emp, day: number, reqType: string) => {
-    const ds = dateStr(yr, mo, day);
+    const ds = periodDateAtLocal(yr, mo, day);
     const req = leaveReqs.find(r => r.employee_id === emp.id && r.attendance_date === ds && r.status === "pending" && r.type === reqType);
     if (req) {
       setRejectReasonInput("");
@@ -449,7 +484,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
     processingReqRef.current.add(reqId);
     try {
       const approvedEmpId = pendingDialog.emp.id;
-      const approvedDate = dateStr(yr, mo, pendingDialog.day);
+      const approvedDate = periodDateAtLocal(yr, mo, pendingDialog.day);
       const approvedType = pendingDialog.reqType;
       setLeaveReqs(prev => prev.map(r => r.id === reqId ? { ...r, status: "approved", reject_reason: null } : r));
       setPendingDialog(null);
@@ -508,7 +543,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
       }
 
       // シフト差し戻し通知
-      const ds = dateStr(yr, mo, pendingDialog.day);
+      const ds = periodDateAtLocal(yr, mo, pendingDialog.day);
       fetch(PUSH_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -550,7 +585,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
   /* ── 修正ボタン処理（確定解除） ── */
   const handleUnconfirm = async () => {
     setDialog({
-      message: `${yr}年${mo}月のシフト確定を解除しますか？\n確定済みの公休・有給を申請に戻します。`,
+      message: `${yr}年${mo}月度のシフト確定を解除しますか？\n確定済みの公休・有給を申請に戻します。`,
       mode: "confirm",
       confirmLabel: "修正する",
       confirmColor: C.returned,
@@ -566,10 +601,10 @@ export default function ShiftSub({ employee }: { employee: any }) {
         };
         window.addEventListener("beforeunload", beforeUnload);
 
-        const monthStart = dateStr(yr, mo, 1);
-        const monthEnd = dateStr(yr, mo, days);
+        const monthStart = periodDateAtLocal(yr, mo, 1);
+        const monthEnd = periodDateAtLocal(yr, mo, days);
 
-        // attendance_daily から当月の公休/有給を取得
+        // attendance_daily から月度の公休/有給を取得（21〜20範囲）
         const { data: rows } = await supabase.from("attendance_daily")
           .select("id, employee_id, attendance_date, reason")
           .eq("company_id", COMPANY_ID)
@@ -636,7 +671,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
       return;
     }
     setDialog({
-      message: `${yr}年${mo}月のシフトを確定しますか？\n確定済み公休をattendance_dailyに一括登録します。`,
+      message: `${yr}年${mo}月度のシフトを確定しますか？\n確定済み公休をattendance_dailyに一括登録します。`,
       mode: "confirm",
       confirmLabel: "確定",
       confirmColor: C.koukyuu,
@@ -658,8 +693,8 @@ export default function ShiftSub({ employee }: { employee: any }) {
           for (let d = 1; d <= days; d++) {
             const state = getCellStateRaw(emp.id, d);
             if (state !== "approved" && state !== "yukyu") continue;
-            const ds = dateStr(yr, mo, d);
-            const dow = DOW[dowOf(yr, mo, d)];
+            const ds = periodDateAtLocal(yr, mo, d);
+            const dow = DOW[periodDowLocal(yr, mo, d)];
             upserts.push({
               company_id: COMPANY_ID,
               employee_id: emp.id,
@@ -680,8 +715,8 @@ export default function ShiftSub({ employee }: { employee: any }) {
         }
 
         // 確定済みの leave_requests（approved）は不要なので当月分を削除
-        const _monthStart = dateStr(yr, mo, 1);
-        const _monthEnd = dateStr(yr, mo, days);
+        const _monthStart = periodDateAtLocal(yr, mo, 1);
+        const _monthEnd = periodDateAtLocal(yr, mo, days);
         await supabase.from("leave_requests")
           .delete()
           .eq("company_id", COMPANY_ID)
@@ -1026,9 +1061,16 @@ export default function ShiftSub({ employee }: { employee: any }) {
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <button onClick={() => stepMo(-1)} style={navBtn}>&lt;</button>
-          <span style={{ fontSize: 16, fontWeight: 700, color: T.text, minWidth: 120, textAlign: "center" }}>
-            {yr}年{mo}月
-          </span>
+          <div style={{ minWidth: 180, textAlign: "center" }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: T.text }}>{yr}年{mo}月度</div>
+            <div style={{ fontSize: 11, color: T.textSec, lineHeight: 1.2 }}>
+              {(() => {
+                const sd = new Date(periodStart + "T00:00:00");
+                const ed = new Date(periodEnd + "T00:00:00");
+                return `${sd.getMonth() + 1}/${sd.getDate()}〜${ed.getMonth() + 1}/${ed.getDate()}`;
+              })()}
+            </div>
+          </div>
           <button onClick={() => stepMo(1)} style={navBtn}>&gt;</button>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1125,7 +1167,8 @@ export default function ShiftSub({ employee }: { employee: any }) {
                 </th>
                 {Array.from({ length: days }, (_, i) => {
                   const d = i + 1;
-                  const dow = dowOf(yr, mo, d);
+                  const dow = periodDowLocal(yr, mo, d);
+                  const dayNum = periodDayNumLocal(yr, mo, d);
                   const isSun = dow === 0;
                   const isSat = dow === 6;
                   return (
@@ -1135,7 +1178,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
                       color: isSun ? "#DC2626" : isSat ? "#2563EB" : "#fff",
                       minWidth: 50,
                     }}>
-                      <div style={{ lineHeight: 1 }}>{d}</div>
+                      <div style={{ lineHeight: 1 }}>{dayNum}</div>
                       <div style={{ fontSize: 10, fontWeight: 400, lineHeight: 1 }}>{DOW[dow]}</div>
                     </th>
                   );
@@ -1174,7 +1217,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
                     {Array.from({ length: days }, (_, i) => {
                       const d = i + 1;
                       const state = getCellState(emp.id, d);
-                      const dow = dowOf(yr, mo, d);
+                      const dow = periodDowLocal(yr, mo, d);
                       const isSun = dow === 0;
                       const isSat = dow === 6;
 
@@ -1242,7 +1285,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ fontSize: 14, color: T.text, textAlign: "center", marginBottom: 14, lineHeight: "22px" }}>
-              {surname(pendingDialog.emp.full_name)}の{mo}/{pendingDialog.day}の{pendingDialog.reqType === "yukyu" ? "有給申請" : "公休申請"}
+              {surname(pendingDialog.emp.full_name)}の{periodMonthNumLocal(yr, mo, pendingDialog.day)}/{periodDayNumLocal(yr, mo, pendingDialog.day)}の{pendingDialog.reqType === "yukyu" ? "有給申請" : "公休申請"}
             </div>
             <textarea
               value={rejectReasonInput}
