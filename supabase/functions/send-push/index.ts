@@ -579,6 +579,80 @@ serve(async (req) => {
     }
 
     // ============================
+    // WC: シフト提出リマインダー（pg_cron: 毎月23日・25日）
+    // ============================
+    if (type === "shift_reminder") {
+      const companyId = payload.company_id;
+
+      // ── 対象月度を動的に算出（getCurrentSubmissionPeriod相当） ──
+      let targetMonth: string | null = null;
+      const { data: confs } = await sb.from("shift_confirmations")
+        .select("target_month")
+        .eq("company_id", companyId)
+        .not("confirmed_at", "is", null)
+        .order("target_month", { ascending: false })
+        .limit(1);
+      if (confs && confs.length > 0) {
+        const [cy, cm] = (confs[0].target_month as string).split("-").map(Number);
+        const nm = cm + 1 > 12 ? 1 : cm + 1;
+        const ny = cm + 1 > 12 ? cy + 1 : cy;
+        targetMonth = `${ny}-${String(nm).padStart(2, "0")}`;
+      } else {
+        const { data: subMin } = await sb.from("shift_submissions")
+          .select("target_month")
+          .eq("company_id", companyId)
+          .order("target_month", { ascending: true })
+          .limit(1);
+        if (subMin && subMin.length > 0) {
+          targetMonth = subMin[0].target_month as string;
+        } else {
+          const nowJst = new Date(Date.now() + 9 * 3600 * 1000);
+          const base = { yr: nowJst.getUTCFullYear(), mo: nowJst.getUTCMonth() + 1 };
+          const adj = nowJst.getUTCDate() <= 25 ? base : { yr: base.mo === 12 ? base.yr + 1 : base.yr, mo: base.mo === 12 ? 1 : base.mo + 1 };
+          const fm = adj.mo + 2 > 12 ? { yr: adj.yr + (adj.mo + 2 > 24 ? 2 : 1), mo: (adj.mo + 2 - 1) % 12 + 1 } : { yr: adj.yr, mo: adj.mo + 2 };
+          targetMonth = `${fm.yr}-${String(fm.mo).padStart(2, "0")}`;
+        }
+      }
+
+      // ── 未提出者を抽出 ──
+      const { data: allWcEmps } = await sb.from("employees")
+        .select("id, employee_code, full_name")
+        .eq("company_id", companyId)
+        .or("is_active.is.null,is_active.eq.true")
+        .order("employee_code");
+      const wcEmps = (allWcEmps || []).filter((e: any) =>
+        /^WC\d+$/.test(e.employee_code) && e.employee_code !== "WC001"
+      );
+      const { data: submitted } = await sb.from("shift_submissions")
+        .select("employee_id")
+        .eq("company_id", companyId)
+        .eq("target_month", targetMonth);
+      const submittedSet = new Set((submitted || []).map((s: any) => s.employee_id));
+      const unsubmitted = wcEmps.filter((e: any) => !submittedSet.has(e.id));
+
+      // ── 文面を出し分け ──
+      const nowJst2 = new Date(Date.now() + 9 * 3600 * 1000);
+      const jstDay = nowJst2.getUTCDate();
+      const jstMonth = nowJst2.getUTCMonth() + 1;
+      const moNum = parseInt(targetMonth.split("-")[1], 10);
+      const isDeadline = jstDay === 25;
+      const title = isDeadline ? "本日シフト締切" : "シフト未提出です";
+      const body = isDeadline
+        ? `${moNum}月度の希望シフトが未提出です。本日(${jstMonth}/25)が締切です。提出してください。`
+        : `${moNum}月度の希望シフトが未提出です。${jstMonth}月25日までに提出してください。`;
+
+      for (const emp of unsubmitted) {
+        targets.push({
+          employee_id: emp.id,
+          title,
+          body,
+          tag: "shift-reminder",
+          url: "/home",
+        });
+      }
+    }
+
+    // ============================
     // 通知送信
     // ============================
     let sent = 0;
