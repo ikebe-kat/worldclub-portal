@@ -50,6 +50,37 @@ const SUPER_CODES = ["W02", "W49", "W67"];
 const WC_PART_CODES = ['WC005','WC006','WC007','WC008','WC009','WC010','WC011','WC012','WC013','WC014','WC015','WC016'];
 const isWcPart = (code: string, employmentType?: string | null) => employmentType === 'パート' || WC_PART_CODES.includes(code);
 
+const InlineBreakCell = ({ row, isPart, myCode, onSaved, pad }: { row: AttRow; isPart: boolean; myCode: string; onSaved: () => void; pad: string }) => {
+  const [val, setVal] = useState(row.break_minutes_self_reported != null ? String(row.break_minutes_self_reported) : "");
+  const [saving, setSaving] = useState(false);
+  const isReal = !row.id.startsWith("empty-");
+  const editable = isPart && canEditBreak(myCode) && isReal;
+  useEffect(() => { setVal(row.break_minutes_self_reported != null ? String(row.break_minutes_self_reported) : ""); }, [row.break_minutes_self_reported, row.id]);
+  const ss = { padding: pad, textAlign: "center" as const, fontVariantNumeric: "tabular-nums" as const, fontSize: 11, color: T.textSec };
+  if (!isPart) return <td style={ss}>—</td>;
+  if (!editable) return <td style={ss}>{row.break_minutes_self_reported != null ? `${row.break_minutes_self_reported}分` : "未申告"}</td>;
+  const save = async () => {
+    if (saving) return;
+    if (!canEditBreak(myCode)) return;
+    const orig = row.break_minutes_self_reported != null ? String(row.break_minutes_self_reported) : "";
+    if (val === orig || val === "") return;
+    const v = parseInt(val, 10);
+    if (isNaN(v) || v < 0 || v > 480) return;
+    setSaving(true);
+    await supabase.from("attendance_daily").update({ break_minutes_self_reported: v, updated_at: new Date().toISOString() }).eq("id", row.id);
+    setSaving(false);
+    onSaved();
+  };
+  return (
+    <td style={{ padding: pad, textAlign: "center" }}>
+      <input type="number" inputMode="numeric" min={0} max={480} placeholder="未申告" value={val}
+        onChange={e => setVal(e.target.value.replace(/[^0-9]/g, ""))}
+        onBlur={save} onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
+        style={{ width: 48, padding: "2px 4px", border: `1px solid ${saving ? T.primary : T.border}`, borderRadius: 4, fontSize: 11, textAlign: "center", backgroundColor: saving ? "#f0f0f0" : "#fff" }} />
+    </td>
+  );
+};
+
 const PUSH_URL = "https://pktqlbpdjemmomfanvgt.supabase.co/functions/v1/send-push";
 const DOW = ["日","月","火","水","木","金","土"];
 const fmTime = (t: string | null) => t ? t.slice(0,5) : "—";
@@ -518,7 +549,7 @@ const IndividualSub = ({ employee }: { employee: any }) => {
                   <td style={{ padding: "8px 6px", fontWeight: 600, color: dow === 0 ? T.holidayRed : dow === 6 ? T.yukyuBlue : T.text, textAlign: "center", whiteSpace: "nowrap" }}>{d.getDate()}<span style={{ fontSize: 10, marginLeft: 1, fontWeight: 400 }}>({DOW[dow]})</span></td>
                   <td style={{ padding: "8px 6px", textAlign: "center", fontVariantNumeric: "tabular-nums", color: r.punch_in ? T.text : T.textPH }}>{fmTime(r.punch_in)}</td>
                   <td style={{ padding: "8px 6px", textAlign: "center", fontVariantNumeric: "tabular-nums", color: r.punch_out ? T.text : T.textPH }}>{fmTime(r.punch_out)}</td>
-                  <td style={{ padding: "8px 6px", textAlign: "center", fontVariantNumeric: "tabular-nums", fontSize: 11, color: T.textSec }}>{selectedEmp && isWcPart(selectedEmp.code, selectedEmp.employment_type) ? (r.break_minutes_self_reported != null ? `${r.break_minutes_self_reported}分` : "未申告") : "—"}</td>
+                  <InlineBreakCell row={r} isPart={isWcPart(selectedEmp!.code, selectedEmp!.employment_type)} myCode={myCode} onSaved={() => fetchAttendance(selectedEmp!.id)} pad="8px 6px" />
                   <td style={{ padding: "6px", textAlign: "center" }}>{r.reason ? <ReasonBadges reason={displayReason(r.reason, (r as any).emp_code || "") || r.reason} /> : r.is_holiday ? <ReasonBadges reason="休日" /> : "—"}</td>
                   <td style={{ padding: "8px 6px", textAlign: "center", fontVariantNumeric: "tabular-nums", color: r.actual_hours != null ? T.text : T.textPH }}>{r.actual_hours != null ? fmDecimal(r.actual_hours) : "—"}</td>
                   <td style={{ padding: "8px 6px", textAlign: "center", fontVariantNumeric: "tabular-nums", fontWeight: 600, color: (r.over_under ?? 0) > 0 ? T.success : (r.over_under ?? 0) < 0 ? T.danger : T.textMuted }}>{r.over_under != null ? `${r.over_under > 0 ? "+" : ""}${fmDecimal(r.over_under)}` : "—"}</td>
@@ -828,7 +859,7 @@ const DailySub = ({ employee }: { employee: any }) => {
                   <td style={{ padding: "7px 6px", fontWeight: 600, color: T.text, whiteSpace: "nowrap" }}>{r.emp_name}</td>
                   <td style={{ padding: "7px 6px", textAlign: "center", fontVariantNumeric: "tabular-nums", color: r.punch_in ? T.text : T.textPH }}>{fmTime(r.punch_in)}</td>
                   <td style={{ padding: "7px 6px", textAlign: "center", fontVariantNumeric: "tabular-nums", color: r.punch_out ? T.text : T.textPH }}>{fmTime(r.punch_out)}</td>
-                  <td style={{ padding: "7px 6px", textAlign: "center", fontVariantNumeric: "tabular-nums", fontSize: 11, color: T.textSec }}>{(() => { const emp = emps.find(e => e.code === r.emp_code); return isWcPart(r.emp_code, emp?.employment_type) ? (r.break_minutes_self_reported != null ? `${r.break_minutes_self_reported}分` : "未申告") : "—"; })()}</td>
+                  <InlineBreakCell row={r} isPart={(() => { const emp = emps.find(e => e.code === r.emp_code); return isWcPart(r.emp_code, emp?.employment_type); })()} myCode={myCode} onSaved={fetchDaily} pad="7px 6px" />
                   <td style={{ padding: "5px", textAlign: "center" }}>{r.reason ? <ReasonBadges reason={displayReason(r.reason, (r as any).emp_code || "") || r.reason} /> : r.is_holiday ? <ReasonBadges reason="休日" /> : "—"}</td>
                   <td style={{ padding: "7px 6px", textAlign: "center", fontVariantNumeric: "tabular-nums", color: r.actual_hours != null ? T.text : T.textPH }}>{r.actual_hours != null ? fmDecimal(r.actual_hours) : "—"}</td>
                   <td style={{ padding: "7px 6px", textAlign: "center", fontVariantNumeric: "tabular-nums", fontWeight: 600, color: (r.over_under ?? 0) > 0 ? T.success : (r.over_under ?? 0) < 0 ? T.danger : T.textMuted }}>{r.over_under != null ? `${r.over_under > 0 ? "+" : ""}${fmDecimal(r.over_under)}` : "—"}</td>
