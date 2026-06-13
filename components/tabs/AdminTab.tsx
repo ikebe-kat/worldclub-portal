@@ -4,7 +4,7 @@ import { T, displayReason, displayChipLabel, isKoukyuPart, periodRange, currentP
 import { Badge, ReasonBadges } from "@/components/ui";
 import Dialog from "@/components/ui/Dialog";
 import { supabase } from "@/lib/supabase";
-import { getPermLevel, canEditPunch } from "@/lib/permissions";
+import { getPermLevel, canEditPunch, canEditBreak } from "@/lib/permissions";
 import NotificationsSub from "@/components/tabs/NotificationsSub";
 import PaidLeaveSub from "@/components/tabs/PaidLeaveSub";
 import SharoushiSub from "@/components/tabs/SharoushiSub";
@@ -13,8 +13,8 @@ import SettingsSub from "@/components/tabs/SettingsSub";
 import ShiftSub from "@/components/tabs/ShiftSub";
 import PayrollSub from "@/components/tabs/PayrollSub";
 
-interface EmpOption { id: string; code: string; name: string; store_id: string; store_name: string; department: string | null; role: string | null; hire_date: string | null; paid_leave_grant_date: string | null; holiday_calendar: string | null; }
-interface AttRow { id: string; attendance_date: string; day_of_week: string | null; punch_in: string | null; punch_out: string | null; reason: string | null; break_minutes: number | null; late_minutes: number | null; early_leave_minutes: number | null; actual_hours: number | null; scheduled_hours: number | null; overtime_hours: number | null; over_under: number | null; employee_note: string | null; admin_memo: string | null; is_holiday: boolean | null; work_pattern_code: string | null; }
+interface EmpOption { id: string; code: string; name: string; store_id: string; store_name: string; department: string | null; role: string | null; hire_date: string | null; paid_leave_grant_date: string | null; holiday_calendar: string | null; employment_type: string | null; }
+interface AttRow { id: string; attendance_date: string; day_of_week: string | null; punch_in: string | null; punch_out: string | null; reason: string | null; break_minutes: number | null; break_minutes_self_reported: number | null; late_minutes: number | null; early_leave_minutes: number | null; actual_hours: number | null; scheduled_hours: number | null; overtime_hours: number | null; over_under: number | null; employee_note: string | null; admin_memo: string | null; is_holiday: boolean | null; work_pattern_code: string | null; }
 
 type SubTab = "notifications" | "paidleave" | "shift" | "sharoushi" | "individual" | "daily" | "monthly" | "req_overtime" | "req_yukyu" | "req_other" | "req_info_change" | "pay_monthly" | "pay_master" | "documents" | "employee_manage" | "settings";
 type GroupId = "notifications" | "kintai" | "request" | "payroll" | "admin";
@@ -46,6 +46,9 @@ const GROUPS: { id: GroupId; label: string }[] = [
 ];
 const OWNER_CODES = ["W02", "W67"];
 const SUPER_CODES = ["W02", "W49", "W67"];
+
+const WC_PART_CODES = ['WC005','WC006','WC007','WC008','WC009','WC010','WC011','WC012','WC013','WC014','WC015','WC016'];
+const isWcPart = (code: string, employmentType?: string | null) => employmentType === 'パート' || WC_PART_CODES.includes(code);
 
 const PUSH_URL = "https://pktqlbpdjemmomfanvgt.supabase.co/functions/v1/send-push";
 const DOW = ["日","月","火","水","木","金","土"];
@@ -126,13 +129,14 @@ function parseDaikyu(reason: string): { type: "full" | "am" | "pm"; date: string
 /* ══════════════════════════════════════ */
 /* ── 編集モーダル（チップ選択式）── */
 /* ══════════════════════════════════════ */
-interface EditModalProps { row: AttRow; empName: string; empCode: string; onClose: () => void; onSave: (updated: any) => void; }
-const EditModal = ({ row, empName, empCode, onClose, onSave }: EditModalProps) => {
+interface EditModalProps { row: AttRow; empName: string; empCode: string; isPart: boolean; showBreakEdit: boolean; onClose: () => void; onSave: (updated: any) => void; }
+const EditModal = ({ row, empName, empCode, isPart, showBreakEdit, onClose, onSave }: EditModalProps) => {
   const [punchIn, setPunchIn] = useState(row.punch_in?.slice(0,5) || "");
   const [punchOut, setPunchOut] = useState(row.punch_out?.slice(0,5) || "");
   const [note, setNote] = useState(row.employee_note || "");
   const [memo, setMemo] = useState(row.admin_memo || "");
   const [saving, setSaving] = useState(false);
+  const [breakInput, setBreakInput] = useState(row.break_minutes_self_reported != null ? String(row.break_minutes_self_reported) : "");
 
   const [selZenjitsu, setSelZenjitsu] = useState<string | null>(null);
   const [selGozen, setSelGozen] = useState<string | null>(null);
@@ -258,7 +262,7 @@ const EditModal = ({ row, empName, empCode, onClose, onSave }: EditModalProps) =
       const utcH = parseInt(hh) - 9;
       return `${dateStr}T${String(utcH < 0 ? utcH + 24 : utcH).padStart(2,"0")}:${mm}:00+00`;
     };
-    onSave({
+    const payload: any = {
       punch_in: punchIn || null,
       punch_out: punchOut || null,
       punch_in_raw: toRaw(punchIn || null, row.attendance_date),
@@ -266,7 +270,12 @@ const EditModal = ({ row, empName, empCode, onClose, onSave }: EditModalProps) =
       reason: previewReason || null,
       employee_note: note || null,
       admin_memo: memo || null,
-    });
+    };
+    if (showBreakEdit && isPart && breakInput !== '') {
+      const v = parseInt(breakInput, 10);
+      if (!isNaN(v) && v >= 0 && v <= 480) payload.break_minutes_self_reported = v;
+    }
+    onSave(payload);
   };
 
   return (
@@ -336,6 +345,12 @@ const EditModal = ({ row, empName, empCode, onClose, onSave }: EditModalProps) =
           </div>
         )}
 
+        {showBreakEdit && isPart && (
+          <Field label="休憩(分)">
+            <input type="number" inputMode="numeric" min={0} max={480} step={1} placeholder="未申告" value={breakInput} onChange={e => { const v = e.target.value.replace(/[^0-9]/g, ''); setBreakInput(v); }} style={inputStyle} />
+          </Field>
+        )}
+
         <Field label="従業員メモ"><input type="text" value={note} onChange={e => setNote(e.target.value)} style={inputStyle} /></Field>
         <Field label="管理者メモ"><input type="text" value={memo} onChange={e => setMemo(e.target.value)} style={inputStyle} /></Field>
 
@@ -375,8 +390,8 @@ const IndividualSub = ({ employee }: { employee: any }) => {
       setStores(storeList);
       const storeMap: Record<string, string> = {};
       storeList.forEach((s: { id: string; name: string }) => { storeMap[s.id] = s.name; });
-      const { data: ed } = await supabase.from("employees").select("id, employee_code, full_name, store_id, department, role, hire_date, paid_leave_grant_date, holiday_calendar").eq("company_id", employee.company_id).eq("is_active", true).order("employee_code");
-      setEmps((ed || []).filter((e: any) => !["W02","W49","W67"].includes(e.employee_code)).map((e: any) => ({ ...e, code: e.employee_code, name: e.full_name, store_name: storeMap[e.store_id] || "" })));
+      const { data: ed } = await supabase.from("employees").select("id, employee_code, full_name, store_id, department, role, hire_date, paid_leave_grant_date, holiday_calendar, employment_type").eq("company_id", employee.company_id).eq("is_active", true).order("employee_code");
+      setEmps((ed || []).filter((e: any) => !["W02","W49","W67"].includes(e.employee_code)).map((e: any) => ({ ...e, code: e.employee_code, name: e.full_name, store_name: storeMap[e.store_id] || "", employment_type: e.employment_type || null })));
     })();
   }, [employee?.company_id]);
 
@@ -419,7 +434,7 @@ const IndividualSub = ({ employee }: { employee: any }) => {
           allDays.push(existing);
         }
       }
-      else { allDays.push({ id: `empty-${dateStr}`, attendance_date: dateStr, day_of_week: null, punch_in: null, punch_out: null, reason: null, break_minutes: null, late_minutes: null, early_leave_minutes: null, actual_hours: null, scheduled_hours: null, overtime_hours: null, over_under: null, employee_note: null, admin_memo: null, is_holiday: isHoliday || null, work_pattern_code: null }); }
+      else { allDays.push({ id: `empty-${dateStr}`, attendance_date: dateStr, day_of_week: null, punch_in: null, punch_out: null, reason: null, break_minutes: null, break_minutes_self_reported: null, late_minutes: null, early_leave_minutes: null, actual_hours: null, scheduled_hours: null, overtime_hours: null, over_under: null, employee_note: null, admin_memo: null, is_holiday: isHoliday || null, work_pattern_code: null }); }
     }
     setRows(allDays);
     setLoading(false);
@@ -432,24 +447,23 @@ const IndividualSub = ({ employee }: { employee: any }) => {
 
   const handleSave = async (updated: any) => {
     if (!editRow || !selectedEmp) return;
+    const base: any = {
+      punch_in: updated.punch_in, punch_out: updated.punch_out,
+      punch_in_raw: updated.punch_in_raw, punch_out_raw: updated.punch_out_raw,
+      reason: updated.reason, employee_note: updated.employee_note,
+      admin_memo: updated.admin_memo, updated_at: new Date().toISOString(),
+    };
+    if (updated.break_minutes_self_reported !== undefined) base.break_minutes_self_reported = updated.break_minutes_self_reported;
     if (editRow.id.startsWith("empty-")) {
       const { error } = await supabase.from("attendance_daily").upsert({
         employee_id: selectedEmp.id, company_id: employee.company_id,
         attendance_date: editRow.attendance_date,
         day_of_week: DOW[new Date(editRow.attendance_date).getDay()],
-        punch_in: updated.punch_in, punch_out: updated.punch_out,
-        punch_in_raw: updated.punch_in_raw, punch_out_raw: updated.punch_out_raw,
-        reason: updated.reason, employee_note: updated.employee_note,
-        admin_memo: updated.admin_memo, updated_at: new Date().toISOString(),
+        ...base,
       }, { onConflict: "employee_id,attendance_date" });
       if (error) { setDialogMsg("保存に失敗しました"); } else { setDialogMsg("保存しました"); fetchAttendance(selectedEmp.id); }
     } else {
-      const { error } = await supabase.from("attendance_daily").update({
-        punch_in: updated.punch_in, punch_out: updated.punch_out,
-        punch_in_raw: updated.punch_in_raw, punch_out_raw: updated.punch_out_raw,
-        reason: updated.reason, employee_note: updated.employee_note,
-        admin_memo: updated.admin_memo, updated_at: new Date().toISOString(),
-      }).eq("id", editRow.id);
+      const { error } = await supabase.from("attendance_daily").update(base).eq("id", editRow.id);
       if (error) { setDialogMsg("保存に失敗しました"); } else { setDialogMsg("保存しました"); fetchAttendance(selectedEmp.id); }
     }
     setEditRow(null);
@@ -498,25 +512,26 @@ const IndividualSub = ({ employee }: { employee: any }) => {
         {loading ? (<div style={{ textAlign: "center", padding: "40px", color: T.textMuted, fontSize: 14 }}>読み込み中...</div>) : (
           <div style={{ borderRadius: 6, border: `1px solid ${T.border}`, overflow: "hidden" }}><div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 640 }}>
-              <thead><tr style={{ backgroundColor: T.primary }}>{["日付","出勤","退勤","事由","実労働","所定外","備考",""].map(h => <th key={h} style={{ padding: "8px 6px", color: "#fff", fontWeight: 600, fontSize: 11, textAlign: "center", whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
+              <thead><tr style={{ backgroundColor: T.primary }}>{["日付","出勤","退勤","休憩","事由","実労働","所定外","備考",""].map(h => <th key={h} style={{ padding: "8px 6px", color: "#fff", fontWeight: 600, fontSize: 11, textAlign: "center", whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
               <tbody>{rows.map(r => { const d = new Date(r.attendance_date); const dow = d.getDay(); const isOff = r.is_holiday || r.reason === "公休"; const hasReason = r.reason && r.reason !== "公休"; return (
                 <tr key={r.id} style={{ backgroundColor: isOff ? "#FFF5F5" : hasReason ? "#FFFDE7" : "#fff", borderBottom: `1px solid ${T.borderLight}` }}>
                   <td style={{ padding: "8px 6px", fontWeight: 600, color: dow === 0 ? T.holidayRed : dow === 6 ? T.yukyuBlue : T.text, textAlign: "center", whiteSpace: "nowrap" }}>{d.getDate()}<span style={{ fontSize: 10, marginLeft: 1, fontWeight: 400 }}>({DOW[dow]})</span></td>
                   <td style={{ padding: "8px 6px", textAlign: "center", fontVariantNumeric: "tabular-nums", color: r.punch_in ? T.text : T.textPH }}>{fmTime(r.punch_in)}</td>
                   <td style={{ padding: "8px 6px", textAlign: "center", fontVariantNumeric: "tabular-nums", color: r.punch_out ? T.text : T.textPH }}>{fmTime(r.punch_out)}</td>
+                  <td style={{ padding: "8px 6px", textAlign: "center", fontVariantNumeric: "tabular-nums", fontSize: 11, color: T.textSec }}>{selectedEmp && isWcPart(selectedEmp.code, selectedEmp.employment_type) ? (r.break_minutes_self_reported != null ? `${r.break_minutes_self_reported}分` : "未申告") : "—"}</td>
                   <td style={{ padding: "6px", textAlign: "center" }}>{r.reason ? <ReasonBadges reason={displayReason(r.reason, (r as any).emp_code || "") || r.reason} /> : r.is_holiday ? <ReasonBadges reason="休日" /> : "—"}</td>
                   <td style={{ padding: "8px 6px", textAlign: "center", fontVariantNumeric: "tabular-nums", color: r.actual_hours != null ? T.text : T.textPH }}>{r.actual_hours != null ? fmDecimal(r.actual_hours) : "—"}</td>
                   <td style={{ padding: "8px 6px", textAlign: "center", fontVariantNumeric: "tabular-nums", fontWeight: 600, color: (r.over_under ?? 0) > 0 ? T.success : (r.over_under ?? 0) < 0 ? T.danger : T.textMuted }}>{r.over_under != null ? `${r.over_under > 0 ? "+" : ""}${fmDecimal(r.over_under)}` : "—"}</td>
                   <td style={{ padding: "8px 6px", textAlign: "center", fontSize: 11, color: T.textSec, maxWidth: 80, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.employee_note || r.admin_memo || "—"}</td>
                   <td style={{ padding: "6px", textAlign: "center" }}><button onClick={() => setEditRow(r)} style={{ padding: "5px 10px", borderRadius: 4, border: "none", backgroundColor: T.primary, color: "#fff", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>修正</button></td>
                 </tr>); })}
-                {rows.length === 0 && <tr><td colSpan={8} style={{ padding: "30px", textAlign: "center", color: T.textMuted, fontSize: 13 }}>データがありません</td></tr>}
+                {rows.length === 0 && <tr><td colSpan={9} style={{ padding: "30px", textAlign: "center", color: T.textMuted, fontSize: 13 }}>データがありません</td></tr>}
               </tbody>
             </table>
           </div></div>
         )}
       </>)}
-      {editRow && selectedEmp && <EditModal row={editRow} empName={selectedEmp.name} empCode={selectedEmp.code} onClose={() => setEditRow(null)} onSave={handleSave} />}
+      {editRow && selectedEmp && <EditModal row={editRow} empName={selectedEmp.name} empCode={selectedEmp.code} isPart={isWcPart(selectedEmp.code, selectedEmp.employment_type)} showBreakEdit={canEditBreak(myCode)} onClose={() => setEditRow(null)} onSave={handleSave} />}
       {dialogMsg && <Dialog message={dialogMsg} onOk={() => setDialogMsg(null)} />}
       <style>{`@keyframes slideUp{from{transform:translateY(30px);opacity:0}to{transform:translateY(0);opacity:1}}@keyframes fadeIn{from{opacity:0}to{opacity:1}}`}</style>
     </div>
@@ -680,8 +695,8 @@ const DailySub = ({ employee }: { employee: any }) => {
       setStores(storeList);
       const storeMap: Record<string, string> = {};
       storeList.forEach((s: { id: string; name: string }) => { storeMap[s.id] = s.name; });
-      const { data: ed } = await supabase.from("employees").select("id, employee_code, full_name, store_id, department, role, hire_date, paid_leave_grant_date, holiday_calendar").eq("company_id", employee.company_id).eq("is_active", true).order("employee_code");
-      setEmps((ed || []).filter((e: any) => !["W02","W49","W67"].includes(e.employee_code)).map((e: any) => ({ ...e, code: e.employee_code, name: e.full_name, store_name: storeMap[e.store_id] || "" })));
+      const { data: ed } = await supabase.from("employees").select("id, employee_code, full_name, store_id, department, role, hire_date, paid_leave_grant_date, holiday_calendar, employment_type").eq("company_id", employee.company_id).eq("is_active", true).order("employee_code");
+      setEmps((ed || []).filter((e: any) => !["W02","W49","W67"].includes(e.employee_code)).map((e: any) => ({ ...e, code: e.employee_code, name: e.full_name, store_name: storeMap[e.store_id] || "", employment_type: e.employment_type ?? null })));
     })();
   }, [employee?.company_id]);
 
@@ -717,7 +732,7 @@ const DailySub = ({ employee }: { employee: any }) => {
         if (row.is_holiday == null && isHoliday) row.is_holiday = true;
         return row;
       }
-      return { id: `empty-${emp.id}`, attendance_date: selectedDate, day_of_week: null, punch_in: null, punch_out: null, reason: null, break_minutes: null, late_minutes: null, early_leave_minutes: null, actual_hours: null, scheduled_hours: null, overtime_hours: null, over_under: null, employee_note: null, admin_memo: null, is_holiday: isHoliday || null, work_pattern_code: null, emp_code: emp.code, emp_name: emp.name, store_name: emp.store_name };
+      return { id: `empty-${emp.id}`, attendance_date: selectedDate, day_of_week: null, punch_in: null, punch_out: null, reason: null, break_minutes: null, break_minutes_self_reported: null, late_minutes: null, early_leave_minutes: null, actual_hours: null, scheduled_hours: null, overtime_hours: null, over_under: null, employee_note: null, admin_memo: null, is_holiday: isHoliday || null, work_pattern_code: null, emp_code: emp.code, emp_name: emp.name, store_name: emp.store_name };
     });
     setRows(allRows);
     setLoading(false);
@@ -749,24 +764,23 @@ const DailySub = ({ employee }: { employee: any }) => {
   const handleSave = async (updated: any) => {
     if (!editRow) return;
     const empObj = emps.find(e => e.code === editRow.emp_code);
+    const base: any = {
+      punch_in: updated.punch_in, punch_out: updated.punch_out,
+      punch_in_raw: updated.punch_in_raw, punch_out_raw: updated.punch_out_raw,
+      reason: updated.reason, employee_note: updated.employee_note,
+      admin_memo: updated.admin_memo, updated_at: new Date().toISOString(),
+    };
+    if (updated.break_minutes_self_reported !== undefined) base.break_minutes_self_reported = updated.break_minutes_self_reported;
     if (editRow.id.startsWith("empty-")) {
       const empId = empObj?.id || editRow.id.replace("empty-", "");
       const { error } = await supabase.from("attendance_daily").upsert({
         employee_id: empId, company_id: employee.company_id,
         attendance_date: selectedDate, day_of_week: DOW[selDow],
-        punch_in: updated.punch_in, punch_out: updated.punch_out,
-        punch_in_raw: updated.punch_in_raw, punch_out_raw: updated.punch_out_raw,
-        reason: updated.reason, employee_note: updated.employee_note,
-        admin_memo: updated.admin_memo, updated_at: new Date().toISOString(),
+        ...base,
       }, { onConflict: "employee_id,attendance_date" });
       if (error) { setDialogMsg("保存に失敗しました"); } else { setDialogMsg("保存しました"); fetchDaily(); }
     } else {
-      const { error } = await supabase.from("attendance_daily").update({
-        punch_in: updated.punch_in, punch_out: updated.punch_out,
-        punch_in_raw: updated.punch_in_raw, punch_out_raw: updated.punch_out_raw,
-        reason: updated.reason, employee_note: updated.employee_note,
-        admin_memo: updated.admin_memo, updated_at: new Date().toISOString(),
-      }).eq("id", editRow.id);
+      const { error } = await supabase.from("attendance_daily").update(base).eq("id", editRow.id);
       if (error) { setDialogMsg("保存に失敗しました"); } else { setDialogMsg("保存しました"); fetchDaily(); }
     }
     setEditRow(null);
@@ -802,7 +816,7 @@ const DailySub = ({ employee }: { employee: any }) => {
       {loading ? (<div style={{ textAlign: "center", padding: "40px", color: T.textMuted, fontSize: 14 }}>読み込み中...</div>) : (
         <div style={{ borderRadius: 6, border: `1px solid ${T.border}`, overflow: "hidden" }}><div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 700 }}>
-            <thead><tr style={{ backgroundColor: T.primary }}>{[...(selectMode ? ["✓"] : []), "CD","氏名","出勤","退勤","事由","実労働","所定外","備考",""].map(h => <th key={h} style={{ padding: "8px 6px", color: "#fff", fontWeight: 600, fontSize: 11, textAlign: "center", whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
+            <thead><tr style={{ backgroundColor: T.primary }}>{[...(selectMode ? ["✓"] : []), "CD","氏名","出勤","退勤","休憩","事由","実労働","所定外","備考",""].map(h => <th key={h} style={{ padding: "8px 6px", color: "#fff", fontWeight: 600, fontSize: 11, textAlign: "center", whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
             <tbody>{rows.map(r => {
               const isOff = r.reason?.includes("希望休") || r.reason?.includes("代休") || r.is_holiday;
               const isYukyu = r.reason?.includes("有給");
@@ -814,6 +828,7 @@ const DailySub = ({ employee }: { employee: any }) => {
                   <td style={{ padding: "7px 6px", fontWeight: 600, color: T.text, whiteSpace: "nowrap" }}>{r.emp_name}</td>
                   <td style={{ padding: "7px 6px", textAlign: "center", fontVariantNumeric: "tabular-nums", color: r.punch_in ? T.text : T.textPH }}>{fmTime(r.punch_in)}</td>
                   <td style={{ padding: "7px 6px", textAlign: "center", fontVariantNumeric: "tabular-nums", color: r.punch_out ? T.text : T.textPH }}>{fmTime(r.punch_out)}</td>
+                  <td style={{ padding: "7px 6px", textAlign: "center", fontVariantNumeric: "tabular-nums", fontSize: 11, color: T.textSec }}>{(() => { const emp = emps.find(e => e.code === r.emp_code); return isWcPart(r.emp_code, emp?.employment_type) ? (r.break_minutes_self_reported != null ? `${r.break_minutes_self_reported}分` : "未申告") : "—"; })()}</td>
                   <td style={{ padding: "5px", textAlign: "center" }}>{r.reason ? <ReasonBadges reason={displayReason(r.reason, (r as any).emp_code || "") || r.reason} /> : r.is_holiday ? <ReasonBadges reason="休日" /> : "—"}</td>
                   <td style={{ padding: "7px 6px", textAlign: "center", fontVariantNumeric: "tabular-nums", color: r.actual_hours != null ? T.text : T.textPH }}>{r.actual_hours != null ? fmDecimal(r.actual_hours) : "—"}</td>
                   <td style={{ padding: "7px 6px", textAlign: "center", fontVariantNumeric: "tabular-nums", fontWeight: 600, color: (r.over_under ?? 0) > 0 ? T.success : (r.over_under ?? 0) < 0 ? T.danger : T.textMuted }}>{r.over_under != null ? `${r.over_under > 0 ? "+" : ""}${fmDecimal(r.over_under)}` : "—"}</td>
@@ -821,12 +836,12 @@ const DailySub = ({ employee }: { employee: any }) => {
                   <td style={{ padding: "5px", textAlign: "center" }}><button onClick={() => { setEditRow(r); setEditEmpName(r.emp_name); }} style={{ padding: "5px 10px", borderRadius: 4, border: "none", backgroundColor: T.primary, color: "#fff", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>修正</button></td>
                 </tr>);
             })}
-            {rows.length === 0 && <tr><td colSpan={selectMode ? 10 : 9} style={{ padding: "30px", textAlign: "center", color: T.textMuted, fontSize: 13 }}>データがありません</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={selectMode ? 11 : 10} style={{ padding: "30px", textAlign: "center", color: T.textMuted, fontSize: 13 }}>データがありません</td></tr>}
             </tbody>
           </table>
         </div></div>
       )}
-      {editRow && <EditModal row={editRow} empName={editEmpName} empCode={(editRow as any).emp_code || ""} onClose={() => setEditRow(null)} onSave={handleSave} />}
+      {editRow && (() => { const emp = emps.find(e => e.code === editRow.emp_code); return <EditModal row={editRow} empName={editEmpName} empCode={editRow.emp_code} isPart={isWcPart(editRow.emp_code, emp?.employment_type)} showBreakEdit={canEditBreak(myCode)} onClose={() => setEditRow(null)} onSave={handleSave} />; })()}
       {showBulkModal && <BulkEditModal
         checkedRows={rows.filter(r => checkedIds.has(r.id))}
         emps={emps}
@@ -872,8 +887,8 @@ const MonthlySub = ({ employee }: { employee: any }) => {
       setStores(storeList);
       const storeMap: Record<string, string> = {};
       storeList.forEach((s: { id: string; name: string }) => { storeMap[s.id] = s.name; });
-      const { data: ed } = await supabase.from("employees").select("id, employee_code, full_name, store_id, department, role, hire_date, paid_leave_grant_date, holiday_calendar").eq("company_id", employee.company_id).eq("is_active", true).order("employee_code");
-      setEmps((ed || []).filter((e: any) => !["W02","W49","W67"].includes(e.employee_code)).map((e: any) => ({ ...e, code: e.employee_code, name: e.full_name, store_name: storeMap[e.store_id] || "" })));
+      const { data: ed } = await supabase.from("employees").select("id, employee_code, full_name, store_id, department, role, hire_date, paid_leave_grant_date, holiday_calendar, employment_type").eq("company_id", employee.company_id).eq("is_active", true).order("employee_code");
+      setEmps((ed || []).filter((e: any) => !["W02","W49","W67"].includes(e.employee_code)).map((e: any) => ({ ...e, code: e.employee_code, name: e.full_name, store_name: storeMap[e.store_id] || "", employment_type: e.employment_type ?? null })));
     })();
   }, [employee?.company_id]);
 

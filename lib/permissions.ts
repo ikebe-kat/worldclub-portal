@@ -95,3 +95,13 @@ export function canEditPunch(
 ): boolean {
   return PUNCH_EDIT_ALL.includes(editorCode);
 }
+
+// ══════════════════════════════════════════
+// 休憩編集権限（WCパート）
+// ══════════════════════════════════════════
+
+export const BREAK_EDIT_CODES: string[] = ["W02", "W67", "WC001"];
+
+export function canEditBreak(employeeCode: string | null | undefined): boolean {
+  return !!employeeCode && BREAK_EDIT_CODES.includes(employeeCode);
+}
