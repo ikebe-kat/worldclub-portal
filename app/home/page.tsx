@@ -5,6 +5,7 @@ import { T } from "@/lib/constants";
 import { GeoBackground } from "@/components/ui";
 import { getPermLevel, canEditPunch } from "@/lib/permissions";
 import { supabase } from "@/lib/supabase";
+import { periodOfDateStr } from "@/lib/shiftPeriod";
 import PunchTab      from "@/components/tabs/PunchTab";
 import AttendanceTab from "@/components/tabs/AttendanceTab";
 import CalendarTab   from "@/components/tabs/CalendarTab";
@@ -125,6 +126,7 @@ export default function HomePage() {
     setDocsBadge(unconfirmedDocs || 0);
 
     /* 管理バッジ */
+    let adminTotal = 0;
     const perm = getPermLevel(employee.role || null);
     if (perm === "super" || perm === "admin") {
       const { data: allEmps } = await supabase.from("employees")
@@ -141,24 +143,42 @@ export default function HomePage() {
           .in("employee_id", targetIds)
           .gte("attendance_date", startDate).lte("attendance_date", today);
 
-        let teamIssues = 0;
         (teamAtt || []).forEach((r: any) => {
           if (r.is_holiday || r.reason === "公休") return;
           if (r.reason?.includes("有給") || r.reason?.includes("希望休") || r.reason?.includes("代休") || r.reason === "欠勤") return;
-          if (!r.punch_in && !r.punch_out && !r.reason) { teamIssues++; return; }
-          if (r.punch_in && !r.punch_out && r.attendance_date !== today) { teamIssues++; return; }
+          if (!r.punch_in && !r.punch_out && !r.reason) { adminTotal++; return; }
+          if (r.punch_in && !r.punch_out && r.attendance_date !== today) { adminTotal++; return; }
         });
 
         if (employee.employee_code === "W67") {
           const { count: pendingReqs } = await supabase.from("change_requests")
             .select("id", { count: "exact", head: true })
             .eq("company_id", employee.company_id).eq("status", "未処理");
-          teamIssues += (pendingReqs || 0);
+          adminTotal += (pendingReqs || 0);
         }
-
-        setAdminBadge(teamIssues);
       }
     }
+
+    if (perm === "super" || perm === "admin" || employee.employee_code === "WC001") {
+      const todayMonth = periodOfDateStr(today);
+      const { data: futureConfs } = await supabase.from("shift_confirmations")
+        .select("target_month")
+        .eq("company_id", employee.company_id)
+        .not("confirmed_at", "is", null)
+        .gte("target_month", todayMonth);
+      const confirmedMonths = new Set<string>((futureConfs || []).map((c: any) => c.target_month as string));
+      if (confirmedMonths.size > 0) {
+        const { data: urgentReqs } = await supabase.from("leave_requests")
+          .select("attendance_date")
+          .eq("company_id", employee.company_id)
+          .in("type", ["shift_koukyuu", "yukyu"])
+          .eq("status", "pending");
+        (urgentReqs || []).forEach((r: any) => {
+          if (confirmedMonths.has(periodOfDateStr(r.attendance_date))) adminTotal++;
+        });
+      }
+    }
+    setAdminBadge(adminTotal);
   }, [employee]);
 
   useEffect(() => { if (employee) fetchBadges(); }, [employee, fetchBadges]);
@@ -193,6 +213,7 @@ export default function HomePage() {
       .on("postgres_changes", { event: "*", schema: "public", table: "attendance_daily" }, () => fetchBadges())
       .on("postgres_changes", { event: "*", schema: "public", table: "change_requests" }, () => fetchBadges())
       .on("postgres_changes", { event: "*", schema: "public", table: "documents" }, () => fetchBadges())
+      .on("postgres_changes", { event: "*", schema: "public", table: "leave_requests" }, () => fetchBadges())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [employee, fetchBadges]);

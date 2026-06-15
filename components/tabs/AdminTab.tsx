@@ -5,6 +5,7 @@ import { Badge, ReasonBadges } from "@/components/ui";
 import Dialog from "@/components/ui/Dialog";
 import { supabase } from "@/lib/supabase";
 import { getPermLevel, canEditPunch, canEditBreak } from "@/lib/permissions";
+import { periodOfDateStr } from "@/lib/shiftPeriod";
 import NotificationsSub from "@/components/tabs/NotificationsSub";
 import PaidLeaveSub from "@/components/tabs/PaidLeaveSub";
 import SharoushiSub from "@/components/tabs/SharoushiSub";
@@ -1377,12 +1378,41 @@ export default function AdminTab({ employee }: { employee: any }) {
         if (other > 0) badges["req_other"] = other;
         if (infoChange > 0) badges["req_info_change"] = infoChange;
       }
+      const _today = new Date();
+      const todayStr = `${_today.getFullYear()}-${String(_today.getMonth() + 1).padStart(2, "0")}-${String(_today.getDate()).padStart(2, "0")}`;
+      const todayMonth = periodOfDateStr(todayStr);
+      const { data: futureConfs } = await supabase.from("shift_confirmations")
+        .select("target_month")
+        .eq("company_id", employee.company_id)
+        .not("confirmed_at", "is", null)
+        .gte("target_month", todayMonth);
+      const confirmedMonths = new Set<string>([
+        ...(futureConfs || []).map((c: any) => c.target_month as string),
+      ]);
+      if (confirmedMonths.size > 0) {
+        const { data: urgentReqs } = await supabase.from("leave_requests")
+          .select("type, attendance_date")
+          .eq("company_id", employee.company_id)
+          .in("type", ["shift_koukyuu", "yukyu"])
+          .eq("status", "pending");
+        let shiftUrgent = 0, yukyuUrgent = 0;
+        (urgentReqs || []).forEach((r: any) => {
+          const m = periodOfDateStr(r.attendance_date);
+          if (!confirmedMonths.has(m)) return;
+          if (r.type === "shift_koukyuu") shiftUrgent++;
+          else yukyuUrgent++;
+        });
+        if (shiftUrgent > 0) badges["shift"] = shiftUrgent;
+        if (yukyuUrgent > 0) badges["paidleave"] = yukyuUrgent;
+      }
+
       setSubBadges(badges);
     };
     fetchBadges();
     const ch1 = supabase.channel("wc_overtime_badge").on("postgres_changes", { event: "*", schema: "public", table: "wc_overtime_requests", filter: `company_id=eq.${employee.company_id}` }, () => fetchBadges()).subscribe();
     const ch2 = supabase.channel("wc_cr_badge").on("postgres_changes", { event: "*", schema: "public", table: "change_requests", filter: `company_id=eq.${employee.company_id}` }, () => fetchBadges()).subscribe();
-    return () => { supabase.removeChannel(ch1); supabase.removeChannel(ch2); };
+    const ch3 = supabase.channel("wc_urgent_badge").on("postgres_changes", { event: "*", schema: "public", table: "leave_requests", filter: `company_id=eq.${employee.company_id}` }, () => fetchBadges()).subscribe();
+    return () => { supabase.removeChannel(ch1); supabase.removeChannel(ch2); supabase.removeChannel(ch3); };
   }, [employee?.company_id]);
 
   const groupBadge = (gid: GroupId): number => {

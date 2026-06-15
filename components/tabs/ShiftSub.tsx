@@ -119,6 +119,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
   const [activeTab, setActiveTab] = useState<"shift" | "yukyu">("shift");
   const [yukyuReqs, setYukyuReqs] = useState<any[]>([]);
   const [yukyuTargetMonthSet, setYukyuTargetMonthSet] = useState<Set<string>>(new Set());
+  const yukyuTargetMonthSetRef = useRef<Set<string>>(new Set());
   const [yukyuReturnInput, setYukyuReturnInput] = useState<{ id: string; reason: string } | null>(null);
   const [shiftConfirmedAt, setShiftConfirmedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -225,6 +226,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
       return targetMonthSet.has(ms);
     });
     setYukyuReqs(yReqs);
+    yukyuTargetMonthSetRef.current = targetMonthSet;
     setYukyuTargetMonthSet(targetMonthSet);
 
     setLoading(false);
@@ -251,7 +253,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
             setLeaveReqs(prev => prev.some(r => r.id === row.id) ? prev : [...prev, row]);
           }
           const ms = row.attendance_date?.slice(0, 7);
-          if (row.status === "pending" && (row.type === "yukyu" || row.type === "shift_koukyuu") && yukyuTargetMonthSet.has(ms)) {
+          if (row.status === "pending" && (row.type === "yukyu" || row.type === "shift_koukyuu") && yukyuTargetMonthSetRef.current.has(ms)) {
             setYukyuReqs(prev => prev.some(r => r.id === row.id) ? prev : [...prev, row]);
           }
         }
@@ -263,7 +265,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
           if (!row) return;
           setLeaveReqs(prev => prev.map(r => r.id === row.id ? { ...r, ...row } : r));
           const ms = row.attendance_date?.slice(0, 7);
-          if (row.status === "pending" && yukyuTargetMonthSet.has(ms)) {
+          if (row.status === "pending" && yukyuTargetMonthSetRef.current.has(ms)) {
             setYukyuReqs(prev => prev.some(r => r.id === row.id)
               ? prev.map(r => r.id === row.id ? { ...r, ...row } : r)
               : [...prev, row]);
@@ -283,7 +285,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [yr, mo, loadData, yukyuTargetMonthSet]);
+  }, [yr, mo, loadData]);
 
   /* ── 月切替 ── */
   const stepMo = (dir: 1 | -1) => {
@@ -355,9 +357,6 @@ export default function ShiftSub({ employee }: { employee: any }) {
       default:               return "";
     }
   };
-
-  /* ── 未承認件数 ── */
-  const pendingCount = leaveReqs.filter(r => r.status === "pending").length;
 
   /* ── ⑦ セルタップ処理（空きセル→直接公休insert） ── */
   const tappingRef = useRef<Set<string>>(new Set());
@@ -497,6 +496,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ type: "request_processed", payload: { employee_id: approvedEmpId, category: `${kindLabel}申請`, status: "承認" } }),
         }).catch(() => {});
+        loadData();
       }
     } finally {
       processingReqRef.current.delete(reqId);
@@ -554,6 +554,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
       }).catch(() => {});
 
       setPendingDialog(null);
+      loadData();
     } finally {
       processingReqRef.current.delete(_reqId);
     }
@@ -897,6 +898,13 @@ export default function ShiftSub({ employee }: { employee: any }) {
   const YUKYU_VIEWERS = ["WC001", "W02", "W49", "W67"];
   const canViewYukyu = YUKYU_VIEWERS.includes(employee?.employee_code || "");
 
+  const urgentKoukyuuSet = new Set(
+    yukyuReqs.filter(r => r.type === "shift_koukyuu").map((r: any) => `${r.employee_id}_${r.attendance_date}`)
+  );
+  const urgentYukyuIds = new Set(
+    yukyuReqs.filter(r => r.type === "yukyu").map((r: any) => r.id as string)
+  );
+
   // ── 本物の月度が決まるまで描画しない（誤った月度を一瞬でも出さない） ──
   if (!periodReady) {
     return <div style={{ textAlign: "center", padding: 40, color: T.textSec, fontSize: 14 }}>読み込み中...</div>;
@@ -935,8 +943,10 @@ export default function ShiftSub({ employee }: { employee: any }) {
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {yukyuReqs.map(req => (
                 <div key={req.id} style={{
-                  padding: 12, border: `1px solid ${T.border}`, borderRadius: 6,
-                  backgroundColor: "#fff", display: "flex", alignItems: "center", gap: 12,
+                  padding: 12, borderRadius: 6,
+                  border: urgentYukyuIds.has(req.id) ? `2px solid ${C.returned}` : `1px solid ${T.border}`,
+                  backgroundColor: urgentYukyuIds.has(req.id) ? "#FEF2F2" : "#fff",
+                  display: "flex", alignItems: "center", gap: 12,
                 }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>
@@ -1073,14 +1083,6 @@ export default function ShiftSub({ employee }: { employee: any }) {
           <button onClick={() => stepMo(1)} style={navBtn}>&gt;</button>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {pendingCount > 0 && (
-            <span style={{
-              backgroundColor: C.pending, color: "#fff", borderRadius: 12,
-              padding: "3px 10px", fontSize: 12, fontWeight: 700,
-            }}>
-              未承認 {pendingCount}件
-            </span>
-          )}
           <button
             onClick={handleDraftSave}
             disabled={confirming}
@@ -1225,6 +1227,8 @@ export default function ShiftSub({ employee }: { employee: any }) {
                       const dow = periodDowLocal(yr, mo, d);
                       const isSun = dow === 0;
                       const isSat = dow === 6;
+                      const ds = periodDateAtLocal(yr, mo, d);
+                      const isUrgentKoukyuu = urgentKoukyuuSet.has(`${emp.id}_${ds}`);
 
                       let bg: string = cellBg(state);
                       if (state === "workday") {
@@ -1241,6 +1245,8 @@ export default function ShiftSub({ employee }: { employee: any }) {
                             color: cellFg(state),
                             cursor: state === "yukyu" ? "default" : "pointer",
                             borderTop: isPartBorder ? `3px solid ${C.koukyuu}` : `1px solid ${T.border}`,
+                            outline: isUrgentKoukyuu ? `2px solid ${C.returned}` : undefined,
+                            outlineOffset: isUrgentKoukyuu ? "-2px" : undefined,
                           }}
                         >
                           {cellLabel(state)}
