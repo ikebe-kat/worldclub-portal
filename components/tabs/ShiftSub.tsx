@@ -116,7 +116,6 @@ export default function ShiftSub({ employee }: { employee: any }) {
   const [leaveReqs, setLeaveReqs] = useState<LeaveReq[]>([]);
   const [attData, setAttData] = useState<AttRow[]>([]);
   const [submittedIds, setSubmittedIds] = useState<Set<string>>(new Set());
-  const [resubmittedIds, setResubmittedIds] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<"shift" | "yukyu">("shift");
   const [yukyuReqs, setYukyuReqs] = useState<any[]>([]);
   const [yukyuTargetMonthSet, setYukyuTargetMonthSet] = useState<Set<string>>(new Set());
@@ -171,11 +170,6 @@ export default function ShiftSub({ employee }: { employee: any }) {
       .eq("company_id", COMPANY_ID)
       .eq("target_month", targetMonth);
     const submitted = new Set<string>((subs || []).map((s: any) => s.employee_id));
-    const resubmitted = new Set<string>(
-      (subs || [])
-        .filter((s: any) => s.created_at && s.submitted_at && new Date(s.submitted_at).getTime() > new Date(s.created_at).getTime() + 1000)
-        .map((s: any) => s.employee_id)
-    );
 
     // shift_confirmations（当月確定状態）
     const { data: confRow } = await supabase.from("shift_confirmations")
@@ -189,8 +183,6 @@ export default function ShiftSub({ employee }: { employee: any }) {
     setLeaveReqs(reqs || []);
     setAttData(att || []);
     setSubmittedIds(submitted);
-    // 確定済み月では再提出バッジを非表示
-    setResubmittedIds(confirmedAt ? new Set() : resubmitted);
     setShiftConfirmedAt(confirmedAt);
 
     // 有給申請（pending）：今日が属する月度＋確定済みの未来月度
@@ -1212,12 +1204,18 @@ export default function ShiftSub({ employee }: { employee: any }) {
                           <span style={{ fontSize: 11, color: T.textMuted, lineHeight: 1 }}>
                             {emp.employment_type === "正社員" ? "社" : "P"}
                           </span>
-                          <span style={{
-                            fontSize: 11, fontWeight: 600, lineHeight: 1,
-                            color: emp.employee_code === "WC001" ? T.textMuted : resubmittedIds.has(emp.id) ? "#F97316" : submittedIds.has(emp.id) ? C.koukyuu : T.textMuted,
-                          }}>
-                            {emp.employee_code === "WC001" ? "責任者" : resubmittedIds.has(emp.id) ? "再" : submittedIds.has(emp.id) ? "済" : "未"}
-                          </span>
+                          {emp.employee_code === "WC001" ? (
+                            <span style={{ fontSize: 11, fontWeight: 600, lineHeight: 1, color: T.textMuted }}>
+                              責任者
+                            </span>
+                          ) : !shiftConfirmedAt && (
+                            <span style={{
+                              fontSize: 11, fontWeight: 600, lineHeight: 1,
+                              color: submittedIds.has(emp.id) ? C.koukyuu : T.textMuted,
+                            }}>
+                              {submittedIds.has(emp.id) ? "済" : "未"}
+                            </span>
+                          )}
                         </span>
                       </div>
                     </td>
