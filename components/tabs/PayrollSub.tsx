@@ -202,23 +202,23 @@ export default function PayrollSub({ employee }: { employee: any }) {
   );
 }
 
-// 月次計算テーブル各列のヘッダー背景色（インデックスは表示列順 0-30）
+// 月次計算テーブル各列のヘッダー背景色（インデックスは表示列順 0-29）
 // 5つの「計」「総支給」「差引支給額」列はデータ行にも同色を適用（インラインで個別指定）。
 const HEADER_BG = [
   "#1a4b24", "#1a4b24",                                                          // 0,1   氏名/状態 (T.primary)
   "#DBEAFE","#DBEAFE","#DBEAFE","#DBEAFE","#DBEAFE","#DBEAFE","#DBEAFE",          // 2-8   勤怠系
-  "#DCFCE7","#DCFCE7","#DCFCE7","#DCFCE7","#DCFCE7","#DCFCE7","#DCFCE7",          // 9-15  支給明細
-  "#BBF7D0",                                                                     // 16    給料計
-  "#D1FAE5","#D1FAE5",                                                            // 17,18 交通費・非課税
-  "#A7F3D0",                                                                     // 19    総支給
-  "#FEF3C7",                                                                     // 20    課税計
-  "#FEE2E2","#FEE2E2",                                                            // 21,22 社保・雇保
-  "#FECACA",                                                                     // 23    社保計
-  "#FEE2E2","#FEE2E2","#FEE2E2",                                                  // 24,25,26 所得税・住民税・車
-  "#FCA5A5",                                                                     // 27    控除計
-  "#EDE9FE",                                                                     // 28    扶養
-  "#DDD6FE",                                                                     // 29    差引支給額
-  "#1a4b24",                                                                     // 30    明細ボタン列
+  "#DCFCE7","#DCFCE7","#DCFCE7","#DCFCE7","#DCFCE7","#DCFCE7",                    // 9-14  支給明細
+  "#BBF7D0",                                                                     // 15    給料計
+  "#D1FAE5","#D1FAE5",                                                            // 16,17 交通費・非課税
+  "#A7F3D0",                                                                     // 18    総支給
+  "#FEF3C7",                                                                     // 19    課税計
+  "#FEE2E2","#FEE2E2",                                                            // 20,21 社保・雇保
+  "#FECACA",                                                                     // 22    社保計
+  "#FEE2E2","#FEE2E2","#FEE2E2",                                                  // 23,24,25 所得税・住民税・車
+  "#FCA5A5",                                                                     // 26    控除計
+  "#EDE9FE",                                                                     // 27    扶養
+  "#DDD6FE",                                                                     // 28    差引支給額
+  "#1a4b24",                                                                     // 29    明細ボタン列
 ];
 
 /* ═══════════════ 月次計算ビュー ═══════════════ */
@@ -380,15 +380,15 @@ function CalcView({ employee }: { employee: any }) {
                 {[
                   "氏名","状態","出勤日数","労働時間","残業時間","深夜早朝","有給(日)",
                   "平日時間","土日時間","基本給","固定残業手当","役職手当","家族手当","諸手当",
-                  "子育て支援金","有給金額","給料計","交通費","非課税","総支給",
+                  "有給金額","給料計","交通費","非課税","総支給",
                   "課税計","社保","雇保","社保計","所得税","住民税","車","控除計",
                   "扶養","差引支給額",""
                 ].map((h, i) => {
                   const sticky: React.CSSProperties =
                     i === 0 ? { position: "sticky", left: 0, zIndex: 3, minWidth: 72 } :
                     i === 1 ? { position: "sticky", left: 72, zIndex: 3, minWidth: 50, boxShadow: "2px 0 4px rgba(0,0,0,0.1)" } :
-                    i === 29 ? { position: "sticky", right: 52, zIndex: 3, minWidth: 80, boxShadow: "-2px 0 4px rgba(0,0,0,0.1)" } :
-                    i === 30 ? { position: "sticky", right: 0, zIndex: 3, minWidth: 52 } : {};
+                    i === 28 ? { position: "sticky", right: 52, zIndex: 3, minWidth: 80, boxShadow: "-2px 0 4px rgba(0,0,0,0.1)" } :
+                    i === 29 ? { position: "sticky", right: 0, zIndex: 3, minWidth: 52 } : {};
                   return (
                     <th key={i} style={{
                       padding: "4px 2px", fontSize: 9, fontWeight: 600,
@@ -396,7 +396,7 @@ function CalcView({ employee }: { employee: any }) {
                       lineHeight: 1.15, verticalAlign: "bottom",
                       textAlign: i < 2 ? "left" : "right",
                       backgroundColor: HEADER_BG[i],
-                      color: (i < 2 || i === 30) ? "#fff" : T.text,
+                      color: (i < 2 || i === 29) ? "#fff" : T.text,
                       borderRight: "1px solid #D1D5DB",
                       borderBottom: "2px solid #374151",
                       ...sticky,
@@ -441,7 +441,6 @@ function CalcView({ employee }: { employee: any }) {
                     {ec("position_allowance",   yen(r.position_allowance),      tdNum)}
                     {ec("family_allowance",     yen(r.family_allowance),        tdNum)}
                     {ec("other_allowance",      yen(r.other_allowance),         tdNum)}
-                    {ec("child_support_allowance", yen(r.child_support_allowance), tdNum)}
                     {ec("paid_leave_amount",    yen(r.paid_leave_amount),       tdNum)}
                     {/* 16 給料計（派生・編集不可） */}
                     <td style={{ ...tdNum, fontWeight: 600, backgroundColor: "#BBF7D0" }}>{yen(salaryTotal)}</td>
