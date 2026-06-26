@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { T } from "@/lib/constants";
 import { supabase } from "@/lib/supabase";
 import Dialog from "@/components/ui/Dialog";
@@ -337,6 +337,39 @@ function CalcView({ employee }: { employee: any }) {
     setTimeout(() => w.print(), 400);
   };
 
+  const totals = useMemo(() => {
+    if (rows.length === 0) return null;
+    const s = (f: keyof Monthly) => rows.reduce((a, r) => a + ((r[f] as number) ?? 0), 0);
+    return {
+      worked_days: s("worked_days"),
+      worked_minutes: s("worked_minutes"),
+      overtime_minutes: s("overtime_minutes"),
+      night_minutes: s("night_minutes"),
+      paid_leave_days: s("paid_leave_days"),
+      weekday_minutes: s("weekday_minutes"),
+      weekend_minutes: s("weekend_minutes"),
+      base_salary: s("base_salary"),
+      fixed_overtime: s("fixed_overtime"),
+      position_allowance: s("position_allowance"),
+      family_allowance: s("family_allowance"),
+      other_allowance: s("other_allowance"),
+      paid_leave_amount: s("paid_leave_amount"),
+      salaryTotal: rows.reduce((a, r) => a + (r.gross_amount - r.commute_amount), 0),
+      commute_amount: s("commute_amount"),
+      nonTaxable: s("commute_amount"),
+      gross_amount: s("gross_amount"),
+      taxableTotal: rows.reduce((a, r) => a + Math.max(0, r.gross_amount - r.commute_amount - r.social_insurance - r.employment_insurance), 0),
+      social_insurance: s("social_insurance"),
+      employment_insurance: s("employment_insurance"),
+      insuranceTotal: s("social_insurance") + s("employment_insurance"),
+      income_tax: s("income_tax"),
+      resident_tax: s("resident_tax"),
+      car_deduction: s("car_deduction"),
+      total_deduction: s("total_deduction"),
+      net_amount: s("net_amount"),
+    };
+  }, [rows]);
+
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
@@ -472,6 +505,40 @@ function CalcView({ employee }: { employee: any }) {
                   </tr>
                 );
               })}
+              {totals && (
+                <tr style={{ borderTop: "3px solid #374151", backgroundColor: "#F3F4F6", fontWeight: 700 }}>
+                  <td style={{ ...tdNarrow, position: "sticky", left: 0, zIndex: 1, backgroundColor: "#F3F4F6", minWidth: 72, fontWeight: 700 }}>合計</td>
+                  <td style={{ ...tdNarrow, position: "sticky", left: 72, zIndex: 1, backgroundColor: "#F3F4F6", minWidth: 50, boxShadow: "2px 0 4px rgba(0,0,0,0.1)" }}></td>
+                  <td style={{ ...tdNum, fontWeight: 700 }}>{totals.worked_days}</td>
+                  <td style={{ ...tdNum, fontWeight: 700 }}>{minToHM(totals.worked_minutes)}</td>
+                  <td style={{ ...tdNum, fontWeight: 700 }}>{minToHM(totals.overtime_minutes)}</td>
+                  <td style={{ ...tdNum, fontWeight: 700 }}>{minToHM(totals.night_minutes)}</td>
+                  <td style={{ ...tdNum, fontWeight: 700 }}>{totals.paid_leave_days}</td>
+                  <td style={{ ...tdNum, fontWeight: 700 }}>{minToHM(totals.weekday_minutes)}</td>
+                  <td style={{ ...tdNum, fontWeight: 700 }}>{minToHM(totals.weekend_minutes)}</td>
+                  <td style={{ ...tdNum, fontWeight: 700 }}>{yen(totals.base_salary)}</td>
+                  <td style={{ ...tdNum, fontWeight: 700 }}>{yen(totals.fixed_overtime)}</td>
+                  <td style={{ ...tdNum, fontWeight: 700 }}>{yen(totals.position_allowance)}</td>
+                  <td style={{ ...tdNum, fontWeight: 700 }}>{yen(totals.family_allowance)}</td>
+                  <td style={{ ...tdNum, fontWeight: 700 }}>{yen(totals.other_allowance)}</td>
+                  <td style={{ ...tdNum, fontWeight: 700 }}>{yen(totals.paid_leave_amount)}</td>
+                  <td style={{ ...tdNum, fontWeight: 700, backgroundColor: "#BBF7D0" }}>{yen(totals.salaryTotal)}</td>
+                  <td style={{ ...tdNum, fontWeight: 700 }}>{yen(totals.commute_amount)}</td>
+                  <td style={{ ...tdNum, fontWeight: 700 }}>{yen(totals.nonTaxable)}</td>
+                  <td style={{ ...tdNum, fontWeight: 700, backgroundColor: "#A7F3D0" }}>{yen(totals.gross_amount)}</td>
+                  <td style={{ ...tdNum, fontWeight: 700 }}>{yen(totals.taxableTotal)}</td>
+                  <td style={{ ...tdNum, fontWeight: 700 }}>{yen(totals.social_insurance)}</td>
+                  <td style={{ ...tdNum, fontWeight: 700 }}>{yen(totals.employment_insurance)}</td>
+                  <td style={{ ...tdNum, fontWeight: 700, backgroundColor: "#FECACA" }}>{yen(totals.insuranceTotal)}</td>
+                  <td style={{ ...tdNum, fontWeight: 700 }}>{yen(totals.income_tax)}</td>
+                  <td style={{ ...tdNum, fontWeight: 700 }}>{yen(totals.resident_tax)}</td>
+                  <td style={{ ...tdNum, fontWeight: 700 }}>{yen(totals.car_deduction)}</td>
+                  <td style={{ ...tdNum, color: T.danger, fontWeight: 700, backgroundColor: "#FCA5A5" }}>{yen(totals.total_deduction)}</td>
+                  <td style={{ ...tdNum }}></td>
+                  <td style={{ ...tdNum, fontSize: 15, fontWeight: 700, color: T.primary, backgroundColor: "#DDD6FE", position: "sticky", right: 52, zIndex: 1, minWidth: 80, boxShadow: "-2px 0 4px rgba(0,0,0,0.1)" }}>{yen(totals.net_amount)}</td>
+                  <td style={{ ...tdNarrow, position: "sticky", right: 0, zIndex: 1, backgroundColor: "#F3F4F6", minWidth: 52 }}></td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
