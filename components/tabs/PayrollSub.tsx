@@ -505,41 +505,43 @@ function CalcView({ employee }: { employee: any }) {
                   </tr>
                 );
               })}
-              {totals && (
-                <tr style={{ borderTop: "3px solid #374151", backgroundColor: "#F3F4F6", fontWeight: 700 }}>
-                  <td style={{ ...tdNarrow, position: "sticky", left: 0, zIndex: 1, backgroundColor: "#F3F4F6", minWidth: 72, fontWeight: 700 }}>合計</td>
-                  <td style={{ ...tdNarrow, position: "sticky", left: 72, zIndex: 1, backgroundColor: "#F3F4F6", minWidth: 50, boxShadow: "2px 0 4px rgba(0,0,0,0.1)" }}></td>
-                  <td style={{ ...tdNum, fontWeight: 700 }}>{totals.worked_days}</td>
-                  <td style={{ ...tdNum, fontWeight: 700 }}>{minToHM(totals.worked_minutes)}</td>
-                  <td style={{ ...tdNum, fontWeight: 700 }}>{minToHM(totals.overtime_minutes)}</td>
-                  <td style={{ ...tdNum, fontWeight: 700 }}>{minToHM(totals.night_minutes)}</td>
-                  <td style={{ ...tdNum, fontWeight: 700 }}>{totals.paid_leave_days}</td>
-                  <td style={{ ...tdNum, fontWeight: 700 }}>{minToHM(totals.weekday_minutes)}</td>
-                  <td style={{ ...tdNum, fontWeight: 700 }}>{minToHM(totals.weekend_minutes)}</td>
-                  <td style={{ ...tdNum, fontWeight: 700 }}>{yen(totals.base_salary)}</td>
-                  <td style={{ ...tdNum, fontWeight: 700 }}>{yen(totals.fixed_overtime)}</td>
-                  <td style={{ ...tdNum, fontWeight: 700 }}>{yen(totals.position_allowance)}</td>
-                  <td style={{ ...tdNum, fontWeight: 700 }}>{yen(totals.family_allowance)}</td>
-                  <td style={{ ...tdNum, fontWeight: 700 }}>{yen(totals.other_allowance)}</td>
-                  <td style={{ ...tdNum, fontWeight: 700 }}>{yen(totals.paid_leave_amount)}</td>
-                  <td style={{ ...tdNum, fontWeight: 700, backgroundColor: "#BBF7D0" }}>{yen(totals.salaryTotal)}</td>
-                  <td style={{ ...tdNum, fontWeight: 700 }}>{yen(totals.commute_amount)}</td>
-                  <td style={{ ...tdNum, fontWeight: 700 }}>{yen(totals.nonTaxable)}</td>
-                  <td style={{ ...tdNum, fontWeight: 700, backgroundColor: "#A7F3D0" }}>{yen(totals.gross_amount)}</td>
-                  <td style={{ ...tdNum, fontWeight: 700 }}>{yen(totals.taxableTotal)}</td>
-                  <td style={{ ...tdNum, fontWeight: 700 }}>{yen(totals.social_insurance)}</td>
-                  <td style={{ ...tdNum, fontWeight: 700 }}>{yen(totals.employment_insurance)}</td>
-                  <td style={{ ...tdNum, fontWeight: 700, backgroundColor: "#FECACA" }}>{yen(totals.insuranceTotal)}</td>
-                  <td style={{ ...tdNum, fontWeight: 700 }}>{yen(totals.income_tax)}</td>
-                  <td style={{ ...tdNum, fontWeight: 700 }}>{yen(totals.resident_tax)}</td>
-                  <td style={{ ...tdNum, fontWeight: 700 }}>{yen(totals.car_deduction)}</td>
-                  <td style={{ ...tdNum, color: T.danger, fontWeight: 700, backgroundColor: "#FCA5A5" }}>{yen(totals.total_deduction)}</td>
-                  <td style={{ ...tdNum }}></td>
-                  <td style={{ ...tdNum, fontSize: 15, fontWeight: 700, color: T.primary, backgroundColor: "#DDD6FE", position: "sticky", right: 52, zIndex: 1, minWidth: 80, boxShadow: "-2px 0 4px rgba(0,0,0,0.1)" }}>{yen(totals.net_amount)}</td>
-                  <td style={{ ...tdNarrow, position: "sticky", right: 0, zIndex: 1, backgroundColor: "#F3F4F6", minWidth: 52 }}></td>
-                </tr>
-              )}
             </tbody>
+            {totals && (
+              <tfoot>
+                <tr style={{ borderTop: "3px solid #374151", fontWeight: 700 }}>
+                  <td style={{ ...tfNum, position: "sticky", left: 0, zIndex: 4, minWidth: 72, textAlign: "left" }}>合計</td>
+                  <td style={{ ...tfNum, position: "sticky", left: 72, zIndex: 4, minWidth: 50, boxShadow: "2px 0 4px rgba(0,0,0,0.1)" }}></td>
+                  <td style={tfNum}>{totals.worked_days}</td>
+                  <td style={tfNum}>{minToHM(totals.worked_minutes)}</td>
+                  <td style={tfNum}>{minToHM(totals.overtime_minutes)}</td>
+                  <td style={tfNum}>{minToHM(totals.night_minutes)}</td>
+                  <td style={tfNum}>{totals.paid_leave_days}</td>
+                  <td style={tfNum}>{minToHM(totals.weekday_minutes)}</td>
+                  <td style={tfNum}>{minToHM(totals.weekend_minutes)}</td>
+                  <td style={tfNum}>{yen(totals.base_salary)}</td>
+                  <td style={tfNum}>{yen(totals.fixed_overtime)}</td>
+                  <td style={tfNum}>{yen(totals.position_allowance)}</td>
+                  <td style={tfNum}>{yen(totals.family_allowance)}</td>
+                  <td style={tfNum}>{yen(totals.other_allowance)}</td>
+                  <td style={tfNum}>{yen(totals.paid_leave_amount)}</td>
+                  <td style={{ ...tfNum, backgroundColor: "#b0e8bf" }}>{yen(totals.salaryTotal)}</td>
+                  <td style={tfNum}>{yen(totals.commute_amount)}</td>
+                  <td style={tfNum}>{yen(totals.nonTaxable)}</td>
+                  <td style={{ ...tfNum, backgroundColor: "#8fe0a8" }}>{yen(totals.gross_amount)}</td>
+                  <td style={tfNum}>{yen(totals.taxableTotal)}</td>
+                  <td style={tfNum}>{yen(totals.social_insurance)}</td>
+                  <td style={tfNum}>{yen(totals.employment_insurance)}</td>
+                  <td style={{ ...tfNum, backgroundColor: "#f5b8b8" }}>{yen(totals.insuranceTotal)}</td>
+                  <td style={tfNum}>{yen(totals.income_tax)}</td>
+                  <td style={tfNum}>{yen(totals.resident_tax)}</td>
+                  <td style={tfNum}>{yen(totals.car_deduction)}</td>
+                  <td style={{ ...tfNum, color: T.danger, backgroundColor: "#f09090" }}>{yen(totals.total_deduction)}</td>
+                  <td style={tfNum}></td>
+                  <td style={{ ...tfNum, fontSize: 15, color: T.primary, backgroundColor: "#c9c0f0", position: "sticky", right: 52, zIndex: 4, minWidth: 80, boxShadow: "-2px 0 4px rgba(0,0,0,0.1)" }}>{yen(totals.net_amount)}</td>
+                  <td style={{ ...tfNum, position: "sticky", right: 0, zIndex: 4, minWidth: 52 }}></td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       )}
@@ -709,6 +711,15 @@ const tdNum: React.CSSProperties = {
   whiteSpace: "nowrap", textAlign: "right",
   overflow: "hidden", textOverflow: "ellipsis",
   borderRight: "1px solid #D1D5DB",
+};
+
+const tfNum: React.CSSProperties = {
+  ...tdNum,
+  fontWeight: 700,
+  backgroundColor: "#e9ecef",
+  position: "sticky",
+  bottom: 0,
+  zIndex: 2,
 };
 
 /* ═══════════════ 給与明細 PDF (HTML) 生成 ═══════════════ */
