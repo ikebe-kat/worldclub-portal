@@ -17,7 +17,7 @@ import PayrollSub from "@/components/tabs/PayrollSub";
 interface EmpOption { id: string; code: string; name: string; store_id: string; store_name: string; department: string | null; role: string | null; hire_date: string | null; paid_leave_grant_date: string | null; holiday_calendar: string | null; employment_type: string | null; }
 interface AttRow { id: string; attendance_date: string; day_of_week: string | null; punch_in: string | null; punch_out: string | null; reason: string | null; break_minutes: number | null; break_minutes_self_reported: number | null; late_minutes: number | null; early_leave_minutes: number | null; actual_hours: number | null; scheduled_hours: number | null; overtime_hours: number | null; over_under: number | null; employee_note: string | null; admin_memo: string | null; is_holiday: boolean | null; work_pattern_code: string | null; }
 
-type SubTab = "notifications" | "paidleave" | "shift" | "sharoushi" | "individual" | "daily" | "monthly" | "req_overtime" | "req_yukyu" | "req_other" | "req_info_change" | "pay_monthly" | "pay_master" | "documents" | "employee_manage" | "settings";
+type SubTab = "notifications" | "paidleave" | "shift" | "sharoushi" | "individual" | "daily" | "monthly" | "req_overtime" | "req_yukyu" | "req_other" | "req_info_change" | "payroll" | "documents" | "employee_manage" | "settings";
 type GroupId = "notifications" | "kintai" | "request" | "payroll" | "admin";
 type Visibility = "owner_only" | "super_only" | "all" | "wc_owner";
 const ALL_SUB_TABS: { id: SubTab; label: string; group: GroupId; visibleTo: Visibility }[] = [
@@ -32,8 +32,7 @@ const ALL_SUB_TABS: { id: SubTab; label: string; group: GroupId; visibleTo: Visi
   { id: "req_yukyu",       label: "有給",         group: "request",       visibleTo: "wc_owner" },
   { id: "req_other",       label: "欠勤遅刻早退公休", group: "request",       visibleTo: "wc_owner" },
   { id: "req_info_change", label: "情報変更",     group: "request",       visibleTo: "super_only" },
-  { id: "pay_monthly",     label: "月次計算",     group: "payroll",       visibleTo: "wc_owner" },
-  { id: "pay_master",      label: "給与マスタ",   group: "payroll",       visibleTo: "wc_owner" },
+  { id: "payroll",          label: "給与管理",     group: "payroll",       visibleTo: "wc_owner" },
   { id: "employee_manage", label: "従業員一覧",   group: "admin",         visibleTo: "super_only" },
   { id: "documents",       label: "書類配布",     group: "admin",         visibleTo: "super_only" },
   { id: "settings",        label: "設定",         group: "admin",         visibleTo: "owner_only" },
@@ -1467,8 +1466,7 @@ export default function AdminTab({ employee }: { employee: any }) {
       {sub === "req_yukyu" && <RequestsSub employee={employee} categoryFilter={["有給"]} />}
       {sub === "req_other" && <RequestsSub employee={employee} categoryFilter={["欠勤", "遅刻", "早退", "公休"]} />}
       {sub === "req_info_change" && <RequestsSub employee={employee} categoryFilter={["住所変更", "口座変更", "扶養追加", "扶養削除", "その他"]} />}
-      {sub === "pay_monthly" && <PayrollSub employee={employee} />}
-      {sub === "pay_master" && <PayrollSub employee={employee} />}
+      {sub === "payroll" && <PayrollSub employee={employee} />}
       {sub === "employee_manage" && <EmployeeManageSub employee={employee} />}
       {sub === "documents" && <DocumentsSub employee={employee} />}
       {sub === "settings" && <SettingsSub employee={employee} />}
