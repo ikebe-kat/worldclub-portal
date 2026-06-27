@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import Dialog from "@/components/ui/Dialog";
 
 const COMPANY_ID = "c2d368f0-aa9b-4f70-b082-43ec07723d6c";
+const PUSH_URL = "https://pktqlbpdjemmomfanvgt.supabase.co/functions/v1/send-push";
 
 type Tab = "calc" | "master";
 
@@ -306,22 +307,39 @@ function CalcView({ employee }: { employee: any }) {
       onOk: async () => {
         setDialog(null);
         const confirmed = rows.filter(r => r.status === "confirmed" && r.payroll_setting_id);
+        const docName = `給与明細 ${ym}`;
         let ok = 0, fail = 0;
         for (const r of confirmed) {
           const setting = await supabase.from("wc_payroll_settings").select("employee_id").eq("id", r.payroll_setting_id!).maybeSingle();
           const empId = setting.data?.employee_id;
           if (!empId) { continue; }
           const html = renderPayslipHTML(r);
+          await supabase.from("documents")
+            .delete()
+            .eq("company_id", COMPANY_ID)
+            .eq("employee_id", empId)
+            .eq("doc_type", "payslip")
+            .eq("document_name", docName);
           const { error } = await supabase.from("documents").insert({
             company_id: COMPANY_ID,
             employee_id: empId,
-            title: `給与明細 ${r.target_month}`,
-            content: html,
-            content_type: "html",
+            document_name: docName,
             category: "給与明細",
-            issued_at: new Date().toISOString(),
+            doc_type: "payslip",
+            content: html,
+            upload_date: new Date().toISOString(),
+            uploader: employee.full_name,
           });
-          if (error) fail++; else ok++;
+          if (error) { fail++; continue; }
+          ok++;
+          fetch(PUSH_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "document_delivered",
+              payload: { employee_id: empId, document_name: docName },
+            }),
+          }).catch(() => {});
         }
         setDialog({ message: `配布完了：${ok}件成功 / ${fail}件失敗` });
       },
