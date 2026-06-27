@@ -220,6 +220,7 @@ const HEADER_BG = [
   "#EDE9FE",                                                                     // 27    扶養
   "#DDD6FE",                                                                     // 28    差引支給額
   "#1a4b24",                                                                     // 29    明細ボタン列
+  "#1a4b24",                                                                     // 30    送信ボタン列
 ];
 
 /* ═══════════════ 月次計算ビュー ═══════════════ */
@@ -301,47 +302,60 @@ function CalcView({ employee }: { employee: any }) {
     });
   };
 
+  const distributeOne = async (r: Monthly): Promise<boolean> => {
+    if (!r.payroll_setting_id) return false;
+    const setting = await supabase.from("wc_payroll_settings").select("employee_id").eq("id", r.payroll_setting_id).maybeSingle();
+    const empId = setting.data?.employee_id;
+    if (!empId) return false;
+    const docName = `給与明細 ${r.target_month}`;
+    const html = renderPayslipHTML(r);
+    await supabase.from("documents")
+      .delete()
+      .eq("company_id", COMPANY_ID)
+      .eq("employee_id", empId)
+      .eq("doc_type", "payslip")
+      .eq("document_name", docName);
+    const { error } = await supabase.from("documents").insert({
+      company_id: COMPANY_ID,
+      employee_id: empId,
+      document_name: docName,
+      category: "給与明細",
+      doc_type: "payslip",
+      content: html,
+      upload_date: new Date().toISOString(),
+      uploader: employee.full_name,
+    });
+    if (error) return false;
+    fetch(PUSH_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "document_delivered", payload: { employee_id: empId, document_name: docName } }),
+    }).catch(() => {});
+    return true;
+  };
+
   const distribute = async () => {
     setDialog({
       message: `${ym}の給与明細を全社員のポータル(書類)に配布しますか？`,
       onOk: async () => {
         setDialog(null);
         const confirmed = rows.filter(r => r.status === "confirmed" && r.payroll_setting_id);
-        const docName = `給与明細 ${ym}`;
         let ok = 0, fail = 0;
         for (const r of confirmed) {
-          const setting = await supabase.from("wc_payroll_settings").select("employee_id").eq("id", r.payroll_setting_id!).maybeSingle();
-          const empId = setting.data?.employee_id;
-          if (!empId) { continue; }
-          const html = renderPayslipHTML(r);
-          await supabase.from("documents")
-            .delete()
-            .eq("company_id", COMPANY_ID)
-            .eq("employee_id", empId)
-            .eq("doc_type", "payslip")
-            .eq("document_name", docName);
-          const { error } = await supabase.from("documents").insert({
-            company_id: COMPANY_ID,
-            employee_id: empId,
-            document_name: docName,
-            category: "給与明細",
-            doc_type: "payslip",
-            content: html,
-            upload_date: new Date().toISOString(),
-            uploader: employee.full_name,
-          });
-          if (error) { fail++; continue; }
-          ok++;
-          fetch(PUSH_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              type: "document_delivered",
-              payload: { employee_id: empId, document_name: docName },
-            }),
-          }).catch(() => {});
+          (await distributeOne(r)) ? ok++ : fail++;
         }
         setDialog({ message: `配布完了：${ok}件成功 / ${fail}件失敗` });
+      },
+    });
+  };
+
+  const distributeRow = async (r: Monthly) => {
+    setDialog({
+      message: `${r.display_name}さんに${ym}の給与明細を配布しますか？`,
+      onOk: async () => {
+        setDialog(null);
+        const ok = await distributeOne(r);
+        setDialog({ message: ok ? `${r.display_name}さんに配布しました` : `${r.display_name}さんの配布に失敗しました` });
       },
     });
   };
@@ -433,13 +447,14 @@ function CalcView({ employee }: { employee: any }) {
                   "平日時間","土日時間","基本給","固定残業手当","役職手当","家族手当","諸手当",
                   "有給金額","給料計","交通費","非課税","総支給",
                   "課税計","社保","雇保","社保計","所得税","住民税","車","控除計",
-                  "扶養","差引支給額",""
+                  "扶養","差引支給額","",""
                 ].map((h, i) => {
                   const sticky: React.CSSProperties =
                     i === 0 ? { position: "sticky", left: 0, top: 0, zIndex: 5, minWidth: 72 } :
                     i === 1 ? { position: "sticky", left: 72, top: 0, zIndex: 5, minWidth: 50, boxShadow: "2px 0 4px rgba(0,0,0,0.1)" } :
-                    i === 28 ? { position: "sticky", right: 52, top: 0, zIndex: 5, minWidth: 80, boxShadow: "-2px 0 4px rgba(0,0,0,0.1)" } :
-                    i === 29 ? { position: "sticky", right: 0, top: 0, zIndex: 5, minWidth: 52 } :
+                    i === 28 ? { position: "sticky", right: 104, top: 0, zIndex: 5, minWidth: 80, boxShadow: "-2px 0 4px rgba(0,0,0,0.1)" } :
+                    i === 29 ? { position: "sticky", right: 52, top: 0, zIndex: 5, minWidth: 52 } :
+                    i === 30 ? { position: "sticky", right: 0, top: 0, zIndex: 5, minWidth: 52 } :
                     { position: "sticky", top: 0, zIndex: 3 };
                   return (
                     <th key={i} style={{
@@ -448,7 +463,7 @@ function CalcView({ employee }: { employee: any }) {
                       lineHeight: 1.15, verticalAlign: "bottom",
                       textAlign: i < 2 ? "left" : "right",
                       backgroundColor: HEADER_BG[i],
-                      color: (i < 2 || i === 29) ? "#fff" : T.text,
+                      color: (i < 2 || i >= 29) ? "#fff" : T.text,
                       borderRight: "1px solid #D1D5DB",
                       borderBottom: "2px solid #374151",
                       ...sticky,
@@ -514,12 +529,20 @@ function CalcView({ employee }: { employee: any }) {
                     <td style={{ ...tdNum, color: T.danger, fontWeight: 600, backgroundColor: "#FCA5A5" }}>{yen(r.total_deduction)}</td>
                     {ec("dependents", String(r.dependents), tdNum)}
                     {/* 29 差引支給額（派生・編集不可） */}
-                    <td style={{ ...tdNum, fontSize: 15, fontWeight: 700, color: T.primary, backgroundColor: "#DDD6FE", position: "sticky", right: 52, zIndex: 1, minWidth: 80, boxShadow: "-2px 0 4px rgba(0,0,0,0.1)" }}>{yen(r.net_amount)}</td>
-                    <td style={{ ...tdNarrow, position: "sticky", right: 0, zIndex: 1, backgroundColor: "#fff", minWidth: 52 }}>
+                    <td style={{ ...tdNum, fontSize: 15, fontWeight: 700, color: T.primary, backgroundColor: "#DDD6FE", position: "sticky", right: 104, zIndex: 1, minWidth: 80, boxShadow: "-2px 0 4px rgba(0,0,0,0.1)" }}>{yen(r.net_amount)}</td>
+                    <td style={{ ...tdNarrow, position: "sticky", right: 52, zIndex: 1, backgroundColor: "#fff", minWidth: 52 }}>
                       <button onClick={() => printOne(r)} style={{
                         padding: "4px 8px", borderRadius: 4, border: `1px solid ${T.border}`,
                         backgroundColor: "#fff", color: T.text, fontSize: 10, cursor: "pointer",
                       }}>明細</button>
+                    </td>
+                    <td style={{ ...tdNarrow, position: "sticky", right: 0, zIndex: 1, backgroundColor: "#fff", minWidth: 52 }}>
+                      <button onClick={() => distributeRow(r)} disabled={r.status !== "confirmed"} style={{
+                        padding: "4px 8px", borderRadius: 4, border: "none",
+                        backgroundColor: r.status === "confirmed" ? T.success : "#D1D5DB",
+                        color: "#fff", fontSize: 10, cursor: r.status === "confirmed" ? "pointer" : "not-allowed",
+                        opacity: r.status === "confirmed" ? 1 : 0.5,
+                      }}>送信</button>
                     </td>
                   </tr>
                 );
@@ -556,7 +579,8 @@ function CalcView({ employee }: { employee: any }) {
                   <td style={tfNum}>{yen(totals.car_deduction)}</td>
                   <td style={{ ...tfNum, color: T.danger, backgroundColor: "#f09090" }}>{yen(totals.total_deduction)}</td>
                   <td style={tfNum}></td>
-                  <td style={{ ...tfNum, fontSize: 15, color: T.primary, backgroundColor: "#c9c0f0", position: "sticky", right: 52, zIndex: 4, minWidth: 80, boxShadow: "-2px 0 4px rgba(0,0,0,0.1)" }}>{yen(totals.net_amount)}</td>
+                  <td style={{ ...tfNum, fontSize: 15, color: T.primary, backgroundColor: "#c9c0f0", position: "sticky", right: 104, zIndex: 4, minWidth: 80, boxShadow: "-2px 0 4px rgba(0,0,0,0.1)" }}>{yen(totals.net_amount)}</td>
+                  <td style={{ ...tfNum, position: "sticky", right: 52, zIndex: 4, minWidth: 52 }}></td>
                   <td style={{ ...tfNum, position: "sticky", right: 0, zIndex: 4, minWidth: 52 }}></td>
                 </tr>
               </tfoot>
