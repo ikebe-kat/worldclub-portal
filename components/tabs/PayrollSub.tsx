@@ -403,7 +403,7 @@ function CalcView({ employee }: { employee: any }) {
           まだ計算されていません。「再計算」を押して下さい。
         </div>
       ) : (
-        <div style={{ overflowX: "auto", width: "100%", maxWidth: "100%" }}>
+        <div style={{ overflow: "auto", width: "100%", maxWidth: "100%", maxHeight: "calc(100vh - 220px)" }}>
           <table style={{
             borderCollapse: "collapse", fontSize: 10,
             backgroundColor: "#fff", minWidth: 1200,
@@ -418,10 +418,11 @@ function CalcView({ employee }: { employee: any }) {
                   "扶養","差引支給額",""
                 ].map((h, i) => {
                   const sticky: React.CSSProperties =
-                    i === 0 ? { position: "sticky", left: 0, zIndex: 3, minWidth: 72 } :
-                    i === 1 ? { position: "sticky", left: 72, zIndex: 3, minWidth: 50, boxShadow: "2px 0 4px rgba(0,0,0,0.1)" } :
-                    i === 28 ? { position: "sticky", right: 52, zIndex: 3, minWidth: 80, boxShadow: "-2px 0 4px rgba(0,0,0,0.1)" } :
-                    i === 29 ? { position: "sticky", right: 0, zIndex: 3, minWidth: 52 } : {};
+                    i === 0 ? { position: "sticky", left: 0, top: 0, zIndex: 5, minWidth: 72 } :
+                    i === 1 ? { position: "sticky", left: 72, top: 0, zIndex: 5, minWidth: 50, boxShadow: "2px 0 4px rgba(0,0,0,0.1)" } :
+                    i === 28 ? { position: "sticky", right: 52, top: 0, zIndex: 5, minWidth: 80, boxShadow: "-2px 0 4px rgba(0,0,0,0.1)" } :
+                    i === 29 ? { position: "sticky", right: 0, top: 0, zIndex: 5, minWidth: 52 } :
+                    { position: "sticky", top: 0, zIndex: 3 };
                   return (
                     <th key={i} style={{
                       padding: "4px 2px", fontSize: 9, fontWeight: 600,
