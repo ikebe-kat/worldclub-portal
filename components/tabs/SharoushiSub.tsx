@@ -88,9 +88,11 @@ export default function SharoushiSub({ employee }: { employee: any }) {
       for (const r of (attRaw || [])) { if (!attByEmp.has(r.employee_id)) attByEmp.set(r.employee_id, new Map()); attByEmp.get(r.employee_id)!.set(r.attendance_date, r as AttR); }
 
       setProgress("有給データ取得中...");
-      const { data: lvRaw } = await supabase.from("paid_leave_grants").select("employee_id, remaining_days").in("employee_id", emps.map(e => e.id)).gt("remaining_days", -100);
       const lvMap = new Map<string, number>();
-      for (const l of (lvRaw || [])) lvMap.set(l.employee_id, (lvMap.get(l.employee_id) || 0) + l.remaining_days);
+      for (const emp of emps) {
+        const { data: remData } = await supabase.rpc("wc_fn_paid_leave_remaining", { p_employee_id: emp.id });
+        lvMap.set(emp.id, Number(remData ?? 0));
+      }
 
       const { data: holRaw } = await supabase.from("holiday_calendars").select("holiday_date, calendar_type").gte("holiday_date", d1).lte("holiday_date", dN);
       const holByType = new Map<string, Set<string>>();

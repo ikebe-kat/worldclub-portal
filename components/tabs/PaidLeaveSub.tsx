@@ -21,7 +21,6 @@ interface LeaveRow {
   name: string;
   store: string;
   store_id: string;
-  carry_over: number;
   granted: number;
   consumed: number;
   remaining: number;
@@ -50,31 +49,33 @@ export default function PaidLeaveSub({ employee }: { employee: any }) {
       .order("employee_code");
     const emps = (ed || []).filter((e: any) => !["W02","W49","W67"].includes(e.employee_code));
 
-    const { data: balData, error: balErr } = await supabase
-      .from("paid_leave_balances")
-      .select("employee_id, carry_over, granted, consumed, remaining")
-      .eq("company_id", COMPANY_ID);
+    const { data: grantData } = await supabase
+      .from("paid_leave_grants")
+      .select("employee_id, grant_days")
+      .in("employee_id", emps.map((e: any) => e.id));
 
-    if (balErr) console.error("paid_leave_balances:", balErr.message);
-
-    const balMap: Record<string, { carry_over: number; granted: number; consumed: number; remaining: number }> = {};
-    (balData || []).forEach((b: any) => {
-      balMap[b.employee_id] = {
-        carry_over: b.carry_over ?? 0,
-        granted: b.granted ?? 0,
-        consumed: b.consumed ?? 0,
-        remaining: b.remaining ?? 0,
-      };
+    const grantMap: Record<string, number> = {};
+    (grantData || []).forEach((g: any) => {
+      grantMap[g.employee_id] = (grantMap[g.employee_id] || 0) + Number(g.grant_days ?? 0);
     });
 
+    const remResults = await Promise.all(
+      emps.map((emp: any) => supabase.rpc("wc_fn_paid_leave_remaining", { p_employee_id: emp.id }).then(({ data }) => ({ id: emp.id, remaining: Number(data ?? 0) })))
+    );
+    const remMap: Record<string, number> = {};
+    remResults.forEach(r => { remMap[r.id] = r.remaining; });
+
     const result: LeaveRow[] = emps.map((emp: any) => {
-      const bal = balMap[emp.id] || { carry_over: 0, granted: 0, consumed: 0, remaining: 0 };
+      const granted = grantMap[emp.id] || 0;
+      const remaining = remMap[emp.id] || 0;
       return {
         code: emp.employee_code,
         name: emp.full_name,
         store: storeShort(storeMap[emp.store_id] || null),
         store_id: emp.store_id,
-        ...bal,
+        granted,
+        consumed: granted - remaining,
+        remaining,
       };
     });
 
@@ -87,7 +88,10 @@ export default function PaidLeaveSub({ employee }: { employee: any }) {
   useEffect(() => {
     const ch = supabase
       .channel("plb-changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "paid_leave_balances" }, () => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "attendance_daily" }, () => {
+        fetchData();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "paid_leave_grants" }, () => {
         fetchData();
       })
       .subscribe();
@@ -122,7 +126,7 @@ export default function PaidLeaveSub({ employee }: { employee: any }) {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 560 }}>
               <thead>
                 <tr style={{ backgroundColor: T.primary }}>
-                  {["店舗","CD","氏名","繰越","付与","消化","有給残"].map(h => (
+                  {["店舗","CD","氏名","付与","消化","有給残"].map(h => (
                     <th key={h} style={{ padding: "8px 6px", color: "#fff", fontWeight: 600, fontSize: 12, textAlign: "center", whiteSpace: "nowrap" }}>{h}</th>
                   ))}
                 </tr>
@@ -133,14 +137,13 @@ export default function PaidLeaveSub({ employee }: { employee: any }) {
                     <td style={{ padding: "8px 6px", fontSize: 11, color: T.textSec, textAlign: "center", whiteSpace: "nowrap" }}>{r.store}</td>
                     <td style={{ padding: "8px 6px", fontSize: 11, color: T.textMuted, textAlign: "center" }}>{r.code}</td>
                     <td style={{ padding: "8px 6px", fontWeight: 600, color: T.text, whiteSpace: "nowrap" }}>{r.name}</td>
-                    <td style={{ padding: "8px 6px", textAlign: "center", fontSize: 12, color: r.carry_over > 0 ? T.text : T.textMuted }}>{r.carry_over}日</td>
                     <td style={{ padding: "8px 6px", textAlign: "center", fontSize: 12, color: T.primary, fontWeight: 600 }}>{r.granted}日</td>
                     <td style={{ padding: "8px 6px", textAlign: "center", fontSize: 12, color: r.consumed > 0 ? T.danger : T.textMuted }}>{r.consumed}日</td>
                     <td style={{ padding: "8px 6px", textAlign: "center", fontWeight: 700, fontSize: 14, color: r.remaining <= 0 ? T.danger : T.text }}>{r.remaining}日</td>
                   </tr>
                 ))}
                 {filtered.length === 0 && (
-                  <tr><td colSpan={7} style={{ padding: "30px", textAlign: "center", color: T.textMuted, fontSize: 13 }}>データがありません</td></tr>
+                  <tr><td colSpan={6} style={{ padding: "30px", textAlign: "center", color: T.textMuted, fontSize: 13 }}>データがありません</td></tr>
                 )}
               </tbody>
             </table>

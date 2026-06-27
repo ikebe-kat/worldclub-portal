@@ -247,8 +247,8 @@ const EditModal = ({ row, empName, empCode, isPart, showBreakEdit, onClose, onSa
         empId = attRow?.employee_id || null;
       }
       if (empId) {
-        const { data: grants } = await supabase.from("paid_leave_grants").select("remaining_days").eq("employee_id", empId).gt("remaining_days", 0);
-        const totalRemaining = (grants || []).reduce((s: number, g: any) => s + Number(g.remaining_days), 0);
+        const { data: remData } = await supabase.rpc("wc_fn_paid_leave_remaining", { p_employee_id: empId });
+        const totalRemaining = Number(remData ?? 0);
         if (totalRemaining < yukyuDays) { alert(`有給残が不足しています（残: ${totalRemaining}日）`); return; }
       }
     }

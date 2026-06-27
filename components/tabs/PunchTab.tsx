@@ -513,20 +513,29 @@ export default function PunchTab({ employee }: { employee: any }) {
     const todayStr = toDateStr(new Date())
     const todayDate = new Date()
 
+    /* 有給残チェック */
+    const yukyuDays = previewReason === '有給（全日）' ? 1 : (selGozen === '午前有給' ? 0.5 : 0) + (selGogo === '午後有給' ? 0.5 : 0)
+    if (yukyuDays > 0) {
+      const { data: remData } = await supabase.rpc('wc_fn_paid_leave_remaining', { p_employee_id: employee.id })
+      const totalRemaining = Number(remData ?? 0)
+      if (totalRemaining < yukyuDays) { showAlert(`有給残が不足しています（残: ${totalRemaining}日）`); return }
+    }
+
     setSaving(true)
 
-    if (previewReason === '有給（全日）') {
+    const isYukyuShinsei = previewReason === '有給（全日）' || previewReason === '午前有給' || previewReason === '午後有給'
+    if (isYukyuShinsei) {
       await supabase.from('leave_requests').delete().eq('employee_id', employee.id).eq('attendance_date', todayStr).eq('type', 'yukyu')
       const { error } = await supabase.from('leave_requests').insert({
         company_id: employee.company_id, store_id: employee.store_id,
         employee_id: employee.id, attendance_date: todayStr,
-        type: 'yukyu', status: 'pending', reason: '有給（全日）', request_comment: memoNote || null,
+        type: 'yukyu', status: 'pending', reason: previewReason, request_comment: memoNote || null,
       })
       setSaving(false)
       if (error) { showAlert('有給申請に失敗しました: ' + error.message); return }
       const { error: crErr } = await supabase.from('change_requests').insert({
         company_id: employee.company_id, employee_id: employee.id,
-        category: '有給申請', detail: `${todayStr} 有給（全日）${memoNote ? '\n' + memoNote : ''}`, status: '未処理',
+        category: '有給申請', detail: `${todayStr} ${previewReason}${memoNote ? '\n' + memoNote : ''}`, status: '未処理',
       })
       if (crErr) { console.error('change_requests insert failed:', crErr); showAlert('申請は登録しましたが、管理者への通知に失敗しました: ' + crErr.message); }
       setModalOpen(false); fetchTodayRecord(employee.id); setMessage({ text: '有給申請を提出しました', ok: true })
@@ -770,14 +779,22 @@ export default function PunchTab({ employee }: { employee: any }) {
               {previewReason ? <ReasonBadges reason={previewReason} /> : <span style={{ fontSize: 13, color: T.textMuted }}>事由を選択してください</span>}
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: !isPart ? 8 : 20 }}>
               <Chip label="有給（全日）" selected={selZenjitsu === '有給（全日）'} color={T.yukyuBlue}
-                onClick={() => { if (selZenjitsu === '有給（全日）') { setSelZenjitsu(null) } else { setSelZenjitsu('有給（全日）'); setSelKinmu([]) } }} />
+                onClick={() => { if (selZenjitsu === '有給（全日）') { setSelZenjitsu(null) } else { setSelZenjitsu('有給（全日）'); setSelGozen(null); setSelGogo(null); setSelKinmu([]) } }} />
               {['遅刻', '早退', '欠勤'].map(k => (
                 <Chip key={k} label={k} selected={selKinmu.includes(k)} color={T.kinmuGreen}
-                  onClick={() => { setSelZenjitsu(null); setSelKinmu(prev => prev.includes(k) ? [] : [k]) }} />
+                  onClick={() => { setSelZenjitsu(null); setSelGozen(null); setSelGogo(null); setSelKinmu(prev => prev.includes(k) ? [] : [k]) }} />
               ))}
             </div>
+            {!isPart && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20 }}>
+                <Chip label="午前有給" selected={selGozen === '午前有給'} color={T.yukyuBlue}
+                  onClick={() => { if (selGozen === '午前有給') { setSelGozen(null) } else { setSelGozen('午前有給'); setSelZenjitsu(null); setSelKinmu([]) } }} />
+                <Chip label="午後有給" selected={selGogo === '午後有給'} color={T.yukyuBlue}
+                  onClick={() => { if (selGogo === '午後有給') { setSelGogo(null) } else { setSelGogo('午後有給'); setSelZenjitsu(null); setSelKinmu([]) } }} />
+              </div>
+            )}
 
             <div style={{ marginBottom: 20 }}>
               <label style={{ fontSize: 12, color: T.textSec, display: 'block', marginBottom: 4 }}>理由（必須）</label>

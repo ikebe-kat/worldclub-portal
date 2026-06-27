@@ -769,8 +769,8 @@ export default function AttendanceTab({ employee }: { employee: any }) {
     /* 有給残チェック */
     const yukyuDays = selZenjitsu === "有給（全日）" ? 1 : (selGozen === "午前有給" ? 0.5 : 0) + (selGogo === "午後有給" ? 0.5 : 0);
     if (yukyuDays > 0) {
-      const { data: grants } = await supabase.from("paid_leave_grants").select("remaining_days").eq("employee_id", employee.id).gt("remaining_days", 0).order("expiry_date", { ascending: true });
-      const totalRemaining = (grants || []).reduce((s: number, g: any) => s + Number(g.remaining_days), 0);
+      const { data: remData } = await supabase.rpc("wc_fn_paid_leave_remaining", { p_employee_id: employee.id });
+      const totalRemaining = Number(remData ?? 0);
       if (totalRemaining < yukyuDays) { showAlert(`有給残が不足しています（残: ${totalRemaining}日）`); return; }
     }
 
@@ -791,8 +791,9 @@ export default function AttendanceTab({ employee }: { employee: any }) {
 
     setSaving(true);
 
-    // ── 公休（全日）/ 有給（全日）は leave_requests へ pending 申請として保存 ──
-    if (previewReason === "公休（全日）" || previewReason === "有給（全日）") {
+    // ── 公休（全日）/ 有給系は leave_requests へ pending 申請として保存 ──
+    const isYukyuShinsei = previewReason === "有給（全日）" || previewReason === "午前有給" || previewReason === "午後有給";
+    if (previewReason === "公休（全日）" || isYukyuShinsei) {
       if (isKoukyuLocked(modalDay.dateStr)) {
         setSaving(false);
         showAlert("この月の申請は締切済みです");
@@ -818,7 +819,7 @@ export default function AttendanceTab({ employee }: { employee: any }) {
       });
       setSaving(false);
       if (reqErr) { showAlert("申請に失敗しました: " + reqErr.message); return; }
-      const catMap: Record<string, string> = { "公休（全日）": "公休申請", "有給（全日）": "有給申請" };
+      const catMap: Record<string, string> = { "公休（全日）": "公休申請", "有給（全日）": "有給申請", "午前有給": "有給申請", "午後有給": "有給申請" };
       const { error: crErr } = await supabase.from("change_requests").insert({
         company_id: employee.company_id, employee_id: employee.id,
         category: catMap[previewReason] || previewReason,
@@ -1059,10 +1060,16 @@ export default function AttendanceTab({ employee }: { employee: any }) {
             </div>
 
             <Dot color={T.holidayRed} label="休暇申請" />
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 20 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: !isPart ? 8 : 20 }}>
               <Chip label="公休（全日）" selected={selZenjitsu === "公休（全日）"} color={T.primary} onClick={() => toggleZenjitsu("公休（全日）")} />
               <Chip label="有給（全日）" selected={selZenjitsu === "有給（全日）"} color={T.yukyuBlue} onClick={() => toggleZenjitsu("有給（全日）")} />
             </div>
+            {!isPart && (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 20 }}>
+                <Chip label="午前有給" selected={selGozen === "午前有給"} color={T.yukyuBlue} onClick={() => toggleGozen("午前有給")} />
+                <Chip label="午後有給" selected={selGogo === "午後有給"} color={T.yukyuBlue} onClick={() => toggleGogo("午後有給")} />
+              </div>
+            )}
 
             <Dot color={T.kinmuGreen} label="勤務申請" />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 8 }}>
@@ -1119,7 +1126,7 @@ export default function AttendanceTab({ employee }: { employee: any }) {
               {selOvertime ? (
                 <button onClick={submitOvertime} disabled={saving || !overtimeReason.trim()} style={{ flex: 1, padding: "12px", borderRadius: "6px", border: "none", backgroundColor: (saving || !overtimeReason.trim()) ? T.border : T.warning, color: (saving || !overtimeReason.trim()) ? T.textMuted : "#fff", fontSize: 14, fontWeight: 600, cursor: (saving || !overtimeReason.trim()) ? "default" : "pointer" }}>{saving ? "申請中..." : "残業申請"}</button>
               ) : (() => {
-                const isShinsei = previewReason === "公休（全日）" || previewReason === "有給（全日）";
+                const isShinsei = previewReason === "公休（全日）" || previewReason === "有給（全日）" || previewReason === "午前有給" || previewReason === "午後有給";
                 const locked = isShinsei && modalDay && isKoukyuLocked(modalDay.dateStr);
                 const noteRequired = previewReason !== "公休（全日）";
                 const disabled = saving || !previewReason || locked || (noteRequired && !note.trim());
