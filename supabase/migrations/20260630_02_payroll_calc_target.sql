@@ -241,5 +241,7 @@ BEGIN
 
   RETURN v_count;
 END;
-$function$
+$function$;
+
+GRANT EXECUTE ON FUNCTION public.wc_fn_calculate_monthly_payroll(text, uuid) TO authenticated, anon;
 
