@@ -1,15 +1,3 @@
--- ═══════════════════════════════════════════════════════════════
--- worldclub-portal: 給与計算関数に is_calc_target 条件を追加
---
--- 変更点: 対象者ループの WHERE に AND is_calc_target = true を追加。
--- これにより is_calc_target=false の社員（産休等）は給与計算ループに
--- 入らず、その月の wc_payroll_monthly 行が作られない。
---
--- それ以外のロジック（遅刻早退欠勤控除・諸手当の月次取得・勤怠集計・
--- 支給計算・控除計算・UPSERT・confirmed保護・detail_json）は
--- 本番の現定義と完全に同一。1文字も変えない。
--- ═══════════════════════════════════════════════════════════════
-
 CREATE OR REPLACE FUNCTION public.wc_fn_calculate_monthly_payroll(p_target_month text, p_caller_id uuid)
  RETURNS integer
  LANGUAGE plpgsql
@@ -253,6 +241,5 @@ BEGIN
 
   RETURN v_count;
 END;
-$function$;
+$function$
 
-GRANT EXECUTE ON FUNCTION public.wc_fn_calculate_monthly_payroll(text, uuid) TO authenticated, anon;
