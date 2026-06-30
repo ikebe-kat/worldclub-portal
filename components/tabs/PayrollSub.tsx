@@ -236,17 +236,12 @@ function CalcView({ employee }: { employee: any }) {
     const [{ data: monthly }, { data: settings }] = await Promise.all([
       supabase.from("wc_payroll_monthly").select("*")
         .eq("company_id", COMPANY_ID).eq("target_month", ym),
-      supabase.from("wc_payroll_settings").select("id, sort_order, is_active")
+      supabase.from("wc_payroll_settings").select("id, sort_order")
         .eq("company_id", COMPANY_ID),
     ]);
     const orderMap = new Map<string, number>();
-    const activeIds = new Set<string>();
-    (settings || []).forEach((s: any) => {
-      orderMap.set(s.id, s.sort_order ?? 999);
-      if (s.is_active) activeIds.add(s.id);
-    });
-    const filtered = ((monthly || []) as any[]).filter((m: any) => activeIds.has(m.payroll_setting_id));
-    const sorted = filtered.sort((a, b) => {
+    (settings || []).forEach((s: any) => orderMap.set(s.id, s.sort_order ?? 999));
+    const sorted = ((monthly || []) as any[]).sort((a, b) => {
       const ao = orderMap.get(a.payroll_setting_id) ?? 999;
       const bo = orderMap.get(b.payroll_setting_id) ?? 999;
       return ao - bo;
