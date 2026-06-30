@@ -1,6 +1,6 @@
 ﻿"use client";
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { T, displayReason, displayChipLabel, isKoukyuPart, periodRange, currentPeriodMonth, periodDays } from "@/lib/constants";
+import { T, displayReason, isKoukyuPart, periodRange, currentPeriodMonth, periodDays } from "@/lib/constants";
 import { Badge, ReasonBadges } from "@/components/ui";
 import Dialog from "@/components/ui/Dialog";
 import { supabase } from "@/lib/supabase";
@@ -326,18 +326,15 @@ const EditModal = ({ row, empName, empCode, isPart, showBreakEdit, onClose, onSa
         </div>
 
         <Dot color={T.holidayRed} label="休暇" />
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: !isPart ? 8 : 16 }}>
           <Chip label="有給（全日）" selected={selZenjitsu === "有給（全日）"} color={T.yukyuBlue} onClick={() => toggleZenjitsu("有給（全日）")} />
-          <Chip label={displayChipLabel("希望休（全日）", empCode)} selected={selZenjitsu === "希望休（全日）"} color={T.kibouYellow} onClick={() => toggleZenjitsu("希望休（全日）")} />
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
-          <Chip label="午前有給" selected={selGozen === "午前有給"} color={T.yukyuBlue} onClick={() => toggleGozen("午前有給")} />
-          <Chip label={displayChipLabel("午前希望休", empCode)} selected={selGozen === "午前希望休"} color={T.kibouYellow} onClick={() => toggleGozen("午前希望休")} />
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
-          <Chip label="午後有給" selected={selGogo === "午後有給"} color={T.yukyuBlue} onClick={() => toggleGogo("午後有給")} />
-          <Chip label={displayChipLabel("午後希望休", empCode)} selected={selGogo === "午後希望休"} color={T.kibouYellow} onClick={() => toggleGogo("午後希望休")} />
-        </div>
+        {!isPart && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
+            <Chip label="午前有給" selected={selGozen === "午前有給"} color={T.yukyuBlue} onClick={() => toggleGozen("午前有給")} />
+            <Chip label="午後有給" selected={selGogo === "午後有給"} color={T.yukyuBlue} onClick={() => toggleGogo("午後有給")} />
+          </div>
+        )}
 
         <Dot color={T.kinmuGreen} label="勤務申請" />
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 8 }}>
@@ -611,6 +608,14 @@ const BulkEditModal = ({ checkedRows, emps, employee, selectedDate, selDow, onCl
     return parts.length > 0 ? parts.join("+") : null;
   }, [selZenjitsu, selGozen, selGogo, selKinmu, shucchoWhere]);
 
+  const hasPartSelected = useMemo(
+    () => checkedRows.some(r => {
+      const emp = emps.find(e => e.code === r.emp_code);
+      return isWcPart(r.emp_code, emp?.employment_type);
+    }),
+    [checkedRows, emps]
+  );
+
   const hasAnyInput = bulkPunchIn || bulkPunchOut || previewReason !== null || bulkMemo;
 
   const inputStyle: React.CSSProperties = { width: "100%", padding: "8px 10px", borderRadius: 6, border: `1px solid ${T.border}`, fontSize: 14, boxSizing: "border-box", fontFamily: "inherit" };
@@ -660,18 +665,15 @@ const BulkEditModal = ({ checkedRows, emps, employee, selectedDate, selDow, onCl
         </div>
 
         <Dot color={T.holidayRed} label="休暇" />
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: !hasPartSelected ? 8 : 16 }}>
           <Chip label="有給（全日）" selected={selZenjitsu === "有給（全日）"} color={T.yukyuBlue} onClick={() => toggleZenjitsu("有給（全日）")} />
-          <Chip label="希望休（全日）" selected={selZenjitsu === "希望休（全日）"} color={T.kibouYellow} onClick={() => toggleZenjitsu("希望休（全日）")} />
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
-          <Chip label="午前有給" selected={selGozen === "午前有給"} color={T.yukyuBlue} onClick={() => toggleGozen("午前有給")} />
-          <Chip label="午前希望休" selected={selGozen === "午前希望休"} color={T.kibouYellow} onClick={() => toggleGozen("午前希望休")} />
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
-          <Chip label="午後有給" selected={selGogo === "午後有給"} color={T.yukyuBlue} onClick={() => toggleGogo("午後有給")} />
-          <Chip label="午後希望休" selected={selGogo === "午後希望休"} color={T.kibouYellow} onClick={() => toggleGogo("午後希望休")} />
-        </div>
+        {!hasPartSelected && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
+            <Chip label="午前有給" selected={selGozen === "午前有給"} color={T.yukyuBlue} onClick={() => toggleGozen("午前有給")} />
+            <Chip label="午後有給" selected={selGogo === "午後有給"} color={T.yukyuBlue} onClick={() => toggleGogo("午後有給")} />
+          </div>
+        )}
 
         <Dot color={T.kinmuGreen} label="勤務申請" />
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
