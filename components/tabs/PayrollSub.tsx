@@ -302,11 +302,11 @@ function CalcView({ employee }: { employee: any }) {
     });
   };
 
-  const distributeOne = async (r: Monthly): Promise<boolean> => {
-    if (!r.payroll_setting_id) return false;
+  const distributeOne = async (r: Monthly): Promise<{ ok: boolean; message?: string }> => {
+    if (!r.payroll_setting_id) return { ok: false, message: "payroll_setting_id 未設定" };
     const setting = await supabase.from("wc_payroll_settings").select("employee_id").eq("id", r.payroll_setting_id).maybeSingle();
     const empId = setting.data?.employee_id;
-    if (!empId) return false;
+    if (!empId) return { ok: false, message: "対象社員が特定できません" };
     const docName = `給与明細 ${r.target_month}`;
     const html = renderPayslipHTML(r);
     await supabase.from("documents")
@@ -325,13 +325,16 @@ function CalcView({ employee }: { employee: any }) {
       upload_date: new Date().toISOString(),
       uploader: employee.full_name,
     });
-    if (error) return false;
+    if (error) {
+      console.error("[distributeOne] insert error:", error);
+      return { ok: false, message: error.message };
+    }
     fetch(PUSH_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type: "document_delivered", payload: { employee_id: empId, document_name: docName } }),
     }).catch(() => {});
-    return true;
+    return { ok: true };
   };
 
   const distribute = async () => {
@@ -341,10 +344,14 @@ function CalcView({ employee }: { employee: any }) {
         setDialog(null);
         const confirmed = rows.filter(r => r.status === "confirmed" && r.payroll_setting_id);
         let ok = 0, fail = 0;
+        let lastErr = "";
         for (const r of confirmed) {
-          (await distributeOne(r)) ? ok++ : fail++;
+          const res = await distributeOne(r);
+          if (res.ok) ok++;
+          else { fail++; if (res.message) lastErr = res.message; }
         }
-        setDialog({ message: `配布完了：${ok}件成功 / ${fail}件失敗` });
+        const suffix = fail > 0 && lastErr ? `\n直近エラー: ${lastErr}` : "";
+        setDialog({ message: `配布完了：${ok}件成功 / ${fail}件失敗${suffix}` });
       },
     });
   };
@@ -354,8 +361,12 @@ function CalcView({ employee }: { employee: any }) {
       message: `${r.display_name}さんに${ym}の給与明細を配布しますか？`,
       onOk: async () => {
         setDialog(null);
-        const ok = await distributeOne(r);
-        setDialog({ message: ok ? `${r.display_name}さんに配布しました` : `${r.display_name}さんの配布に失敗しました` });
+        const res = await distributeOne(r);
+        setDialog({
+          message: res.ok
+            ? `${r.display_name}さんに配布しました`
+            : `${r.display_name}さんの配布に失敗しました${res.message ? `: ${res.message}` : ""}`,
+        });
       },
     });
   };
