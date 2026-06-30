@@ -138,9 +138,9 @@ export default function ShiftSub({ employee }: { employee: any }) {
     const monthStart = periodStart;
     const monthEnd = periodEnd;
 
-    // 従業員一覧（is_active=true または NULL）
+    // 従業員一覧（is_active=true または NULL、is_on_leave=true は除外）
     const { data: emps } = await supabase.from("employees")
-      .select("id, employee_code, full_name, employment_type")
+      .select("id, employee_code, full_name, employment_type, is_on_leave")
       .eq("company_id", COMPANY_ID)
       .or("is_active.is.null,is_active.eq.true")
       .order("employee_code");
@@ -161,8 +161,8 @@ export default function ShiftSub({ employee }: { employee: any }) {
       .lte("attendance_date", monthEnd)
       .not("reason", "is", null);
 
-    // ⑤ WCxxx のみフィルタ（本部メンバー除外）
-    const filteredEmps = (emps || []).filter(e => isVisibleCode(e.employee_code));
+    // ⑤ WCxxx のみフィルタ（本部メンバー除外）＋休職中除外
+    const filteredEmps = (emps || []).filter(e => isVisibleCode(e.employee_code) && e.is_on_leave !== true);
 
     // shift_submissions（当月分の提出有無）
     const targetMonth = `${yr}-${String(mo).padStart(2, "0")}`;

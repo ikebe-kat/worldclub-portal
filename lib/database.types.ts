@@ -42,6 +42,8 @@ export type Database = {
           employment_insurance: string | null;
           skills:               string | null;
           photo_url:            string | null;
+          is_on_leave:          boolean;
+          leave_start_date:     string | null;
           created_at:           string;
           updated_at:           string;
         };
