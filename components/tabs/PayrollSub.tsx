@@ -24,7 +24,7 @@ interface Setting {
   break_minutes_fixed: number | null;
   social_insurance: number; commute_per_day: number;
   dependents: number; is_payroll_only: boolean; is_active: boolean;
-  sort_order: number;
+  is_calc_target: boolean; sort_order: number;
 }
 
 interface Monthly {
@@ -633,7 +633,7 @@ function MasterView({ employee: _employee }: { employee: any }) {
   };
   useEffect(() => { load(); }, []);
 
-  const updateField = async (r: Setting, field: keyof Setting, value: number | null | string) => {
+  const updateField = async (r: Setting, field: keyof Setting, value: number | null | string | boolean) => {
     const { error } = await supabase.from("wc_payroll_settings").update({
       [field]: value, updated_at: new Date().toISOString(),
     }).eq("id", r.id);
@@ -664,7 +664,7 @@ function MasterView({ employee: _employee }: { employee: any }) {
             <thead>
               <tr style={{ backgroundColor: T.primary, color: "#fff" }}>
                 {[
-                  "氏名","区分","基本給","固定残業","役職","家族","諸手当","支援金",
+                  "氏名","区分","計算","基本給","固定残業","役職","家族","諸手当","支援金",
                   "平日時給","土日時給","所定終業","所定労働(分)","休憩固定",
                   "社保","住民税","車","交通費/日","扶養",
                 ].map((h, i) => {
@@ -685,10 +685,18 @@ function MasterView({ employee: _employee }: { employee: any }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map(r => (
+              {rows.map(r => {
+                const rowBg = r.is_calc_target === false ? "#F3F4F6" : "#fff";
+                return (
                 <tr key={r.id} style={{ borderBottom: "1px solid #9CA3AF" }} className="payroll-row">
-                  <td style={{ ...tdStyle, position: "sticky", left: 0, zIndex: 1, backgroundColor: "#fff", minWidth: 72 }}>{r.display_name}</td>
-                  <td style={{ ...tdStyle, position: "sticky", left: 72, zIndex: 1, backgroundColor: "#fff", minWidth: 56, boxShadow: "2px 0 4px rgba(0,0,0,0.1)" }}>{r.employment_type}</td>
+                  <td style={{ ...tdStyle, position: "sticky", left: 0, zIndex: 1, backgroundColor: rowBg, minWidth: 72 }}>
+                    {r.display_name}
+                    {r.is_calc_target === false && <span style={{ display: "block", fontSize: 9, color: "#9CA3AF", lineHeight: 1 }}>計算対象外</span>}
+                  </td>
+                  <td style={{ ...tdStyle, position: "sticky", left: 72, zIndex: 1, backgroundColor: rowBg, minWidth: 56, boxShadow: "2px 0 4px rgba(0,0,0,0.1)" }}>{r.employment_type}</td>
+                  <td style={{ ...tdStyle, textAlign: "center", minWidth: 40 }}>
+                    <input type="checkbox" checked={r.is_calc_target !== false} onChange={e => updateField(r, "is_calc_target", e.target.checked)} />
+                  </td>
                   <NumCell r={r} field="base_salary" />
                   <NumCell r={r} field="fixed_overtime" />
                   <NumCell r={r} field="position_allowance" />
@@ -734,7 +742,8 @@ function MasterView({ employee: _employee }: { employee: any }) {
                   <NumCell r={r} field="commute_per_day" suffix="/日" />
                   <NumCell r={r} field="dependents" />
                 </tr>
-              ))}
+              );
+              })}
             </tbody>
           </table>
           <div style={{ marginTop: 12, padding: "8px 16px", fontSize: 11, color: T.textSec }}>
