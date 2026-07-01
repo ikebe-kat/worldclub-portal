@@ -7,7 +7,7 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import { T, DOW, PALETTE, CAL_GROUPS, stepMonth, displayReason, calendarDisplayName } from "@/lib/constants";
 import { useSmoothSwipe } from "@/hooks/useSmoothSwipe";
 import { supabase } from "@/lib/supabase";
-import { getPermLevel, canShowCalendarGroupSelect, getDefaultCalendarGroup, canChooseTargetCalendar, canDeleteEvent, storeIdToCalGroup, getAllowedCalGroups, canViewJimuCalendar } from "@/lib/permissions";
+import { getPermLevel, canShowCalendarGroupSelect, getDefaultCalendarGroup, canChooseTargetCalendar, canDeleteEvent, storeIdToCalGroup, getAllowedCalGroups, canViewJimuCalendar, canViewOthersProfile } from "@/lib/permissions";
 import Dialog from "@/components/ui/Dialog";
 
 // ── 型定義 ──────────────────────────────
@@ -376,8 +376,15 @@ export default function CalendarTab({ employee }: { employee: any }) {
       .not("reason", "is", null)
       .neq("reason", "");
 
+    const isAdmin = canViewOthersProfile(empCode);
     const mapped: AttendanceEvent[] = (attData || [])
-      .filter((row: any) => row.reason && row.reason !== "公休" && row.reason !== "休職" && (row.employees as any)?.employee_code !== "002")
+      .filter((row: any) => {
+        if (!row.reason) return false;
+        if (String(row.reason).includes("休職")) return false;
+        if ((row.employees as any)?.employee_code === "002") return false;
+        if (isAdmin) return true;
+        return (row.employees as any)?.employee_code === empCode;
+      })
       .map((row: any) => ({
         employee_id: row.employee_id,
         full_name: (row.employees as any)?.full_name || "不明",
@@ -389,7 +396,7 @@ export default function CalendarTab({ employee }: { employee: any }) {
 
     setAttEvents(mapped);
     setLoading(false);
-  }, [yr, mo, employee?.company_id]);
+  }, [yr, mo, employee?.company_id, empCode]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
