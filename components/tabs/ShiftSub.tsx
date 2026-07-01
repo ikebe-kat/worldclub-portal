@@ -46,6 +46,7 @@ interface LeaveReq {
   type: string;
   status: string;
   reject_reason?: string | null;
+  reason?: string | null;
 }
 
 type CellState =
@@ -147,7 +148,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
 
     // leave_requests（当月：公休＋有給）
     const { data: reqs } = await supabase.from("leave_requests")
-      .select("id, employee_id, attendance_date, type, status, reject_reason")
+      .select("id, employee_id, attendance_date, type, status, reject_reason, reason")
       .eq("company_id", COMPANY_ID)
       .in("type", ["shift_koukyuu", "yukyu"])
       .gte("attendance_date", monthStart)
@@ -213,7 +214,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
     const maxMonthEnd = periodDateAtLocal(maxYr, maxMo, periodLenLocal(maxYr, maxMo));
 
     const { data: yReqsRaw } = await supabase.from("leave_requests")
-      .select("id, employee_id, attendance_date, type, status, reject_reason, request_comment, created_at")
+      .select("id, employee_id, attendance_date, type, status, reject_reason, request_comment, created_at, reason")
       .eq("company_id", COMPANY_ID)
       .in("type", ["yukyu", "shift_koukyuu"])
       .gte("attendance_date", todayMonthStart)
@@ -682,7 +683,9 @@ export default function ShiftSub({ employee }: { employee: any }) {
         };
         window.addEventListener("beforeunload", beforeUnload);
 
-        // 提出フィルタを無視して全従業員の approved/yukyu を attendance_daily に転記
+        // 提出フィルタを無視して全従業員の approved/yukyu を attendance_daily に転記。
+        // yukyu の reason は resolveYukyuReason で決定：
+        // 優先 (1) leaveReqs の該当行の申請reason、(2) attData の既存reason、(3) ヘルパー内フォールバック。
         const upserts: any[] = [];
         for (const emp of employees) {
           for (let d = 1; d <= days; d++) {
@@ -690,12 +693,20 @@ export default function ShiftSub({ employee }: { employee: any }) {
             if (state !== "approved" && state !== "yukyu") continue;
             const ds = periodDateAtLocal(yr, mo, d);
             const dow = DOW[periodDowLocal(yr, mo, d)];
+            let reasonForRow: string;
+            if (state === "yukyu") {
+              const lr = leaveReqs.find(r => r.employee_id === emp.id && r.attendance_date === ds && r.type === "yukyu");
+              const attRow = attData.find(a => a.employee_id === emp.id && a.attendance_date === ds);
+              reasonForRow = resolveYukyuReason(lr?.reason ?? attRow?.reason);
+            } else {
+              reasonForRow = "公休（全日）";
+            }
             upserts.push({
               company_id: COMPANY_ID,
               employee_id: emp.id,
               attendance_date: ds,
               day_of_week: dow,
-              reason: state === "yukyu" ? "有給（全日）" : "公休（全日）",
+              reason: reasonForRow,
               updated_at: new Date().toISOString(),
             });
           }
@@ -789,12 +800,20 @@ export default function ShiftSub({ employee }: { employee: any }) {
     return e ? surname(e.full_name) : "—";
   };
 
+  // 有給転記時の reason を決める唯一の関数。
+  // 生値（午前有給 / 午後有給 / 有給（全日）等）が来ればそのまま採用。
+  // 空/null なら "有給（全日）" にフォールバック。"有給（全日）" リテラルはここにだけ置く。
+  const resolveYukyuReason = (raw: string | null | undefined): string => {
+    const trimmed = (raw ?? "").toString().trim();
+    return trimmed || "有給（全日）";
+  };
+
   const approveYukyu = async (req: any) => {
     if (processingReqRef.current.has(req.id)) return;
     processingReqRef.current.add(req.id);
     try {
       const dow = DOW[new Date(req.attendance_date + "T00:00:00").getDay()];
-      const reasonLabel = req.type === "yukyu" ? "有給（全日）" : "公休（全日）";
+      const reasonLabel = req.type === "yukyu" ? resolveYukyuReason(req.reason) : "公休（全日）";
 
       // 既存 attendance_daily の reason をチェック → 上書き確認
       const { data: existing } = await supabase.from("attendance_daily")
@@ -1050,7 +1069,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
                 processingReqRef.current.add(req.id);
                 try {
                   const dow = DOW[new Date(req.attendance_date + "T00:00:00").getDay()];
-                  const reasonLabel = req.type === "yukyu" ? "有給（全日）" : "公休（全日）";
+                  const reasonLabel = req.type === "yukyu" ? resolveYukyuReason(req.reason) : "公休（全日）";
                   setOverwriteConfirm(null);
                   await doApproveYukyu(req, reasonLabel, dow);
                 } finally {
