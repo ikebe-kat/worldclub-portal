@@ -218,11 +218,12 @@ const HEADER_BG = [
   "#FEE2E2","#FEE2E2",                                                            // 20,21 社保・雇保
   "#FECACA",                                                                     // 22    社保計
   "#FEE2E2","#FEE2E2","#FEE2E2",                                                  // 23,24,25 所得税・住民税・車
-  "#FCA5A5",                                                                     // 26    控除計
-  "#EDE9FE",                                                                     // 27    扶養
-  "#DDD6FE",                                                                     // 28    差引支給額
-  "#1a4b24",                                                                     // 29    明細ボタン列
-  "#1a4b24",                                                                     // 30    送信ボタン列
+  "#FEE2E2",                                                                     // 26    支援金
+  "#FCA5A5",                                                                     // 27    控除計
+  "#EDE9FE",                                                                     // 28    扶養
+  "#DDD6FE",                                                                     // 29    差引支給額
+  "#1a4b24",                                                                     // 30    明細ボタン列
+  "#1a4b24",                                                                     // 31    送信ボタン列
 ];
 
 /* ═══════════════ 月次計算ビュー ═══════════════ */
@@ -414,6 +415,7 @@ function CalcView({ employee }: { employee: any }) {
       income_tax: s("income_tax"),
       resident_tax: s("resident_tax"),
       car_deduction: s("car_deduction"),
+      child_support_deduction: s("child_support_deduction"),
       total_deduction: s("total_deduction"),
       net_amount: s("net_amount"),
     };
@@ -463,15 +465,15 @@ function CalcView({ employee }: { employee: any }) {
                   "氏名","状態","出勤日数","労働時間","残業時間","深夜早朝","有給(日)",
                   "平日時間","土日時間","基本給","固定残業手当","役職手当","家族手当","諸手当",
                   "有給金額","給料計","交通費","非課税","総支給",
-                  "課税計","社保","雇保","社保計","所得税","住民税","車","控除計",
+                  "課税計","社保","雇保","社保計","所得税","住民税","車","支援金","控除計",
                   "扶養","差引支給額","",""
                 ].map((h, i) => {
                   const sticky: React.CSSProperties =
                     i === 0 ? { position: "sticky", left: 0, top: 0, zIndex: 5, minWidth: 72 } :
                     i === 1 ? { position: "sticky", left: 72, top: 0, zIndex: 5, minWidth: 50, boxShadow: "2px 0 4px rgba(0,0,0,0.1)" } :
-                    i === 28 ? { position: "sticky", right: 104, top: 0, zIndex: 5, minWidth: 80, boxShadow: "-2px 0 4px rgba(0,0,0,0.1)" } :
-                    i === 29 ? { position: "sticky", right: 52, top: 0, zIndex: 5, minWidth: 52 } :
-                    i === 30 ? { position: "sticky", right: 0, top: 0, zIndex: 5, minWidth: 52 } :
+                    i === 29 ? { position: "sticky", right: 104, top: 0, zIndex: 5, minWidth: 80, boxShadow: "-2px 0 4px rgba(0,0,0,0.1)" } :
+                    i === 30 ? { position: "sticky", right: 52, top: 0, zIndex: 5, minWidth: 52 } :
+                    i === 31 ? { position: "sticky", right: 0, top: 0, zIndex: 5, minWidth: 52 } :
                     { position: "sticky", top: 0, zIndex: 3 };
                   return (
                     <th key={i} style={{
@@ -480,7 +482,7 @@ function CalcView({ employee }: { employee: any }) {
                       lineHeight: 1.15, verticalAlign: "bottom",
                       textAlign: i < 2 ? "left" : "right",
                       backgroundColor: HEADER_BG[i],
-                      color: (i < 2 || i >= 29) ? "#fff" : T.text,
+                      color: (i < 2 || i >= 30) ? "#fff" : T.text,
                       borderRight: "1px solid #D1D5DB",
                       borderBottom: "2px solid #374151",
                       ...sticky,
@@ -542,6 +544,8 @@ function CalcView({ employee }: { employee: any }) {
                     {ec("income_tax",    yen(r.income_tax),    tdNum)}
                     {ec("resident_tax",  yen(r.resident_tax),  tdNum)}
                     {ec("car_deduction", yen(r.car_deduction), tdNum)}
+                    {/* 26 支援金（読取専用・DB由来） */}
+                    <td style={tdNum}>{yen(r.child_support_deduction)}</td>
                     {/* 27 控除計（派生・編集不可） */}
                     <td style={{ ...tdNum, color: T.danger, fontWeight: 600, backgroundColor: "#FCA5A5" }}>{yen(r.total_deduction)}</td>
                     {ec("dependents", String(r.dependents), tdNum)}
@@ -594,6 +598,7 @@ function CalcView({ employee }: { employee: any }) {
                   <td style={tfNum}>{yen(totals.income_tax)}</td>
                   <td style={tfNum}>{yen(totals.resident_tax)}</td>
                   <td style={tfNum}>{yen(totals.car_deduction)}</td>
+                  <td style={tfNum}>{yen(totals.child_support_deduction)}</td>
                   <td style={{ ...tfNum, color: T.danger, backgroundColor: "#f09090" }}>{yen(totals.total_deduction)}</td>
                   <td style={tfNum}></td>
                   <td style={{ ...tfNum, fontSize: 15, color: T.primary, backgroundColor: "#c9c0f0", position: "sticky", right: 104, zIndex: 4, minWidth: 80, boxShadow: "-2px 0 4px rgba(0,0,0,0.1)" }}>{yen(totals.net_amount)}</td>
