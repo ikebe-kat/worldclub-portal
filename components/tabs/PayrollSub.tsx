@@ -17,6 +17,7 @@ interface Setting {
   base_salary: number; fixed_overtime: number;
   position_allowance: number; family_allowance: number;
   child_support_allowance: number;
+  child_support_deduction: number;
   other_allowance: number;
   car_deduction: number; resident_tax: number;
   hourly_weekday: number; hourly_weekend: number;
@@ -40,6 +41,7 @@ interface Monthly {
   base_salary: number; fixed_overtime: number;
   position_allowance: number; family_allowance: number;
   child_support_allowance: number;
+  child_support_deduction: number;
   other_allowance: number;
   weekday_amount: number; weekend_amount: number;
   overtime_amount: number; paid_leave_amount: number;
@@ -269,12 +271,16 @@ function CalcView({ employee }: { employee: any }) {
       return;
     }
     const next: Monthly = { ...r, [field]: value };
+    // gross は DB関数(wc_fn_calculate_monthly_payroll 現行世代③)と整合：
+    // 子育て支援金は総支給に加算しない（控除項目扱い）
     next.gross_amount    = next.base_salary + next.fixed_overtime + next.position_allowance
-                         + next.family_allowance + next.child_support_allowance + next.other_allowance
+                         + next.family_allowance + next.other_allowance
                          + next.weekday_amount + next.weekend_amount + next.overtime_amount
                          + next.paid_leave_amount + next.commute_amount;
+    // total_deduction は DB関数と整合：子育て支援金を控除計に加算
     next.total_deduction = next.social_insurance + next.employment_insurance
-                         + next.income_tax + next.resident_tax + next.car_deduction;
+                         + next.income_tax + next.resident_tax + next.car_deduction
+                         + next.child_support_deduction;
     next.net_amount      = next.gross_amount - next.total_deduction;
 
     const { error } = await supabase.from("wc_payroll_monthly").update({
@@ -702,7 +708,7 @@ function MasterView({ employee: _employee }: { employee: any }) {
                   <NumCell r={r} field="position_allowance" />
                   <NumCell r={r} field="family_allowance" />
                   <NumCell r={r} field="other_allowance" />
-                  <NumCell r={r} field="child_support_allowance" />
+                  <NumCell r={r} field="child_support_deduction" />
                   <NumCell r={r} field="hourly_weekday" />
                   <NumCell r={r} field="hourly_weekend" />
                   {/* 所定終業: time editor */}
@@ -803,14 +809,12 @@ function renderPayslipHTML(r: Monthly): string {
     ${row("有給金額 " + r.paid_leave_days + "日", yen(r.paid_leave_amount))}
     ${row("役職手当", yen(r.position_allowance))}
     ${row("家族手当", yen(r.family_allowance))}
-    ${row("子育て支援金", yen(r.child_support_allowance))}
     ${row("通勤費（非課税）", yen(r.commute_amount))}
   ` : `
     ${row("基本給", yen(r.base_salary))}
     ${row("固定残業手当", yen(r.fixed_overtime))}
     ${row("役職手当", yen(r.position_allowance))}
     ${row("家族手当", yen(r.family_allowance))}
-    ${row("子育て支援金", yen(r.child_support_allowance))}
     ${row("諸手当", yen(0))}
     ${row("通勤費（非課税）", yen(r.commute_amount))}
   `;
@@ -848,6 +852,7 @@ function renderPayslipHTML(r: Monthly): string {
           ${row("所得税", yen(r.income_tax))}
           ${row("住民税", yen(r.resident_tax))}
           ${row("車", yen(r.car_deduction))}
+          ${row("子育て支援金", yen(r.child_support_deduction))}
           ${row("控除合計", yen(r.total_deduction), { strong: true, danger: true })}
         </table>
         <h3 style="margin-top:14px">勤怠</h3>
