@@ -480,6 +480,25 @@ export default function ShiftSub({ employee }: { employee: any }) {
       const approvedEmpId = pendingDialog.emp.id;
       const approvedDate = periodDateAtLocal(yr, mo, pendingDialog.day);
       const approvedType = pendingDialog.reqType;
+
+      // 有給の承認：共通関数 approveYukyuRequest に委譲。
+      // attendance_daily への転記＋leave_requests の approved 化＋通知＋loadData を全て内包し、
+      // 上書き確認（既存 attendance_daily に別 reason があれば setOverwriteConfirm 発動）も含まれる。
+      // これで承認時点で残（RPC）が減る。
+      if (approvedType === "yukyu") {
+        const lr = leaveReqs.find(r => r.id === reqId);
+        setPendingDialog(null);
+        await approveYukyuRequest({
+          id: reqId,
+          employee_id: approvedEmpId,
+          attendance_date: approvedDate,
+          type: "yukyu",
+          reason: lr?.reason ?? null,
+        });
+        return;
+      }
+
+      // 公休(shift_koukyuu)の承認：既存挙動を完全維持。attendance_daily には書かない。
       setLeaveReqs(prev => prev.map(r => r.id === reqId ? { ...r, status: "approved", reject_reason: null } : r));
       setPendingDialog(null);
       const { error } = await supabase.from("leave_requests").update({
@@ -492,10 +511,9 @@ export default function ShiftSub({ employee }: { employee: any }) {
       }).eq("id", reqId);
       if (error) { console.error(error); loadData(); }
       else {
-        const kindLabel = approvedType === "yukyu" ? "有給" : "公休";
         fetch(PUSH_URL, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "request_processed", payload: { employee_id: approvedEmpId, category: `${kindLabel}申請`, status: "承認" } }),
+          body: JSON.stringify({ type: "request_processed", payload: { employee_id: approvedEmpId, category: "公休申請", status: "承認" } }),
         }).catch(() => {});
         loadData();
       }
@@ -808,14 +826,17 @@ export default function ShiftSub({ employee }: { employee: any }) {
     return trimmed || "有給（全日）";
   };
 
-  const approveYukyu = async (req: any) => {
-    if (processingReqRef.current.has(req.id)) return;
-    processingReqRef.current.add(req.id);
-    try {
-      const dow = DOW[new Date(req.attendance_date + "T00:00:00").getDay()];
-      const reasonLabel = req.type === "yukyu" ? resolveYukyuReason(req.reason) : "公休（全日）";
+  const [overwriteConfirm, setOverwriteConfirm] = useState<{ req: any; existingReason: string } | null>(null);
 
-      // 既存 attendance_daily の reason をチェック → 上書き確認
+  // 有給承認の共通関数。attendance_daily への転記 + leave_requests の approved 化 + 通知 + loadData。
+  // 既存 attendance_daily に別 reason があれば setOverwriteConfirm を発動して return（skipOverwriteCheck で回避可）。
+  // approvePending(有給分岐) / approveYukyu / 上書き確認ダイアログ の 3 経路すべてがこれを通る。
+  const approveYukyuRequest = async (
+    req: { id: string; employee_id: string; attendance_date: string; type?: string; reason?: string | null },
+    opts?: { skipOverwriteCheck?: boolean }
+  ) => {
+    const reasonLabel = req.type === "yukyu" ? resolveYukyuReason(req.reason) : "公休（全日）";
+    if (!opts?.skipOverwriteCheck) {
       const { data: existing } = await supabase.from("attendance_daily")
         .select("reason")
         .eq("company_id", COMPANY_ID)
@@ -826,16 +847,8 @@ export default function ShiftSub({ employee }: { employee: any }) {
         setOverwriteConfirm({ req, existingReason: existing.reason });
         return;
       }
-      await doApproveYukyu(req, reasonLabel, dow);
-    } finally {
-      processingReqRef.current.delete(req.id);
     }
-  };
-
-  const [overwriteConfirm, setOverwriteConfirm] = useState<{ req: any; existingReason: string } | null>(null);
-
-  const doApproveYukyu = async (req: any, reasonLabel: string, dow: string) => {
-
+    const dow = DOW[new Date(req.attendance_date + "T00:00:00").getDay()];
     const { error: upErr } = await supabase.from("attendance_daily").upsert({
       company_id: COMPANY_ID,
       employee_id: req.employee_id,
@@ -855,8 +868,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
       approved_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }).eq("id", req.id);
-    const isYukyu = req.type === "yukyu";
-    const kindLabel = isYukyu ? "有給" : "公休";
+    const kindLabel = req.type === "yukyu" ? "有給" : "公休";
     fetch(PUSH_URL, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -869,6 +881,17 @@ export default function ShiftSub({ employee }: { employee: any }) {
       }),
     }).catch(() => {});
     loadData();
+  };
+
+  // 有給申請リストパネル(L977)の承認ボタン。共通関数に委譲。
+  const approveYukyu = async (req: any) => {
+    if (processingReqRef.current.has(req.id)) return;
+    processingReqRef.current.add(req.id);
+    try {
+      await approveYukyuRequest(req);
+    } finally {
+      processingReqRef.current.delete(req.id);
+    }
   };
 
   const rejectYukyu = async () => {
@@ -1068,10 +1091,8 @@ export default function ShiftSub({ employee }: { employee: any }) {
                 if (processingReqRef.current.has(req.id)) return;
                 processingReqRef.current.add(req.id);
                 try {
-                  const dow = DOW[new Date(req.attendance_date + "T00:00:00").getDay()];
-                  const reasonLabel = req.type === "yukyu" ? resolveYukyuReason(req.reason) : "公休（全日）";
                   setOverwriteConfirm(null);
-                  await doApproveYukyu(req, reasonLabel, dow);
+                  await approveYukyuRequest(req, { skipOverwriteCheck: true });
                 } finally {
                   processingReqRef.current.delete(req.id);
                 }
