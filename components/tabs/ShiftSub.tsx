@@ -216,7 +216,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
     const { data: yReqsRaw } = await supabase.from("leave_requests")
       .select("id, employee_id, attendance_date, type, status, reject_reason, request_comment, created_at, reason")
       .eq("company_id", COMPANY_ID)
-      .in("type", ["yukyu", "shift_koukyuu"])
+      .in("type", ["yukyu", "shift_koukyuu", "yukyu_cancel"])
       .gte("attendance_date", todayMonthStart)
       .lte("attendance_date", maxMonthEnd)
       .in("status", ["pending"])
@@ -254,7 +254,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
             setLeaveReqs(prev => prev.some(r => r.id === row.id) ? prev : [...prev, row]);
           }
           const ms = row.attendance_date?.slice(0, 7);
-          if (row.status === "pending" && (row.type === "yukyu" || row.type === "shift_koukyuu") && yukyuTargetMonthSetRef.current.has(ms)) {
+          if (row.status === "pending" && (row.type === "yukyu" || row.type === "shift_koukyuu" || row.type === "yukyu_cancel") && yukyuTargetMonthSetRef.current.has(ms)) {
             setYukyuReqs(prev => prev.some(r => r.id === row.id) ? prev : [...prev, row]);
           }
         }
@@ -380,8 +380,35 @@ export default function ShiftSub({ employee }: { employee: any }) {
     const ds = periodDateAtLocal(yr, mo, day);
     const state = getCellState(emp.id, day);
 
-    // 有給確定済みは変更不可
-    if (state === "yukyu") return;
+    // 承認済み有給セルタップ：小川さんは確認ダイアログ → 直接取消（cancelYukyuRequest）。
+    // 一般社員は既存挙動どおり無反応（変更不可）。
+    if (state === "yukyu") {
+      if (!isOgawa) return;
+      const attRow = attData.find(a => a.employee_id === emp.id && a.attendance_date === ds);
+      const currentReason = (attRow?.reason ?? "").toString();
+      // 現在の reason から取消ターゲットを推定：午前だけ / 午後だけ / それ以外は全日扱い
+      const hasAM = currentReason.includes("午前有給");
+      const hasPM = currentReason.includes("午後有給");
+      const cancelTarget = hasAM && !hasPM ? "午前有給"
+        : hasPM && !hasAM ? "午後有給"
+        : "有給（全日）";
+      const dateLabel = `${periodMonthNumLocal(yr, mo, day)}/${periodDayNumLocal(yr, mo, day)}`;
+      setDialog({
+        message: `${surname(emp.full_name)}さんの${dateLabel}の${cancelTarget}を取り消しますか？\n残（有給日数）は自動で戻ります。`,
+        mode: "confirm",
+        confirmLabel: "取消する",
+        confirmColor: C.returned,
+        onOk: async () => {
+          setDialog(null);
+          await cancelYukyuRequest({
+            employee_id: emp.id,
+            attendance_date: ds,
+            cancelTarget,
+          });
+        },
+      });
+      return;
+    }
 
     // 申請中（公休 or 有給）→ 承認/差し戻しダイアログ
     if (state === "pending" || state === "yukyu_pending") {
@@ -744,7 +771,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
         await supabase.from("leave_requests")
           .delete()
           .eq("company_id", COMPANY_ID)
-          .in("type", ["shift_koukyuu", "yukyu"])
+          .in("type", ["shift_koukyuu", "yukyu", "yukyu_cancel"])
           .eq("status", "approved")
           .gte("attendance_date", _monthStart)
           .lte("attendance_date", _monthEnd);
@@ -884,14 +911,92 @@ export default function ShiftSub({ employee }: { employee: any }) {
   };
 
   // 有給申請リストパネル(L977)の承認ボタン。共通関数に委譲。
+  // 取消申請(type="yukyu_cancel")の場合は cancelYukyuRequest に振り分け。
   const approveYukyu = async (req: any) => {
     if (processingReqRef.current.has(req.id)) return;
     processingReqRef.current.add(req.id);
     try {
-      await approveYukyuRequest(req);
+      if (req.type === "yukyu_cancel") {
+        await cancelYukyuRequest({
+          employee_id: req.employee_id,
+          attendance_date: req.attendance_date,
+          cancelTarget: req.reason || "有給（全日）",
+          cancelRequestId: req.id,
+        });
+      } else {
+        await approveYukyuRequest(req);
+      }
     } finally {
       processingReqRef.current.delete(req.id);
     }
+  };
+
+  // 有給取消の共通関数（approveYukyuRequest と対称）。
+  // 対象日の attendance_daily.reason から有給部分（全日 / 午前 / 午後）だけを除去し、
+  // 「+」で結合された他の要素（希望休 等）が残る場合は保持する。
+  // 元の有給申請 leave_requests は既に確定〜承認処理で消えているので削除しない。
+  // 引数の cancelRequestId が渡されていれば、取消申請 leave_requests 行を削除する。
+  // wc_fn_paid_leave_remaining は「付与 − 消化」の即時計算のため残は自動で戻る。
+  // approvePending(有給の取消経路) / approveYukyu(取消申請の承認経路) / 緑セルタップ直接取消 / AttendanceTab 経由 の入口で共有する。
+  const cancelYukyuRequest = async (args: {
+    employee_id: string;
+    attendance_date: string;
+    cancelTarget: string;
+    cancelRequestId?: string | null;
+  }) => {
+    const { employee_id, attendance_date, cancelTarget, cancelRequestId } = args;
+    const targetIsAM = cancelTarget.includes("午前");
+    const targetIsPM = cancelTarget.includes("午後");
+    const targetIsFullDay = !targetIsAM && !targetIsPM;
+
+    const { data: att } = await supabase.from("attendance_daily")
+      .select("id, reason")
+      .eq("company_id", COMPANY_ID)
+      .eq("employee_id", employee_id)
+      .eq("attendance_date", attendance_date)
+      .maybeSingle();
+    if (!att) {
+      setDialog({ message: "対象日の勤怠行が見つかりません", mode: "alert", onOk: () => setDialog(null) });
+      return;
+    }
+    const currentReason = (att.reason ?? "").toString();
+    const parts: string[] = currentReason.split("+").map((s: string) => s.trim()).filter(Boolean);
+    let newParts: string[];
+    if (targetIsFullDay) {
+      // 全日取消：有給を含む要素を全部除去（"有給（全日）" のほか、片方だけ残っている半日有給も掃除）
+      newParts = parts.filter((p: string) => !p.includes("有給"));
+    } else if (targetIsAM) {
+      newParts = parts.filter((p: string) => !(p.includes("有給") && p.includes("午前")));
+    } else {
+      newParts = parts.filter((p: string) => !(p.includes("有給") && p.includes("午後")));
+    }
+    const newReason = newParts.length > 0 ? newParts.join("+") : null;
+
+    const { error: upErr } = await supabase.from("attendance_daily").update({
+      reason: newReason,
+      updated_at: new Date().toISOString(),
+    }).eq("id", att.id);
+    if (upErr) {
+      setDialog({ message: `取消に失敗\n${upErr.message}`, mode: "alert", onOk: () => setDialog(null) });
+      return;
+    }
+
+    if (cancelRequestId) {
+      await supabase.from("leave_requests").delete().eq("id", cancelRequestId);
+    }
+
+    fetch(PUSH_URL, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "request_processed",
+        payload: {
+          employee_id,
+          category: "有給取消",
+          status: "承認",
+        },
+      }),
+    }).catch(() => {});
+    loadData();
   };
 
   const rejectYukyu = async () => {
@@ -994,11 +1099,19 @@ export default function ShiftSub({ employee }: { employee: any }) {
                     <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>
                       {empNameById(req.employee_id)}　{req.attendance_date}
                       <span style={{
-                        fontSize: 11, fontWeight: 700, padding: "2px 6px", borderRadius: 3,
+                        fontSize: 11, fontWeight: 700, padding: "2px 6px", borderRadius: 3, marginLeft: 6,
                         color: "#fff",
-                        backgroundColor: req.type === "yukyu" ? C.yukyu : C.koukyuu,
+                        backgroundColor: req.type === "yukyu"
+                          ? C.yukyu
+                          : req.type === "yukyu_cancel"
+                          ? C.returned
+                          : C.koukyuu,
                       }}>
-                        {req.type === "yukyu" ? "有給" : "公休"}
+                        {req.type === "yukyu"
+                          ? "有給申請"
+                          : req.type === "yukyu_cancel"
+                          ? `有給取消申請${req.reason ? `（${req.reason}）` : ""}`
+                          : "公休申請"}
                       </span>
                     </div>
                     {req.request_comment && (
@@ -1007,22 +1120,25 @@ export default function ShiftSub({ employee }: { employee: any }) {
                   </div>
                   {isOgawa && (
                     <>
-                      <button
-                        onClick={() => setYukyuReturnInput({ id: req.id, reason: "" })}
-                        style={{
-                          padding: "6px 12px", borderRadius: 4,
-                          border: `1px solid ${C.returned}`, backgroundColor: "#fff",
-                          color: C.returned, fontSize: 12, fontWeight: 700, cursor: "pointer",
-                        }}
-                      >差し戻し</button>
+                      {/* 取消申請は却下ボタン非表示（要件：却下機能は作らない・再申請してもらう運用） */}
+                      {req.type !== "yukyu_cancel" && (
+                        <button
+                          onClick={() => setYukyuReturnInput({ id: req.id, reason: "" })}
+                          style={{
+                            padding: "6px 12px", borderRadius: 4,
+                            border: `1px solid ${C.returned}`, backgroundColor: "#fff",
+                            color: C.returned, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                          }}
+                        >差し戻し</button>
+                      )}
                       <button
                         onClick={() => approveYukyu(req)}
                         style={{
                           padding: "6px 12px", borderRadius: 4, border: "none",
-                          backgroundColor: C.yukyu, color: "#fff",
+                          backgroundColor: req.type === "yukyu_cancel" ? C.returned : C.yukyu, color: "#fff",
                           fontSize: 12, fontWeight: 700, cursor: "pointer",
                         }}
-                      >承認</button>
+                      >{req.type === "yukyu_cancel" ? "取消承認" : "承認"}</button>
                     </>
                   )}
                 </div>

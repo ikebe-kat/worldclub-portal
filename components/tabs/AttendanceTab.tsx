@@ -239,12 +239,13 @@ const ShiftWishView = ({ employee }: { employee: any }) => {
     return { d: dt.getDate(), m: dt.getMonth() + 1, dateStr: ds, dow: dt.getDay() };
   });
 
-  const counts = { koukyuu: 0, yukyu: 0, chikoku: 0, soutai: 0 };
+  const counts = { koukyuu: 0, yukyu: 0, chikoku: 0, soutai: 0, yukyuCancel: 0 };
   Object.values(requests).forEach(r => {
     if (r.type === "shift_koukyuu") counts.koukyuu++;
     else if (r.type === "yukyu") counts.yukyu++;
     else if (r.type === "shift_chikoku") counts.chikoku++;
     else if (r.type === "shift_soutai") counts.soutai++;
+    else if (r.type === "yukyu_cancel") counts.yukyuCancel++;
   });
 
   if (loading) return <div style={{ textAlign: "center", padding: 40, color: T.textMuted, fontSize: 14 }}>読み込み中...</div>;
@@ -484,7 +485,7 @@ export default function AttendanceTab({ employee }: { employee: any }) {
       .from("leave_requests")
       .select("id, attendance_date, status, type, reject_reason")
       .eq("employee_id", employee.id)
-      .in("type", ["shift_koukyuu", "yukyu"])
+      .in("type", ["shift_koukyuu", "yukyu", "yukyu_cancel"])
       .in("status", ["pending", "returned"])
       .gte("attendance_date", from)
       .lte("attendance_date", to);
@@ -492,21 +493,33 @@ export default function AttendanceTab({ employee }: { employee: any }) {
     const merged = [...(attData ?? [])];
     (lrData ?? []).forEach((lr: any) => {
       const isYukyu = lr.type === "yukyu";
+      const isYukyuCancel = lr.type === "yukyu_cancel";
       let lrLabel: string | null = null;
+      let cancelPending = false;
       if (lr.status === "pending") {
-        lrLabel = isYukyu ? "有給申請中" : "公休申請中";
+        if (isYukyuCancel) {
+          // 有給取消申請中：既存 attendance_daily.reason(有給) にバッジ的に併記する
+          cancelPending = true;
+        } else {
+          lrLabel = isYukyu ? "有給申請中" : "公休申請中";
+        }
       } else if (lr.status === "returned") {
         const reason = lr.reject_reason ? `（${lr.reject_reason}）` : "";
-        lrLabel = isYukyu ? `有給差し戻し${reason}` : `公休差し戻し${reason}`;
+        lrLabel = isYukyu ? `有給差し戻し${reason}` : isYukyuCancel ? `取消差し戻し${reason}` : `公休差し戻し${reason}`;
       }
-      if (!lrLabel) return;
+      if (!lrLabel && !cancelPending) return;
       const existing = merged.find(m => m.attendance_date === lr.attendance_date);
-      const lrMeta = lr.status === "returned" ? { returned_lr_id: lr.id } : {};
+      const lrMeta: Record<string, any> = lr.status === "returned" ? { returned_lr_id: lr.id } : {};
+      if (isYukyuCancel && cancelPending) lrMeta.cancel_pending_lr_id = lr.id;
       if (existing) {
-        // 差し戻しは attendance_daily の既存 reason より優先表示
-        if (lr.status === "returned") existing.reason = lrLabel;
-        else if (!existing.reason) existing.reason = lrLabel;
-        Object.assign(existing, lrMeta);
+        // 取消申請中は attendance_daily の既存 有給reason は上書きしない（バッジで別途表示）
+        if (isYukyuCancel && cancelPending) {
+          Object.assign(existing, lrMeta);
+        } else {
+          if (lr.status === "returned") existing.reason = lrLabel;
+          else if (!existing.reason) existing.reason = lrLabel;
+          Object.assign(existing, lrMeta);
+        }
       } else {
         merged.push({ attendance_date: lr.attendance_date, punch_in: null, punch_out: null, reason: lrLabel, actual_hours: null, over_under: null, ...lrMeta });
       }
@@ -866,6 +879,42 @@ export default function AttendanceTab({ employee }: { employee: any }) {
     loadData();
   };
 
+  /* ── 有給取消申請（承認済み有給日を本人が取り消し依頼、承認後に attendance_daily が更新される） ── */
+  const submitYukyuCancelRequest = () => {
+    if (!modalDay) return;
+    const originalReason = modalDay.reason || "有給（全日）";
+    showConfirm(`この日の有給（${originalReason}）を取り消し依頼しますか？\n承認後に残に戻ります。`, async () => {
+      setSaving(true);
+      // 既存の重複申請を掃除してから insert
+      await supabase.from("leave_requests")
+        .delete()
+        .eq("employee_id", employee.id)
+        .eq("attendance_date", modalDay.dateStr)
+        .eq("type", "yukyu_cancel");
+      const { error: reqErr } = await supabase.from("leave_requests").insert({
+        company_id: employee.company_id,
+        store_id: employee.store_id,
+        employee_id: employee.id,
+        attendance_date: modalDay.dateStr,
+        type: "yukyu_cancel",
+        status: "pending",
+        reason: originalReason,
+      });
+      setSaving(false);
+      if (reqErr) { showAlert("取消申請に失敗しました: " + reqErr.message); return; }
+      await supabase.from("change_requests").insert({
+        company_id: employee.company_id, employee_id: employee.id,
+        category: "有給取消申請",
+        detail: `${modalDay.dateStr} ${originalReason} の取消申請`, status: "未処理",
+      });
+      fetch(PUSH_URL, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "wc_leave_request", payload: { company_id: employee.company_id, employee_name: employee.full_name, reason: `有給取消申請（${originalReason}）`, attendance_date: modalDay.dateStr } }),
+      }).catch(() => {});
+      setModalDay(null); loadData();
+    }, "申請", "#DC2626");
+  };
+
   /* ── 事由取消 ── */
   const cancelReason = () => {
     if (!modalDay) return;
@@ -875,12 +924,12 @@ export default function AttendanceTab({ employee }: { employee: any }) {
       const { error } = await supabase.from("attendance_daily")
         .update({ reason: null, employee_note: null, updated_at: new Date().toISOString() })
         .eq("employee_id", employee.id).eq("attendance_date", modalDay.dateStr);
-      // leave_requests の公休/有給申請も削除
+      // leave_requests の公休/有給/取消申請も削除
       await supabase.from("leave_requests")
         .delete()
         .eq("employee_id", employee.id)
         .eq("attendance_date", modalDay.dateStr)
-        .in("type", ["shift_koukyuu", "yukyu"]);
+        .in("type", ["shift_koukyuu", "yukyu", "yukyu_cancel"]);
       setSaving(false);
       if (!error) {
         setModalDay(null); loadData();
@@ -1120,9 +1169,32 @@ export default function AttendanceTab({ employee }: { employee: any }) {
 
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => setModalDay(null)} style={{ flex: 1, padding: "12px", borderRadius: "6px", border: `1px solid ${T.border}`, backgroundColor: "#fff", color: T.textSec, fontSize: 14, cursor: "pointer" }}>閉じる</button>
-              {modalDay.reason && (
-                <button onClick={cancelReason} disabled={saving} style={{ flex: 1, padding: "12px", borderRadius: "6px", border: `1px solid ${T.danger}`, backgroundColor: "#fff", color: T.danger, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>{saving ? "..." : "取消"}</button>
-              )}
+              {modalDay.reason && (() => {
+                // 承認済み有給日（attendance_daily.reason に有給生値が入っている）は
+                // 「取消申請」= 池邉さんへ承認依頼を送る（本人が勝手に消せないようにする）。
+                // 有給以外（公休/欠勤/遅刻等）や pending 状態は従来通り「取消」で即消し可。
+                const raw: string = modalDay.reason;
+                const isApprovedYukyu =
+                  (raw.includes("有給（全日）") || raw.includes("午前有給") || raw.includes("午後有給"))
+                  && !raw.includes("申請中")
+                  && !raw.includes("差し戻し");
+                const alreadyCancelPending = !!(modalDay as any).cancel_pending_lr_id;
+                if (isApprovedYukyu) {
+                  if (alreadyCancelPending) {
+                    return (
+                      <span style={{ flex: 1, padding: "12px", borderRadius: "6px", border: `1px solid ${T.warning}`, backgroundColor: "#FFFDE7", color: T.warning, fontSize: 12, fontWeight: 600, textAlign: "center" }}>
+                        取消申請中
+                      </span>
+                    );
+                  }
+                  return (
+                    <button onClick={submitYukyuCancelRequest} disabled={saving} style={{ flex: 1, padding: "12px", borderRadius: "6px", border: `1px solid ${T.danger}`, backgroundColor: "#fff", color: T.danger, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>{saving ? "..." : "取消申請"}</button>
+                  );
+                }
+                return (
+                  <button onClick={cancelReason} disabled={saving} style={{ flex: 1, padding: "12px", borderRadius: "6px", border: `1px solid ${T.danger}`, backgroundColor: "#fff", color: T.danger, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>{saving ? "..." : "取消"}</button>
+                );
+              })()}
               {selOvertime ? (
                 <button onClick={submitOvertime} disabled={saving || !overtimeReason.trim()} style={{ flex: 1, padding: "12px", borderRadius: "6px", border: "none", backgroundColor: (saving || !overtimeReason.trim()) ? T.border : T.warning, color: (saving || !overtimeReason.trim()) ? T.textMuted : "#fff", fontSize: 14, fontWeight: 600, cursor: (saving || !overtimeReason.trim()) ? "default" : "pointer" }}>{saving ? "申請中..." : "残業申請"}</button>
               ) : (() => {

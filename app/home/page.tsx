@@ -171,7 +171,7 @@ export default function HomePage() {
         const { data: urgentReqs } = await supabase.from("leave_requests")
           .select("attendance_date")
           .eq("company_id", employee.company_id)
-          .in("type", ["shift_koukyuu", "yukyu"])
+          .in("type", ["shift_koukyuu", "yukyu", "yukyu_cancel"])
           .eq("status", "pending");
         (urgentReqs || []).forEach((r: any) => {
           if (confirmedMonths.has(periodOfDateStr(r.attendance_date))) adminTotal++;

@@ -1394,14 +1394,14 @@ export default function AdminTab({ employee }: { employee: any }) {
         const { data: urgentReqs } = await supabase.from("leave_requests")
           .select("type, attendance_date")
           .eq("company_id", employee.company_id)
-          .in("type", ["shift_koukyuu", "yukyu"])
+          .in("type", ["shift_koukyuu", "yukyu", "yukyu_cancel"])
           .eq("status", "pending");
         let shiftUrgent = 0, yukyuUrgent = 0;
         (urgentReqs || []).forEach((r: any) => {
           const m = periodOfDateStr(r.attendance_date);
           if (!confirmedMonths.has(m)) return;
           if (r.type === "shift_koukyuu") shiftUrgent++;
-          else yukyuUrgent++;
+          else if (r.type === "yukyu" || r.type === "yukyu_cancel") yukyuUrgent++;
         });
         if (shiftUrgent > 0) badges["shift"] = shiftUrgent;
         if (yukyuUrgent > 0) badges["paidleave"] = yukyuUrgent;
