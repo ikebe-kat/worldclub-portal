@@ -1,6 +1,9 @@
 # ワールドクラブポータル ハンドオフ
 # 最終更新: 2026/05/01
 
+## 【最優先原則・全作業に優先】
+既存(他社KAT/明石/WC・既存トリガー/関数・他の機能)を壊さず、付け焼刃・対症療法・その場しのぎ・二重管理をせず、「メンテしやすい美しいコードと設計・仕組み」で実装することが最優先。目先のエラーを最小手数で消すだけで満足せず、最小手数かつシステムとして綺麗な設計になる道を必ず選ぶ。所定・残高・区分・残業時間などの「事実」はDB1箇所に持たせ、フロントで上書き・二重管理しない。既存トリガー変更の怖さや保護ルールを、正しい設計から逃げる言い訳にしない。値を変える前に①なぜ存在するか②どこに繋がるか③変えたら全経路にどう波及するかを事実確認してから設計する。
+
 ## プロジェクト基本情報
 - GitHub: ikebe-kat/worldclub-portal
 - Vercel: https://worldclub-portal.vercel.app
@@ -146,3 +149,19 @@
 - paid_leave_grants等への書き込み時にトリガーが再発火してbreak_minutesを上書きするリスクがある
 - WCのattendance_dailyに対するINSERT/UPDATEを行う際は、必ず松浦さんの休憩が40分のままか確認すること
 - 確認SQL: `SELECT attendance_date, break_minutes FROM attendance_daily WHERE employee_id = (SELECT id FROM employees WHERE employee_code = 'WC015' AND company_id = 'c2d368f0-aa9b-4f70-b082-43ec07723d6c') AND attendance_date >= '2026-05-01' ORDER BY attendance_date;`
+
+---
+
+## 【絶対ルール】有給データ（paid_leave_grants / paid_leave_balances）は訴訟リスク
+
+### データ保護ルール
+- 有給データの削除・変更は訴訟問題に直結する。テストデータ削除時に有給テーブルを巻き込んで消すな
+- テストデータ削除は必ず全テーブルを漏れなく確認してから実行。有給テーブルは絶対に対象に含めるな
+- 有給のINSERT/UPDATE/DELETE実行前に必ず池邉さんに確認を取れ
+- 有給データ変更後は必ず松浦さん（WC015）のbreak_minutesが40のままか確認すること（トリガー連鎖発火リスク）
+- 勤怠データ（attendance_daily）も同様に訴訟リスク。勝手に変更するな
+
+### 有給登録→消化→取消のフロー
+- 有給を登録したらpaid_leave_grantsのremaining_daysが減る、paid_leave_balancesのconsumedが増える
+- 有給を取消したらremaining_daysが戻る、consumedが減る
+- この当たり前の仕組みがバグなく動くことを常に確認せよ
