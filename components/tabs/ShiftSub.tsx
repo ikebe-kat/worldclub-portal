@@ -99,7 +99,7 @@ const periodDowLocal = (yr: number, mo: number, idx: number): number =>
   new Date(periodDateAtLocal(yr, mo, idx) + "T00:00:00").getDay();
 
 
-export default function ShiftSub({ employee }: { employee: any }) {
+export default function ShiftSub({ employee, onBadgeRefresh }: { employee: any; onBadgeRefresh?: () => void }) {
   // 本物の月度が決まるまで periodReady=false（その間は描画しない＝チラつき防止）。
   // yr/mo の placeholder は 0/0 だが、periodReady=false の間は JSX が早期 return する。
   const [yr, setYr] = useState<number>(0);
@@ -543,6 +543,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
           body: JSON.stringify({ type: "request_processed", payload: { employee_id: approvedEmpId, category: "公休申請", status: "承認" } }),
         }).catch(() => {});
         loadData();
+        onBadgeRefresh?.();
       }
     } finally {
       processingReqRef.current.delete(reqId);
@@ -601,6 +602,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
 
       setPendingDialog(null);
       loadData();
+      onBadgeRefresh?.();
     } finally {
       processingReqRef.current.delete(_reqId);
     }
@@ -908,6 +910,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
       }),
     }).catch(() => {});
     loadData();
+    onBadgeRefresh?.();
   };
 
   // 有給申請リストパネル(L977)の承認ボタン。共通関数に委譲。
@@ -997,6 +1000,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
       }),
     }).catch(() => {});
     loadData();
+    onBadgeRefresh?.();
   };
 
   const rejectYukyu = async () => {
@@ -1036,6 +1040,7 @@ export default function ShiftSub({ employee }: { employee: any }) {
       }
       setYukyuReturnInput(null);
       loadData();
+      onBadgeRefresh?.();
     } finally {
       processingReqRef.current.delete(_id);
     }

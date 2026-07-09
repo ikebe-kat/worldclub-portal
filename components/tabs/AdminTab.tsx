@@ -1329,7 +1329,7 @@ const DocumentsSub = ({ employee }: { employee: any }) => {
   );
 };
 
-export default function AdminTab({ employee }: { employee: any }) {
+export default function AdminTab({ employee, onBadgeRefresh }: { employee: any; onBadgeRefresh?: () => void }) {
   const myCode = employee?.employee_code || "";
   const isOwner = OWNER_CODES.includes(myCode);
   const isSuper = SUPER_CODES.includes(myCode);
@@ -1359,62 +1359,69 @@ export default function AdminTab({ employee }: { employee: any }) {
   const isSingleTabGroup = groupTabs.length <= 1;
 
   const [subBadges, setSubBadges] = useState<Record<string, number>>({});
+  const fetchSubBadges = useCallback(async () => {
+    if (!employee?.company_id) return;
+    const badges: Record<string, number> = {};
+    const { count: otCount } = await supabase.from("wc_overtime_requests").select("id", { count: "exact", head: true }).eq("company_id", employee.company_id).eq("status", "pending");
+    if ((otCount || 0) > 0) badges["req_overtime"] = otCount || 0;
+    const { count: crCount } = await supabase.from("change_requests").select("id", { count: "exact", head: true }).eq("company_id", employee.company_id).eq("status", "未処理");
+    if ((crCount || 0) > 0) {
+      const { data: crData } = await supabase.from("change_requests").select("category").eq("company_id", employee.company_id).eq("status", "未処理");
+      let yukyu = 0, other = 0, infoChange = 0;
+      const INFO_CATS = ["住所変更", "口座変更", "扶養追加", "扶養削除", "その他"];
+      (crData || []).forEach((r: any) => {
+        if (r.category.includes("有給")) yukyu++;
+        else if (INFO_CATS.includes(r.category)) infoChange++;
+        else if (!r.category.includes("残業")) other++;
+      });
+      if (yukyu > 0) badges["req_yukyu"] = yukyu;
+      if (other > 0) badges["req_other"] = other;
+      if (infoChange > 0) badges["req_info_change"] = infoChange;
+    }
+    const _today = new Date();
+    const todayStr = `${_today.getFullYear()}-${String(_today.getMonth() + 1).padStart(2, "0")}-${String(_today.getDate()).padStart(2, "0")}`;
+    const todayMonth = periodOfDateStr(todayStr);
+    const { data: futureConfs } = await supabase.from("shift_confirmations")
+      .select("target_month")
+      .eq("company_id", employee.company_id)
+      .not("confirmed_at", "is", null)
+      .gte("target_month", todayMonth);
+    const confirmedMonths = new Set<string>([
+      ...(futureConfs || []).map((c: any) => c.target_month as string),
+    ]);
+    if (confirmedMonths.size > 0) {
+      const { data: urgentReqs } = await supabase.from("leave_requests")
+        .select("type, attendance_date")
+        .eq("company_id", employee.company_id)
+        .in("type", ["shift_koukyuu", "yukyu", "yukyu_cancel"])
+        .eq("status", "pending");
+      let shiftUrgent = 0, yukyuUrgent = 0;
+      (urgentReqs || []).forEach((r: any) => {
+        const m = periodOfDateStr(r.attendance_date);
+        if (!confirmedMonths.has(m)) return;
+        if (r.type === "shift_koukyuu") shiftUrgent++;
+        else if (r.type === "yukyu" || r.type === "yukyu_cancel") yukyuUrgent++;
+      });
+      if (shiftUrgent > 0) badges["shift"] = shiftUrgent;
+      if (yukyuUrgent > 0) badges["paidleave"] = yukyuUrgent;
+    }
+
+    setSubBadges(badges);
+  }, [employee?.company_id]);
+
+  const handleShiftBadgeRefresh = useCallback(() => {
+    fetchSubBadges();
+    onBadgeRefresh?.();
+  }, [fetchSubBadges, onBadgeRefresh]);
+
   useEffect(() => {
     if (!employee?.company_id) return;
-    const fetchBadges = async () => {
-      const badges: Record<string, number> = {};
-      const { count: otCount } = await supabase.from("wc_overtime_requests").select("id", { count: "exact", head: true }).eq("company_id", employee.company_id).eq("status", "pending");
-      if ((otCount || 0) > 0) badges["req_overtime"] = otCount || 0;
-      const { count: crCount } = await supabase.from("change_requests").select("id", { count: "exact", head: true }).eq("company_id", employee.company_id).eq("status", "未処理");
-      if ((crCount || 0) > 0) {
-        const { data: crData } = await supabase.from("change_requests").select("category").eq("company_id", employee.company_id).eq("status", "未処理");
-        let yukyu = 0, other = 0, infoChange = 0;
-        const INFO_CATS = ["住所変更", "口座変更", "扶養追加", "扶養削除", "その他"];
-        (crData || []).forEach((r: any) => {
-          if (r.category.includes("有給")) yukyu++;
-          else if (INFO_CATS.includes(r.category)) infoChange++;
-          else if (!r.category.includes("残業")) other++;
-        });
-        if (yukyu > 0) badges["req_yukyu"] = yukyu;
-        if (other > 0) badges["req_other"] = other;
-        if (infoChange > 0) badges["req_info_change"] = infoChange;
-      }
-      const _today = new Date();
-      const todayStr = `${_today.getFullYear()}-${String(_today.getMonth() + 1).padStart(2, "0")}-${String(_today.getDate()).padStart(2, "0")}`;
-      const todayMonth = periodOfDateStr(todayStr);
-      const { data: futureConfs } = await supabase.from("shift_confirmations")
-        .select("target_month")
-        .eq("company_id", employee.company_id)
-        .not("confirmed_at", "is", null)
-        .gte("target_month", todayMonth);
-      const confirmedMonths = new Set<string>([
-        ...(futureConfs || []).map((c: any) => c.target_month as string),
-      ]);
-      if (confirmedMonths.size > 0) {
-        const { data: urgentReqs } = await supabase.from("leave_requests")
-          .select("type, attendance_date")
-          .eq("company_id", employee.company_id)
-          .in("type", ["shift_koukyuu", "yukyu", "yukyu_cancel"])
-          .eq("status", "pending");
-        let shiftUrgent = 0, yukyuUrgent = 0;
-        (urgentReqs || []).forEach((r: any) => {
-          const m = periodOfDateStr(r.attendance_date);
-          if (!confirmedMonths.has(m)) return;
-          if (r.type === "shift_koukyuu") shiftUrgent++;
-          else if (r.type === "yukyu" || r.type === "yukyu_cancel") yukyuUrgent++;
-        });
-        if (shiftUrgent > 0) badges["shift"] = shiftUrgent;
-        if (yukyuUrgent > 0) badges["paidleave"] = yukyuUrgent;
-      }
-
-      setSubBadges(badges);
-    };
-    fetchBadges();
-    const ch1 = supabase.channel("wc_overtime_badge").on("postgres_changes", { event: "*", schema: "public", table: "wc_overtime_requests", filter: `company_id=eq.${employee.company_id}` }, () => fetchBadges()).subscribe();
-    const ch2 = supabase.channel("wc_cr_badge").on("postgres_changes", { event: "*", schema: "public", table: "change_requests", filter: `company_id=eq.${employee.company_id}` }, () => fetchBadges()).subscribe();
-    const ch3 = supabase.channel("wc_urgent_badge").on("postgres_changes", { event: "*", schema: "public", table: "leave_requests", filter: `company_id=eq.${employee.company_id}` }, () => fetchBadges()).subscribe();
+    fetchSubBadges();
+    const ch1 = supabase.channel("wc_overtime_badge").on("postgres_changes", { event: "*", schema: "public", table: "wc_overtime_requests", filter: `company_id=eq.${employee.company_id}` }, () => fetchSubBadges()).subscribe();
+    const ch2 = supabase.channel("wc_cr_badge").on("postgres_changes", { event: "*", schema: "public", table: "change_requests", filter: `company_id=eq.${employee.company_id}` }, () => fetchSubBadges()).subscribe();
+    const ch3 = supabase.channel("wc_urgent_badge").on("postgres_changes", { event: "*", schema: "public", table: "leave_requests", filter: `company_id=eq.${employee.company_id}` }, () => fetchSubBadges()).subscribe();
     return () => { supabase.removeChannel(ch1); supabase.removeChannel(ch2); supabase.removeChannel(ch3); };
-  }, [employee?.company_id]);
+  }, [employee?.company_id, fetchSubBadges]);
 
   const groupBadge = (gid: GroupId): number => {
     return visibleTabs.filter(t => t.group === gid).reduce((sum, t) => sum + (subBadges[t.id] || 0), 0);
@@ -1461,7 +1468,7 @@ export default function AdminTab({ employee }: { employee: any }) {
       {sub === "individual" && <IndividualSub employee={employee} />}
       {sub === "daily" && <DailySub employee={employee} />}
       {sub === "monthly" && <MonthlySub employee={employee} />}
-      {sub === "shift" && <ShiftSub employee={employee} />}
+      {sub === "shift" && <ShiftSub employee={employee} onBadgeRefresh={handleShiftBadgeRefresh} />}
       {sub === "paidleave" && <PaidLeaveSub employee={employee} />}
       {sub === "sharoushi" && <SharoushiSub employee={employee} />}
       {sub === "req_overtime" && <RequestsSub employee={employee} categoryFilter={["残業"]} />}

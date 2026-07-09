@@ -310,7 +310,7 @@ export default function HomePage() {
         {tab === "calendar"   && <CalendarTab employee={employee} />}
         {tab === "roster"     && <RosterTab employee={employee} />}
         {tab === "documents"  && <DocumentsTab employee={employee} />}
-        {tab === "admin"      && <AdminTab employee={employee} />}
+        {tab === "admin"      && <AdminTab employee={employee} onBadgeRefresh={fetchBadges} />}
       </main>
 
       <PushPermission employeeId={employee.id} />
