@@ -34,6 +34,7 @@ interface AttendanceEvent {
   reason: string;
   calGroup: string;
   emp_code: string;
+  calDisplayName?: string | null;
 }
 
 // ── ユーティリティ ──────────────────────────
@@ -369,7 +370,7 @@ export default function CalendarTab({ employee }: { employee: any }) {
 
     const { data: attData } = await supabase
       .from("attendance_daily")
-      .select("employee_id, attendance_date, reason, employees!inner(full_name, employee_code, store_id, department)")
+      .select("employee_id, attendance_date, reason, employees!inner(full_name, employee_code, store_id, department, calendar_display_name)")
       .eq("company_id", employee.company_id)
       .gte("attendance_date", monthStart)
       .lte("attendance_date", monthEnd)
@@ -392,6 +393,7 @@ export default function CalendarTab({ employee }: { employee: any }) {
         attendance_date: row.attendance_date,
         reason: row.reason,
         calGroup: storeIdToCalGroup((row.employees as any)?.store_id || null, (row.employees as any)?.department || null),
+        calDisplayName: (row.employees as any)?.calendar_display_name || null,
       }));
 
     setAttEvents(mapped);
@@ -498,7 +500,7 @@ export default function CalendarTab({ employee }: { employee: any }) {
             <div style={{ fontSize: 11, color: T.textMuted, marginBottom: 6, fontWeight: 600 }}>勤怠</div>
             {selAtt.map((a, i) => (
               <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: `1px solid ${T.borderLight}` }}>
-                <span style={{ fontSize: 13, fontWeight: 600, flexShrink: 0 }}>{calendarDisplayName(a.full_name, a.emp_code)}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, flexShrink: 0 }}>{calendarDisplayName(a.full_name, a.calDisplayName, attEvents.map(e => e.full_name))}</span>
                 <ReasonBadges reason={displayReason(a.reason, (a as any).emp_code || "") || a.reason} />
               </div>
             ))}
@@ -635,7 +637,7 @@ export default function CalendarTab({ employee }: { employee: any }) {
                             backgroundColor: isYukyu ? "#DBEAFE" : isKibou ? "#FEF9C3" : "#DCFCE7",
                             color: isYukyu ? T.yukyuBlue : isKibou ? T.warning : T.kinmuGreen,
                             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                          }}>{calendarDisplayName(a.full_name, a.emp_code)}{isMobile ? "" : "　" + displayR.replace(/（.*?）/g, "")}</div>
+                          }}>{calendarDisplayName(a.full_name, a.calDisplayName, attEvents.map(e => e.full_name))}{isMobile ? "" : "　" + displayR.replace(/（.*?）/g, "")}</div>
                         );
                       })}
                       {/* カスタム予定バッジ（残り枠） */}

@@ -70,12 +70,15 @@ export const stepMonth = (
   return [ny, nm];
 };
 
-/** カレンダー用の短縮表示名（同姓対策） */
-const CAL_DISPLAY_OVERRIDES: Record<string, string> = {};
-export function calendarDisplayName(fullName: string, empCode?: string): string {
-  if (empCode && CAL_DISPLAY_OVERRIDES[empCode]) return CAL_DISPLAY_OVERRIDES[empCode];
-  const parts = fullName.split(" ");
+/** カレンダー用の短縮表示名（同姓自動判定 + DB上書き） */
+export function calendarDisplayName(fullName: string, displayOverride?: string | null, allFullNames?: string[]): string {
+  if (displayOverride) return displayOverride;
+  const parts = (fullName || "").split(/\s+/);
   const surname = parts[0] || fullName;
+  const given = parts[1] || "";
+  if (allFullNames && given && allFullNames.filter(n => (n || "").split(/\s+/)[0] === surname).length >= 2) {
+    return surname + given.charAt(0);
+  }
   return surname;
 }
 

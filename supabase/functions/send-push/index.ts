@@ -13,7 +13,18 @@ const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 /* ── ユーティリティ ── */
-const lastName = (fullName: string) => (fullName || "").split(/\s+/)[0] || fullName;
+const lastName = (fullName: string, displayOverride?: string | null, allNames?: string[]) => {
+  if (displayOverride) return displayOverride;
+  const parts = (fullName || "").split(/\s+/);
+  const surname = parts[0] || fullName;
+  if (allNames) {
+    const given = parts[1] || "";
+    if (given && allNames.filter(n => (n || "").split(/\s+/)[0] === surname).length >= 2) {
+      return surname + given.charAt(0);
+    }
+  }
+  return surname;
+};
 const ALL_CALENDAR_CODES = ["002", "018", "067", "003", "009", "006", "049"];
 const GYOMU_DEPTS = ["人事", "経理", "DX"];
 const HAMAMURA_CODE = "095";
@@ -85,7 +96,7 @@ serve(async (req) => {
     // 共通: 従業員・店舗取得ヘルパー
     async function getEmpsAndStores(companyId: string) {
       const { data: allEmps } = await sb.from("employees")
-        .select("id, employee_code, full_name, store_id, department, employment_type, holiday_calendar")
+        .select("id, employee_code, full_name, store_id, department, employment_type, holiday_calendar, calendar_display_name")
         .eq("company_id", companyId)
         .eq("is_active", true);
       const { data: stores } = await sb.from("stores")
@@ -107,9 +118,11 @@ serve(async (req) => {
       const title = isCreate
         ? `${creatorName}が予定を登録しました`
         : `${creatorName}が予定を削除しました`;
-      const body = `${calLabel}：${lastName(creatorName)}　${event.title} ${shortDate(event.start_date)}`;
 
       const { allEmps, storeMap } = await getEmpsAndStores(event.company_id);
+      const allNames = allEmps.map((e: any) => e.full_name);
+      const creatorEmp = allEmps.find((e: any) => e.full_name === creatorName);
+      const body = `${calLabel}：${lastName(creatorName, creatorEmp?.calendar_display_name, allNames)}　${event.title} ${shortDate(event.start_date)}`;
 
       for (const emp of allEmps) {
         const storeName = storeMap[emp.store_id] || "";
@@ -178,7 +191,8 @@ serve(async (req) => {
       if (payload.end_date && payload.end_date !== attendance_date) {
         bodyDate = `${dateShort}～${shortDate(payload.end_date)}`;
       }
-      const body = `${storeShort}：${lastName(employee_name)}　${bodyDate}`;
+      const allNames1 = _emps1.map((e: any) => e.full_name);
+      const body = `${storeShort}：${lastName(employee_name, _emp1?.calendar_display_name, allNames1)}　${bodyDate}`;
 
       const { allEmps, storeMap } = await getEmpsAndStores(company_id);
 
@@ -228,7 +242,8 @@ serve(async (req) => {
       else return new Response(JSON.stringify({ sent: 0, reason: "not a notifiable reason" }));
 
       const title = `${employee_name}が${reasonLabel}を取り消しました`;
-      const body = `${storeShort}：${lastName(employee_name)}　${dateShort}`;
+      const allNames2 = _emps2.map((e: any) => e.full_name);
+      const body = `${storeShort}：${lastName(employee_name, _emp2?.calendar_display_name, allNames2)}　${dateShort}`;
 
       const { allEmps, storeMap } = await getEmpsAndStores(company_id);
 
@@ -283,7 +298,7 @@ serve(async (req) => {
         (hcData || []).forEach((h: any) => { holidayCalSet.add(h.calendar_type); });
       }
 
-      const unpunched: { id: string; code: string; name: string; storeName: string; department: string }[] = [];
+      const unpunched: { id: string; code: string; name: string; storeName: string; department: string; calDisplayName?: string | null }[] = [];
       const dateShort = shortDate(target_date);
 
       for (const emp of allEmps) {
@@ -311,6 +326,7 @@ serve(async (req) => {
             name: emp.full_name,
             storeName: storeMap[emp.store_id] || "",
             department: emp.department || "",
+            calDisplayName: emp.calendar_display_name || null,
           });
         }
       }
@@ -339,7 +355,8 @@ serve(async (req) => {
         const mgrUnpunched = unpunched.filter(mgr.filter);
         if (mgrUnpunched.length === 0) continue;
 
-        const names = mgrUnpunched.slice(0, 5).map(u => lastName(u.name)).join("、");
+        const allNamesAlert = allEmps.map((e: any) => e.full_name);
+        const names = mgrUnpunched.slice(0, 5).map(u => lastName(u.name, u.calDisplayName, allNamesAlert)).join("、");
         const suffix = mgrUnpunched.length > 5 ? `、他${mgrUnpunched.length - 5}名` : "";
 
         targets.push({
@@ -371,9 +388,10 @@ serve(async (req) => {
 
       const { allEmps, storeMap } = await getEmpsAndStores(company_id);
 
-      const empMap: Record<string, { name: string; storeName: string; department: string; code: string }> = {};
+      const allNames = allEmps.map((e: any) => e.full_name);
+      const empMap: Record<string, { name: string; storeName: string; department: string; code: string; calDisplayName?: string | null }> = {};
       allEmps.forEach((e: any) => {
-        empMap[e.id] = { name: e.full_name, storeName: storeMap[e.store_id] || "", department: e.department || "", code: e.employee_code };
+        empMap[e.id] = { name: e.full_name, storeName: storeMap[e.store_id] || "", department: e.department || "", code: e.employee_code, calDisplayName: e.calendar_display_name || null };
       });
 
       const leaveItems: { label: string; targetCal: string }[] = [];
@@ -381,16 +399,17 @@ serve(async (req) => {
         const emp = empMap[att.employee_id];
         if (!emp) continue;
         const r = att.reason;
+        const dn = lastName(emp.name, emp.calDisplayName, allNames);
         let label = "";
-        if (r.includes("有給（全日）")) label = `${lastName(emp.name)}:有給`;
-        else if (r.includes("午前有給")) label = `${lastName(emp.name)}:午前有給`;
-        else if (r.includes("午後有給")) label = `${lastName(emp.name)}:午後有給`;
-        else if (r.includes("希望休（全日）")) label = `${lastName(emp.name)}:希望休`;
-        else if (r.includes("午前希望休")) label = `${lastName(emp.name)}:午前希望休`;
-        else if (r.includes("午後希望休")) label = `${lastName(emp.name)}:午後希望休`;
-        else if (r.includes("代休")) label = `${lastName(emp.name)}:代休`;
-        else if (r.includes("出張")) label = `${lastName(emp.name)}:出張`;
-        else if (r === "休職") label = `${lastName(emp.name)}:休職`;
+        if (r.includes("有給（全日）")) label = `${dn}:有給`;
+        else if (r.includes("午前有給")) label = `${dn}:午前有給`;
+        else if (r.includes("午後有給")) label = `${dn}:午後有給`;
+        else if (r.includes("希望休（全日）")) label = `${dn}:希望休`;
+        else if (r.includes("午前希望休")) label = `${dn}:午前希望休`;
+        else if (r.includes("午後希望休")) label = `${dn}:午後希望休`;
+        else if (r.includes("代休")) label = `${dn}:代休`;
+        else if (r.includes("出張")) label = `${dn}:出張`;
+        else if (r === "休職") label = `${dn}:休職`;
         else continue;
 
         const tc = resolveCalendarGroup(emp.code, emp.department, emp.storeName);
@@ -490,6 +509,8 @@ serve(async (req) => {
       const { company_id, employee_name, reason, attendance_date } = payload;
       const WC_NOTIFY_CODES = ["WC001", "W67", "W49"];
       const { allEmps } = await getEmpsAndStores(company_id);
+      const allNamesWc = allEmps.map((e: any) => e.full_name);
+      const reqEmp = allEmps.find((e: any) => e.full_name === employee_name);
       const dateShort = shortDate(attendance_date);
       let reasonLabel = reason;
       if (reason === "有給（全日）") reasonLabel = "有給（全日）";
@@ -499,7 +520,7 @@ serve(async (req) => {
         if (emp) {
           targets.push({
             employee_id: emp.id,
-            title: `${lastName(employee_name)}が${reasonLabel}を申請`,
+            title: `${lastName(employee_name, reqEmp?.calendar_display_name, allNamesWc)}が${reasonLabel}を申請`,
             body: dateShort,
             tag: "wc-leave-request",
             url: "/home",
@@ -529,13 +550,15 @@ serve(async (req) => {
     if (type === "wc_info_change_request") {
       const { company_id, employee_name, category } = payload;
       const { allEmps } = await getEmpsAndStores(company_id);
+      const allNamesIc = allEmps.map((e: any) => e.full_name);
+      const icEmp = allEmps.find((e: any) => e.full_name === employee_name);
       const W67_CODES = ["W67"];
       for (const code of W67_CODES) {
         const emp = allEmps.find((e: any) => e.employee_code === code);
         if (emp) {
           targets.push({
             employee_id: emp.id,
-            title: `${lastName(employee_name)}が情報変更を申請`,
+            title: `${lastName(employee_name, icEmp?.calendar_display_name, allNamesIc)}が情報変更を申請`,
             body: category || "情報変更申請",
             tag: "wc-info-change",
             url: "/home",
