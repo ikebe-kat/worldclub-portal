@@ -349,6 +349,7 @@ export default function CalendarTab({ employee }: { employee: any }) {
   // Supabaseデータ
   const [customEvents, setCustomEvents] = useState<CustomEvent[]>([]);
   const [attEvents, setAttEvents] = useState<AttendanceEvent[]>([]);
+  const [surnameRoster, setSurnameRoster] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
   // ── データ取得 ──────────────────────────
@@ -397,6 +398,14 @@ export default function CalendarTab({ employee }: { employee: any }) {
       }));
 
     setAttEvents(mapped);
+
+    const { data: rosterData } = await supabase
+      .from("employees")
+      .select("full_name")
+      .eq("company_id", employee.company_id)
+      .eq("is_active", true);
+    setSurnameRoster([...new Set((rosterData || []).map((e: any) => e.full_name as string).filter(Boolean))]);
+
     setLoading(false);
   }, [yr, mo, employee?.company_id, empCode]);
 
@@ -500,7 +509,7 @@ export default function CalendarTab({ employee }: { employee: any }) {
             <div style={{ fontSize: 11, color: T.textMuted, marginBottom: 6, fontWeight: 600 }}>勤怠</div>
             {selAtt.map((a, i) => (
               <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: `1px solid ${T.borderLight}` }}>
-                <span style={{ fontSize: 13, fontWeight: 600, flexShrink: 0 }}>{calendarDisplayName(a.full_name, a.calDisplayName, attEvents.map(e => e.full_name))}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, flexShrink: 0 }}>{calendarDisplayName(a.full_name, a.calDisplayName, surnameRoster)}</span>
                 <ReasonBadges reason={displayReason(a.reason, (a as any).emp_code || "") || a.reason} />
               </div>
             ))}
@@ -637,7 +646,7 @@ export default function CalendarTab({ employee }: { employee: any }) {
                             backgroundColor: isYukyu ? "#DBEAFE" : isKibou ? "#FEF9C3" : "#DCFCE7",
                             color: isYukyu ? T.yukyuBlue : isKibou ? T.warning : T.kinmuGreen,
                             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                          }}>{calendarDisplayName(a.full_name, a.calDisplayName, attEvents.map(e => e.full_name))}{isMobile ? "" : "　" + displayR.replace(/（.*?）/g, "")}</div>
+                          }}>{calendarDisplayName(a.full_name, a.calDisplayName, surnameRoster)}{isMobile ? "" : "　" + displayR.replace(/（.*?）/g, "")}</div>
                         );
                       })}
                       {/* カスタム予定バッジ（残り枠） */}

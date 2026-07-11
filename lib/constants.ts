@@ -76,8 +76,11 @@ export function calendarDisplayName(fullName: string, displayOverride?: string |
   const parts = (fullName || "").split(/\s+/);
   const surname = parts[0] || fullName;
   const given = parts[1] || "";
-  if (allFullNames && given && allFullNames.filter(n => (n || "").split(/\s+/)[0] === surname).length >= 2) {
-    return surname + given.charAt(0);
+  if (allFullNames && given) {
+    const unique = [...new Set(allFullNames)];
+    if (unique.filter(n => (n || "").split(/\s+/)[0] === surname).length >= 2) {
+      return surname + given.charAt(0);
+    }
   }
   return surname;
 }

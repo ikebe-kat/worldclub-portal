@@ -19,7 +19,8 @@ const lastName = (fullName: string, displayOverride?: string | null, allNames?: 
   const surname = parts[0] || fullName;
   if (allNames) {
     const given = parts[1] || "";
-    if (given && allNames.filter(n => (n || "").split(/\s+/)[0] === surname).length >= 2) {
+    const unique = [...new Set(allNames)];
+    if (given && unique.filter(n => (n || "").split(/\s+/)[0] === surname).length >= 2) {
       return surname + given.charAt(0);
     }
   }
