@@ -65,11 +65,18 @@ export default function SharoushiSub({ employee }: { employee: any }) {
     setLoading(true);
     try {
       setProgress("従業員データ取得中...");
-      const { data: empRaw, error: empErr } = await supabase.from("employees")
-        .select("id, employee_code, full_name, employment_type, store_id, holiday_calendar")
-        .eq("company_id", employee.company_id).or("is_active.is.null,is_active.eq.true").order("employee_code");
+      const { data: empRawAll, error: empErr } = await supabase.from("employees")
+        .select("id, employee_code, full_name, employment_type, store_id, holiday_calendar, resigned_at")
+        .eq("company_id", employee.company_id).order("employee_code");
       if (empErr) throw empErr;
-      if (!empRaw?.length) { setDialogMsg("従業員データがありません"); return; }
+      if (!empRawAll?.length) { setDialogMsg("従業員データがありません"); return; }
+      const selKey = selYear * 12 + selMonth;
+      const empRaw = empRawAll.filter((e: any) => {
+        if (!e.resigned_at) return true;
+        const m = String(e.resigned_at).match(/^(\d{4})-(\d{2})/);
+        if (!m) return true;
+        return selKey <= parseInt(m[1], 10) * 12 + parseInt(m[2], 10);
+      });
 
       const { data: stRaw } = await supabase.from("stores").select("id, store_code, store_name").eq("company_id", employee.company_id);
       const stMap = new Map((stRaw || []).map((s: any) => [s.id, { code: s.store_code || "000", name: s.store_name || "指定なし" }]));

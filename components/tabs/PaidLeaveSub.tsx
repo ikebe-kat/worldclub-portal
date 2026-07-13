@@ -43,11 +43,19 @@ export default function PaidLeaveSub({ employee }: { employee: any }) {
 
     const { data: ed } = await supabase
       .from("employees")
-      .select("id, employee_code, full_name, store_id")
+      .select("id, employee_code, full_name, store_id, resigned_at")
       .eq("company_id", COMPANY_ID)
-      .eq("is_active", true)
       .order("employee_code");
-    const emps = (ed || []).filter((e: any) => !["W02","W49","W67"].includes(e.employee_code));
+    const nowD = new Date();
+    const curKey = nowD.getFullYear() * 12 + (nowD.getMonth() + 1);
+    const emps = (ed || []).filter((e: any) => {
+      if (["W02","W49","W67"].includes(e.employee_code)) return false;
+      if (e.resigned_at) {
+        const m = String(e.resigned_at).match(/^(\d{4})-(\d{2})/);
+        if (m && curKey > parseInt(m[1], 10) * 12 + parseInt(m[2], 10)) return false;
+      }
+      return true;
+    });
 
     const { data: grantData } = await supabase
       .from("paid_leave_grants")
