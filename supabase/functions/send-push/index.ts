@@ -677,6 +677,18 @@ serve(async (req) => {
     }
 
     // ============================
+    // 送信直前: 退職者を除外（全タイプ共通の最終防衛線）
+    if (targets.length > 0) {
+      const empIds = [...new Set(targets.map(t => t.employee_id))];
+      const { data: activeEmps } = await sb.from("employees")
+        .select("id")
+        .in("id", empIds)
+        .or("is_active.is.null,is_active.eq.true")
+        .is("resigned_at", null);
+      const activeSet = new Set((activeEmps || []).map(e => e.id));
+      targets = targets.filter(t => activeSet.has(t.employee_id));
+    }
+
     // 通知送信
     // ============================
     let sent = 0;
