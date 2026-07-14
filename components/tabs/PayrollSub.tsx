@@ -387,6 +387,169 @@ function CalcView({ employee }: { employee: any }) {
     setTimeout(() => w.print(), 400);
   };
 
+  const exportExcel = async () => {
+    if (rows.length === 0) return;
+    const ExcelJS = (await import("exceljs")).default;
+    const wb = new ExcelJS.Workbook();
+
+    const thin: any = { top: { style: "thin" }, left: { style: "thin" }, bottom: { style: "thin" }, right: { style: "thin" } };
+    const hdrFill: any = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDDDDDD" } };
+    const totalFill: any = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE9ECEF" } };
+    const bFont: any = { bold: true, size: 10, name: "Yu Gothic" };
+    const nFont: any = { size: 10, name: "Yu Gothic" };
+    const tFont: any = { bold: true, size: 12, name: "Yu Gothic" };
+
+    type ColDef = { key: string; label: string; width: number; derived?: (r: Monthly) => number };
+    const cols: ColDef[] = [
+      { key: "display_name",          label: "氏名",       width: 80 },
+      { key: "status",                label: "状態",       width: 50 },
+      { key: "worked_days",           label: "出勤日数",   width: 55 },
+      { key: "worked_minutes",        label: "労働時間",   width: 60 },
+      { key: "overtime_minutes",      label: "残業時間",   width: 60 },
+      { key: "night_minutes",         label: "深夜早朝",   width: 60 },
+      { key: "paid_leave_days",       label: "有給(日)",   width: 55 },
+      { key: "weekday_minutes",       label: "平日時間",   width: 60 },
+      { key: "weekend_minutes",       label: "土日時間",   width: 60 },
+      { key: "base_salary",           label: "基本給",     width: 70 },
+      { key: "fixed_overtime",        label: "固定残業手当", width: 75 },
+      { key: "position_allowance",    label: "役職手当",   width: 65 },
+      { key: "family_allowance",      label: "家族手当",   width: 65 },
+      { key: "other_allowance",       label: "諸手当",     width: 60 },
+      { key: "paid_leave_amount",     label: "有給金額",   width: 65 },
+      { key: "salaryTotal",           label: "給料計",     width: 70, derived: (r) => r.gross_amount - r.commute_amount },
+      { key: "commute_amount",        label: "交通費",     width: 60 },
+      { key: "nonTaxable",            label: "非課税",     width: 60, derived: (r) => r.commute_amount },
+      { key: "gross_amount",          label: "総支給",     width: 70 },
+      { key: "taxableTotal",          label: "課税計",     width: 70, derived: (r) => Math.max(0, r.gross_amount - r.commute_amount - r.social_insurance - r.employment_insurance) },
+      { key: "social_insurance",      label: "社保",       width: 60 },
+      { key: "employment_insurance",  label: "雇保",       width: 60 },
+      { key: "insuranceTotal",        label: "社保計",     width: 60, derived: (r) => r.social_insurance + r.employment_insurance },
+      { key: "income_tax",            label: "所得税",     width: 60 },
+      { key: "resident_tax",          label: "住民税",     width: 60 },
+      { key: "car_deduction",         label: "車",         width: 55 },
+      { key: "child_support_deduction", label: "支援金",   width: 60 },
+      { key: "total_deduction",       label: "控除計",     width: 70 },
+      { key: "dependents",            label: "扶養",       width: 45 },
+      { key: "net_amount",            label: "差引支給額", width: 80 },
+    ];
+
+    const isText = (key: string) => key === "display_name" || key === "status";
+    const isTime = (key: string) => key.includes("minutes");
+    const isDays = (key: string) => key === "worked_days" || key === "paid_leave_days" || key === "dependents";
+
+    const cellVal = (col: ColDef, row: Monthly): any => {
+      if (col.key === "display_name") return row.display_name || "";
+      if (col.key === "status") return row.status === "confirmed" ? "確定" : "下書";
+      if (col.derived) return col.derived(row);
+      return Number((row as any)[col.key] || 0);
+    };
+
+    const ws = wb.addWorksheet("給与");
+    ws.pageSetup = { orientation: "landscape", paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+    cols.forEach((c, i) => { ws.getColumn(i + 1).width = Math.round(c.width / 5); });
+
+    let r = 1;
+    ws.getCell(r, 1).value = `ワールドクラブ 給与 ${ym}`;
+    ws.getCell(r, 1).font = tFont;
+    r += 2;
+
+    cols.forEach((c, i) => {
+      const cell = ws.getCell(r, i + 1);
+      cell.value = c.label;
+      cell.font = bFont;
+      cell.alignment = { horizontal: "center", wrapText: true };
+      cell.border = thin;
+      cell.fill = hdrFill;
+    });
+    r++;
+
+    for (const row of rows) {
+      cols.forEach((c, i) => {
+        const cell = ws.getCell(r, i + 1);
+        const v = cellVal(c, row);
+        cell.value = v;
+        cell.font = c.key === "net_amount" ? { ...nFont, bold: true } : nFont;
+        cell.border = thin;
+        if (!isText(c.key)) {
+          cell.alignment = { horizontal: "right" };
+          if (isTime(c.key)) cell.numFmt = "0:00";
+          else if (!isDays(c.key)) cell.numFmt = "#,##0";
+        }
+        if (isTime(c.key) && typeof v === "number") {
+          const abs = Math.abs(v);
+          const h = Math.floor(abs / 60);
+          const m = abs % 60;
+          cell.value = `${v < 0 ? "-" : ""}${h}:${String(m).padStart(2, "0")}`;
+        }
+      });
+      r++;
+    }
+
+    const sumField = (f: keyof Monthly) => rows.reduce((a, x) => a + (((x as any)[f] as number) ?? 0), 0);
+    const totalVals: Record<string, any> = {
+      display_name: "合計", status: "",
+      worked_days: sumField("worked_days"),
+      worked_minutes: sumField("worked_minutes"),
+      overtime_minutes: sumField("overtime_minutes"),
+      night_minutes: sumField("night_minutes"),
+      paid_leave_days: sumField("paid_leave_days"),
+      weekday_minutes: sumField("weekday_minutes"),
+      weekend_minutes: sumField("weekend_minutes"),
+      base_salary: sumField("base_salary"),
+      fixed_overtime: sumField("fixed_overtime"),
+      position_allowance: sumField("position_allowance"),
+      family_allowance: sumField("family_allowance"),
+      other_allowance: sumField("other_allowance"),
+      paid_leave_amount: sumField("paid_leave_amount"),
+      salaryTotal: rows.reduce((a, x) => a + (x.gross_amount - x.commute_amount), 0),
+      commute_amount: sumField("commute_amount"),
+      nonTaxable: sumField("commute_amount"),
+      gross_amount: sumField("gross_amount"),
+      taxableTotal: rows.reduce((a, x) => a + Math.max(0, x.gross_amount - x.commute_amount - x.social_insurance - x.employment_insurance), 0),
+      social_insurance: sumField("social_insurance"),
+      employment_insurance: sumField("employment_insurance"),
+      insuranceTotal: sumField("social_insurance") + sumField("employment_insurance"),
+      income_tax: sumField("income_tax"),
+      resident_tax: sumField("resident_tax"),
+      car_deduction: sumField("car_deduction"),
+      child_support_deduction: sumField("child_support_deduction"),
+      total_deduction: sumField("total_deduction"),
+      dependents: "",
+      net_amount: sumField("net_amount"),
+    };
+
+    cols.forEach((c, i) => {
+      const cell = ws.getCell(r, i + 1);
+      const v = totalVals[c.key];
+      cell.font = bFont;
+      cell.border = thin;
+      cell.fill = totalFill;
+      if (v === "" || v == null) { cell.value = null; return; }
+      if (isText(c.key)) { cell.value = v; return; }
+      cell.alignment = { horizontal: "right" };
+      if (isTime(c.key) && typeof v === "number") {
+        const abs = Math.abs(v);
+        const h = Math.floor(abs / 60);
+        const m = abs % 60;
+        cell.value = `${v < 0 ? "-" : ""}${h}:${String(m).padStart(2, "0")}`;
+      } else {
+        cell.value = v;
+        if (!isDays(c.key)) cell.numFmt = "#,##0";
+      }
+    });
+
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `ワールドクラブ_給与_${ym}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const totals = useMemo(() => {
     if (rows.length === 0) return null;
     const s = (f: keyof Monthly) => rows.reduce((a, r) => a + ((r[f] as number) ?? 0), 0);
@@ -444,6 +607,12 @@ function CalcView({ employee }: { employee: any }) {
             padding: "8px 16px", borderRadius: 4, border: `1px solid ${T.success}`,
             backgroundColor: "#fff", color: T.success, fontSize: 13, fontWeight: 700, cursor: "pointer",
           }}>明細配布</button>
+          <button onClick={exportExcel} disabled={rows.length === 0} style={{
+            padding: "8px 16px", borderRadius: 3, border: `1px solid ${T.border}`,
+            backgroundColor: "#fff", color: T.text, fontSize: 13, fontWeight: 700,
+            cursor: rows.length === 0 ? "not-allowed" : "pointer",
+            opacity: rows.length === 0 ? 0.5 : 1,
+          }}>Excel出力</button>
         </div>
       </div>
 
