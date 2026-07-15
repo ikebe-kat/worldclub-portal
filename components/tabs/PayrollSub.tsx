@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { T } from "@/lib/constants";
 import { supabase } from "@/lib/supabase";
 import Dialog from "@/components/ui/Dialog";
@@ -205,26 +205,180 @@ export default function PayrollSub({ employee }: { employee: any }) {
   );
 }
 
-// 月次計算テーブル各列のヘッダー背景色（インデックスは表示列順 0-29）
-// 5つの「計」「総支給」「差引支給額」列はデータ行にも同色を適用（インラインで個別指定）。
-const HEADER_BG = [
-  "#1a4b24", "#1a4b24",                                                          // 0,1   氏名/状態 (T.primary)
-  "#DBEAFE","#DBEAFE","#DBEAFE","#DBEAFE","#DBEAFE","#DBEAFE","#DBEAFE",          // 2-8   勤怠系
-  "#DCFCE7","#DCFCE7","#DCFCE7","#DCFCE7","#DCFCE7","#DCFCE7",                    // 9-14  支給明細
-  "#BBF7D0",                                                                     // 15    給料計
-  "#D1FAE5","#D1FAE5",                                                            // 16,17 交通費・非課税
-  "#A7F3D0",                                                                     // 18    総支給
-  "#FEF3C7",                                                                     // 19    課税計
-  "#FEE2E2","#FEE2E2",                                                            // 20,21 社保・雇保
-  "#FECACA",                                                                     // 22    社保計
-  "#FEE2E2","#FEE2E2","#FEE2E2",                                                  // 23,24,25 所得税・住民税・車
-  "#FEE2E2",                                                                     // 26    支援金
-  "#FCA5A5",                                                                     // 27    控除計
-  "#EDE9FE",                                                                     // 28    扶養
-  "#DDD6FE",                                                                     // 29    差引支給額
-  "#1a4b24",                                                                     // 30    明細ボタン列
-  "#1a4b24",                                                                     // 31    送信ボタン列
+/* ═══════════════ 単一列定義（画面header/body/totals・Excel cols/cellVal/totalVals の唯一の情報源） ═══════════════
+ * ここに1行足せば、画面テーブル・合計行・Excel出力すべてに列が追加される。
+ * value(r) が値の唯一の取り出し方（DBカラムそのものでも派生式でも）。
+ * 合計は自動: sum(rows.map(c.value)) を format に応じて表示。
+ */
+type ColFormat = "text" | "status" | "days" | "time" | "money" | "count";
+type ColSticky = { side: "left" | "right"; offset: number; minWidth: number; shadow?: boolean };
+type ColDef = {
+  key: string;
+  label: string;
+  format: ColFormat;
+  value: (r: Monthly) => number | string;
+  editable?: keyof Monthly;              // 指定時、画面はEditableCellを使う（confirmedなら自動でdisabled）
+  noTotal?: boolean;                     // trueなら合計行に集計を出さない（扶養など）
+  totalOverride?: string;                // 合計セルに文字を出す（"合計"など）
+  headerBg: string;
+  headerColor?: string;
+  bodyBg?: string;
+  totalBg?: string;
+  bodyExtra?: React.CSSProperties;
+  totalExtra?: React.CSSProperties;
+  sticky?: ColSticky;
+  excelWidth: number;                    // Excel列幅（px相当 / 5 が実際のwidth）
+};
+
+// ガード付き数値取得: null/undefined/NaN を 0 に落とす（Excel derivedのNaNガード）
+const num = (v: any): number => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+
+const COLS: ColDef[] = [
+  {
+    key: "display_name", label: "氏名", format: "text",
+    value: r => r.display_name || "",
+    totalOverride: "合計",
+    headerBg: "#1a4b24", headerColor: "#fff",
+    sticky: { side: "left", offset: 0, minWidth: 72 },
+    excelWidth: 80,
+  },
+  {
+    key: "status", label: "状態", format: "status",
+    value: r => r.status,
+    headerBg: "#1a4b24", headerColor: "#fff",
+    sticky: { side: "left", offset: 72, minWidth: 50, shadow: true },
+    excelWidth: 50,
+  },
+  { key: "worked_days",      label: "出勤日数", format: "days", value: r => num(r.worked_days),      editable: "worked_days",      headerBg: "#DBEAFE", excelWidth: 55 },
+  { key: "worked_minutes",   label: "労働時間", format: "time", value: r => num(r.worked_minutes),   editable: "worked_minutes",   headerBg: "#DBEAFE", excelWidth: 60 },
+  { key: "overtime_minutes", label: "残業時間", format: "time", value: r => num(r.overtime_minutes), editable: "overtime_minutes", headerBg: "#DBEAFE", excelWidth: 60 },
+  { key: "night_minutes",    label: "深夜早朝", format: "time", value: r => num(r.night_minutes),    editable: "night_minutes",    headerBg: "#DBEAFE", excelWidth: 60 },
+  { key: "paid_leave_days",  label: "有給(日)", format: "days", value: r => num(r.paid_leave_days),  editable: "paid_leave_days",  headerBg: "#DBEAFE", excelWidth: 55 },
+  { key: "weekday_minutes",  label: "平日時間", format: "time", value: r => num(r.weekday_minutes),  editable: "weekday_minutes",  headerBg: "#DBEAFE", excelWidth: 60 },
+  { key: "weekend_minutes",  label: "土日時間", format: "time", value: r => num(r.weekend_minutes),  editable: "weekend_minutes",  headerBg: "#DBEAFE", excelWidth: 60 },
+  { key: "base_salary",        label: "基本給",       format: "money", value: r => num(r.base_salary),        editable: "base_salary",        headerBg: "#DCFCE7", excelWidth: 70 },
+  { key: "fixed_overtime",     label: "固定残業手当", format: "money", value: r => num(r.fixed_overtime),     editable: "fixed_overtime",     headerBg: "#DCFCE7", excelWidth: 75 },
+  { key: "position_allowance", label: "役職手当",     format: "money", value: r => num(r.position_allowance), editable: "position_allowance", headerBg: "#DCFCE7", excelWidth: 65 },
+  { key: "family_allowance",   label: "家族手当",     format: "money", value: r => num(r.family_allowance),   editable: "family_allowance",   headerBg: "#DCFCE7", excelWidth: 65 },
+  { key: "other_allowance",    label: "諸手当",       format: "money", value: r => num(r.other_allowance),    editable: "other_allowance",    headerBg: "#DCFCE7", excelWidth: 60 },
+  { key: "paid_leave_amount",  label: "有給金額",     format: "money", value: r => num(r.paid_leave_amount),  editable: "paid_leave_amount",  headerBg: "#DCFCE7", excelWidth: 65 },
+  {
+    // 給料計 = 総支給 - 交通費（派生・唯一の定義箇所）
+    key: "salaryTotal", label: "給料計", format: "money",
+    value: r => num(r.gross_amount) - num(r.commute_amount),
+    headerBg: "#BBF7D0", bodyBg: "#BBF7D0", totalBg: "#b0e8bf",
+    bodyExtra: { fontWeight: 600 },
+    excelWidth: 70,
+  },
+  { key: "commute_amount", label: "交通費", format: "money", value: r => num(r.commute_amount), editable: "commute_amount", headerBg: "#D1FAE5", excelWidth: 60 },
+  {
+    // 非課税 = 交通費（派生・唯一の定義箇所）
+    key: "nonTaxable", label: "非課税", format: "money",
+    value: r => num(r.commute_amount),
+    headerBg: "#D1FAE5", excelWidth: 60,
+  },
+  {
+    key: "gross_amount", label: "総支給", format: "money",
+    value: r => num(r.gross_amount),
+    headerBg: "#A7F3D0", bodyBg: "#A7F3D0", totalBg: "#8fe0a8",
+    bodyExtra: { fontWeight: 600 },
+    excelWidth: 70,
+  },
+  {
+    // 課税計 = max(0, 総支給 - 交通費 - 社保 - 雇保)（派生・唯一の定義箇所）
+    key: "taxableTotal", label: "課税計", format: "money",
+    value: r => Math.max(0, num(r.gross_amount) - num(r.commute_amount) - num(r.social_insurance) - num(r.employment_insurance)),
+    headerBg: "#FEF3C7", excelWidth: 70,
+  },
+  { key: "social_insurance",     label: "社保", format: "money", value: r => num(r.social_insurance),     editable: "social_insurance",     headerBg: "#FEE2E2", excelWidth: 60 },
+  { key: "employment_insurance", label: "雇保", format: "money", value: r => num(r.employment_insurance), editable: "employment_insurance", headerBg: "#FEE2E2", excelWidth: 60 },
+  {
+    // 社保計 = 社保 + 雇保（派生・唯一の定義箇所）
+    key: "insuranceTotal", label: "社保計", format: "money",
+    value: r => num(r.social_insurance) + num(r.employment_insurance),
+    headerBg: "#FECACA", bodyBg: "#FECACA", totalBg: "#f5b8b8",
+    bodyExtra: { fontWeight: 600 },
+    excelWidth: 60,
+  },
+  { key: "income_tax",    label: "所得税", format: "money", value: r => num(r.income_tax),    editable: "income_tax",    headerBg: "#FEE2E2", excelWidth: 60 },
+  { key: "resident_tax",  label: "住民税", format: "money", value: r => num(r.resident_tax),  editable: "resident_tax",  headerBg: "#FEE2E2", excelWidth: 60 },
+  { key: "car_deduction", label: "車",    format: "money", value: r => num(r.car_deduction), editable: "car_deduction", headerBg: "#FEE2E2", excelWidth: 55 },
+  {
+    // 支援金（読取専用・DB由来）
+    key: "child_support_deduction", label: "支援金", format: "money",
+    value: r => num(r.child_support_deduction),
+    headerBg: "#FEE2E2", excelWidth: 60,
+  },
+  {
+    key: "total_deduction", label: "控除計", format: "money",
+    value: r => num(r.total_deduction),
+    headerBg: "#FCA5A5", bodyBg: "#FCA5A5", totalBg: "#f09090",
+    bodyExtra: { fontWeight: 600, color: T.danger },
+    totalExtra: { color: T.danger },
+    excelWidth: 70,
+  },
+  { key: "dependents", label: "扶養", format: "count", value: r => num(r.dependents), editable: "dependents", noTotal: true, headerBg: "#EDE9FE", excelWidth: 45 },
+  {
+    key: "net_amount", label: "差引支給額", format: "money",
+    value: r => num(r.net_amount),
+    headerBg: "#DDD6FE", bodyBg: "#DDD6FE", totalBg: "#c9c0f0",
+    bodyExtra: { fontSize: 15, fontWeight: 700, color: T.primary },
+    totalExtra: { fontSize: 15, color: T.primary },
+    sticky: { side: "right", offset: 104, minWidth: 80, shadow: true },
+    excelWidth: 80,
+  },
 ];
+
+// 表示文字列化（画面body・合計行で使用。Excel側は数値のままセルに入れる）
+const fmtDisplay = (c: ColDef, v: number | string): string => {
+  switch (c.format) {
+    case "text":   return String(v ?? "");
+    case "status": return v === "confirmed" ? "確定" : "下書";
+    case "days":
+    case "count":  return String(v);
+    case "time":   return minToHM(v as number);
+    case "money":  return yen(v as number);
+  }
+};
+
+// 合計値算出（画面フッター・Excel合計行の唯一の定義箇所）
+const totalOf = (c: ColDef, rows: Monthly[]): number | string => {
+  if (c.totalOverride !== undefined) return c.totalOverride;
+  if (c.noTotal) return "";
+  if (c.format === "text" || c.format === "status") return "";
+  return rows.reduce((a, r) => a + num(c.value(r)), 0);
+};
+
+const isTextCol = (c: ColDef) => c.format === "text" || c.format === "status";
+
+// sticky スタイル生成（header/body/totals の3種）
+const stickyHeader = (c: ColDef): React.CSSProperties => {
+  if (!c.sticky) return { position: "sticky", top: 0, zIndex: 3 };
+  const s: React.CSSProperties = { position: "sticky", top: 0, zIndex: 5, minWidth: c.sticky.minWidth };
+  if (c.sticky.side === "left") s.left = c.sticky.offset; else s.right = c.sticky.offset;
+  if (c.sticky.shadow) s.boxShadow = c.sticky.side === "left" ? "2px 0 4px rgba(0,0,0,0.1)" : "-2px 0 4px rgba(0,0,0,0.1)";
+  return s;
+};
+const stickyBody = (c: ColDef): React.CSSProperties => {
+  if (!c.sticky) return {};
+  const s: React.CSSProperties = {
+    position: "sticky", zIndex: 1, minWidth: c.sticky.minWidth,
+    backgroundColor: c.bodyBg ?? "#fff",
+  };
+  if (c.sticky.side === "left") s.left = c.sticky.offset; else s.right = c.sticky.offset;
+  if (c.sticky.shadow) s.boxShadow = c.sticky.side === "left" ? "2px 0 4px rgba(0,0,0,0.1)" : "-2px 0 4px rgba(0,0,0,0.1)";
+  return s;
+};
+const stickyTotals = (c: ColDef): React.CSSProperties => {
+  if (!c.sticky) return {};
+  const s: React.CSSProperties = { position: "sticky", zIndex: 4, minWidth: c.sticky.minWidth };
+  if (c.sticky.side === "left") s.left = c.sticky.offset; else s.right = c.sticky.offset;
+  if (c.sticky.shadow) s.boxShadow = c.sticky.side === "left" ? "2px 0 4px rgba(0,0,0,0.1)" : "-2px 0 4px rgba(0,0,0,0.1)";
+  return s;
+};
 
 /* ═══════════════ 月次計算ビュー ═══════════════ */
 function CalcView({ employee }: { employee: any }) {
@@ -399,142 +553,81 @@ function CalcView({ employee }: { employee: any }) {
     const nFont: any = { size: 10, name: "Yu Gothic" };
     const tFont: any = { bold: true, size: 12, name: "Yu Gothic" };
 
-    type ColDef = { key: string; label: string; width: number; derived?: (r: Monthly) => number };
-    const cols: ColDef[] = [
-      { key: "display_name",          label: "氏名",       width: 80 },
-      { key: "status",                label: "状態",       width: 50 },
-      { key: "worked_days",           label: "出勤日数",   width: 55 },
-      { key: "worked_minutes",        label: "労働時間",   width: 60 },
-      { key: "overtime_minutes",      label: "残業時間",   width: 60 },
-      { key: "night_minutes",         label: "深夜早朝",   width: 60 },
-      { key: "paid_leave_days",       label: "有給(日)",   width: 55 },
-      { key: "weekday_minutes",       label: "平日時間",   width: 60 },
-      { key: "weekend_minutes",       label: "土日時間",   width: 60 },
-      { key: "base_salary",           label: "基本給",     width: 70 },
-      { key: "fixed_overtime",        label: "固定残業手当", width: 75 },
-      { key: "position_allowance",    label: "役職手当",   width: 65 },
-      { key: "family_allowance",      label: "家族手当",   width: 65 },
-      { key: "other_allowance",       label: "諸手当",     width: 60 },
-      { key: "paid_leave_amount",     label: "有給金額",   width: 65 },
-      { key: "salaryTotal",           label: "給料計",     width: 70, derived: (r) => r.gross_amount - r.commute_amount },
-      { key: "commute_amount",        label: "交通費",     width: 60 },
-      { key: "nonTaxable",            label: "非課税",     width: 60, derived: (r) => r.commute_amount },
-      { key: "gross_amount",          label: "総支給",     width: 70 },
-      { key: "taxableTotal",          label: "課税計",     width: 70, derived: (r) => Math.max(0, r.gross_amount - r.commute_amount - r.social_insurance - r.employment_insurance) },
-      { key: "social_insurance",      label: "社保",       width: 60 },
-      { key: "employment_insurance",  label: "雇保",       width: 60 },
-      { key: "insuranceTotal",        label: "社保計",     width: 60, derived: (r) => r.social_insurance + r.employment_insurance },
-      { key: "income_tax",            label: "所得税",     width: 60 },
-      { key: "resident_tax",          label: "住民税",     width: 60 },
-      { key: "car_deduction",         label: "車",         width: 55 },
-      { key: "child_support_deduction", label: "支援金",   width: 60 },
-      { key: "total_deduction",       label: "控除計",     width: 70 },
-      { key: "dependents",            label: "扶養",       width: 45 },
-      { key: "net_amount",            label: "差引支給額", width: 80 },
-    ];
-
-    const isText = (key: string) => key === "display_name" || key === "status";
-    const isTime = (key: string) => key.includes("minutes");
-    const isDays = (key: string) => key === "worked_days" || key === "paid_leave_days" || key === "dependents";
-
-    const cellVal = (col: ColDef, row: Monthly): any => {
-      if (col.key === "display_name") return row.display_name || "";
-      if (col.key === "status") return row.status === "confirmed" ? "確定" : "下書";
-      if (col.derived) return col.derived(row);
-      return Number((row as any)[col.key] || 0);
-    };
-
     const ws = wb.addWorksheet("給与");
     ws.pageSetup = { orientation: "landscape", paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
-    cols.forEach((c, i) => { ws.getColumn(i + 1).width = Math.round(c.width / 5); });
+    COLS.forEach((c, i) => { ws.getColumn(i + 1).width = Math.round(c.excelWidth / 5); });
 
-    let r = 1;
-    ws.getCell(r, 1).value = `ワールドクラブ 給与 ${ym}`;
-    ws.getCell(r, 1).font = tFont;
-    r += 2;
+    // タイトル
+    let rIdx = 1;
+    ws.getCell(rIdx, 1).value = `ワールドクラブ 給与 ${ym}`;
+    ws.getCell(rIdx, 1).font = tFont;
+    rIdx += 2;
 
-    cols.forEach((c, i) => {
-      const cell = ws.getCell(r, i + 1);
+    // ヘッダ行
+    COLS.forEach((c, i) => {
+      const cell = ws.getCell(rIdx, i + 1);
       cell.value = c.label;
       cell.font = bFont;
       cell.alignment = { horizontal: "center", wrapText: true };
       cell.border = thin;
       cell.fill = hdrFill;
     });
-    r++;
+    rIdx++;
 
-    for (const row of rows) {
-      cols.forEach((c, i) => {
-        const cell = ws.getCell(r, i + 1);
-        const v = cellVal(c, row);
-        cell.value = v;
-        cell.font = c.key === "net_amount" ? { ...nFont, bold: true } : nFont;
-        cell.border = thin;
-        if (!isText(c.key)) {
-          cell.alignment = { horizontal: "right" };
-          if (isTime(c.key)) cell.numFmt = "0:00";
-          else if (!isDays(c.key)) cell.numFmt = "#,##0";
-        }
-        if (isTime(c.key) && typeof v === "number") {
-          const abs = Math.abs(v);
-          const h = Math.floor(abs / 60);
-          const m = abs % 60;
-          cell.value = `${v < 0 ? "-" : ""}${h}:${String(m).padStart(2, "0")}`;
-        }
-      });
-      r++;
-    }
-
-    const sumField = (f: keyof Monthly) => rows.reduce((a, x) => a + (((x as any)[f] as number) ?? 0), 0);
-    const totalVals: Record<string, any> = {
-      display_name: "合計", status: "",
-      worked_days: sumField("worked_days"),
-      worked_minutes: sumField("worked_minutes"),
-      overtime_minutes: sumField("overtime_minutes"),
-      night_minutes: sumField("night_minutes"),
-      paid_leave_days: sumField("paid_leave_days"),
-      weekday_minutes: sumField("weekday_minutes"),
-      weekend_minutes: sumField("weekend_minutes"),
-      base_salary: sumField("base_salary"),
-      fixed_overtime: sumField("fixed_overtime"),
-      position_allowance: sumField("position_allowance"),
-      family_allowance: sumField("family_allowance"),
-      other_allowance: sumField("other_allowance"),
-      paid_leave_amount: sumField("paid_leave_amount"),
-      salaryTotal: rows.reduce((a, x) => a + (x.gross_amount - x.commute_amount), 0),
-      commute_amount: sumField("commute_amount"),
-      nonTaxable: sumField("commute_amount"),
-      gross_amount: sumField("gross_amount"),
-      taxableTotal: rows.reduce((a, x) => a + Math.max(0, x.gross_amount - x.commute_amount - x.social_insurance - x.employment_insurance), 0),
-      social_insurance: sumField("social_insurance"),
-      employment_insurance: sumField("employment_insurance"),
-      insuranceTotal: sumField("social_insurance") + sumField("employment_insurance"),
-      income_tax: sumField("income_tax"),
-      resident_tax: sumField("resident_tax"),
-      car_deduction: sumField("car_deduction"),
-      child_support_deduction: sumField("child_support_deduction"),
-      total_deduction: sumField("total_deduction"),
-      dependents: "",
-      net_amount: sumField("net_amount"),
+    // データ行
+    const writeCell = (cell: any, c: ColDef, v: number | string) => {
+      cell.border = thin;
+      if (c.format === "status") {
+        cell.value = v === "confirmed" ? "確定" : "下書";
+        return;
+      }
+      if (c.format === "text") {
+        cell.value = String(v ?? "");
+        return;
+      }
+      const n = num(v);
+      if (c.format === "time") {
+        const abs = Math.abs(n);
+        const h = Math.floor(abs / 60);
+        const m = abs % 60;
+        cell.value = `${n < 0 ? "-" : ""}${h}:${String(m).padStart(2, "0")}`;
+        cell.alignment = { horizontal: "right" };
+        cell.numFmt = "0:00";
+        return;
+      }
+      cell.value = n;
+      cell.alignment = { horizontal: "right" };
+      if (c.format === "money") cell.numFmt = "#,##0";
     };
 
-    cols.forEach((c, i) => {
-      const cell = ws.getCell(r, i + 1);
-      const v = totalVals[c.key];
+    for (const row of rows) {
+      COLS.forEach((c, i) => {
+        const cell = ws.getCell(rIdx, i + 1);
+        cell.font = c.key === "net_amount" ? { ...nFont, bold: true } : nFont;
+        writeCell(cell, c, c.value(row));
+      });
+      rIdx++;
+    }
+
+    // 合計行
+    COLS.forEach((c, i) => {
+      const cell = ws.getCell(rIdx, i + 1);
       cell.font = bFont;
       cell.border = thin;
       cell.fill = totalFill;
+      const v = totalOf(c, rows);
       if (v === "" || v == null) { cell.value = null; return; }
-      if (isText(c.key)) { cell.value = v; return; }
+      if (isTextCol(c)) { cell.value = String(v); return; }
       cell.alignment = { horizontal: "right" };
-      if (isTime(c.key) && typeof v === "number") {
-        const abs = Math.abs(v);
+      if (c.format === "time") {
+        const n = num(v);
+        const abs = Math.abs(n);
         const h = Math.floor(abs / 60);
         const m = abs % 60;
-        cell.value = `${v < 0 ? "-" : ""}${h}:${String(m).padStart(2, "0")}`;
+        cell.value = `${n < 0 ? "-" : ""}${h}:${String(m).padStart(2, "0")}`;
       } else {
         cell.value = v;
-        if (!isDays(c.key)) cell.numFmt = "#,##0";
+        if (c.format === "money") cell.numFmt = "#,##0";
       }
     });
 
@@ -549,40 +642,6 @@ function CalcView({ employee }: { employee: any }) {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
-
-  const totals = useMemo(() => {
-    if (rows.length === 0) return null;
-    const s = (f: keyof Monthly) => rows.reduce((a, r) => a + ((r[f] as number) ?? 0), 0);
-    return {
-      worked_days: s("worked_days"),
-      worked_minutes: s("worked_minutes"),
-      overtime_minutes: s("overtime_minutes"),
-      night_minutes: s("night_minutes"),
-      paid_leave_days: s("paid_leave_days"),
-      weekday_minutes: s("weekday_minutes"),
-      weekend_minutes: s("weekend_minutes"),
-      base_salary: s("base_salary"),
-      fixed_overtime: s("fixed_overtime"),
-      position_allowance: s("position_allowance"),
-      family_allowance: s("family_allowance"),
-      other_allowance: s("other_allowance"),
-      paid_leave_amount: s("paid_leave_amount"),
-      salaryTotal: rows.reduce((a, r) => a + (r.gross_amount - r.commute_amount), 0),
-      commute_amount: s("commute_amount"),
-      nonTaxable: s("commute_amount"),
-      gross_amount: s("gross_amount"),
-      taxableTotal: rows.reduce((a, r) => a + Math.max(0, r.gross_amount - r.commute_amount - r.social_insurance - r.employment_insurance), 0),
-      social_insurance: s("social_insurance"),
-      employment_insurance: s("employment_insurance"),
-      insuranceTotal: s("social_insurance") + s("employment_insurance"),
-      income_tax: s("income_tax"),
-      resident_tax: s("resident_tax"),
-      car_deduction: s("car_deduction"),
-      child_support_deduction: s("child_support_deduction"),
-      total_deduction: s("total_deduction"),
-      net_amount: s("net_amount"),
-    };
-  }, [rows]);
 
   return (
     <div>
@@ -630,152 +689,117 @@ function CalcView({ employee }: { employee: any }) {
           }}>
             <thead>
               <tr>
-                {[
-                  "氏名","状態","出勤日数","労働時間","残業時間","深夜早朝","有給(日)",
-                  "平日時間","土日時間","基本給","固定残業手当","役職手当","家族手当","諸手当",
-                  "有給金額","給料計","交通費","非課税","総支給",
-                  "課税計","社保","雇保","社保計","所得税","住民税","車","支援金","控除計",
-                  "扶養","差引支給額","",""
-                ].map((h, i) => {
-                  const sticky: React.CSSProperties =
-                    i === 0 ? { position: "sticky", left: 0, top: 0, zIndex: 5, minWidth: 72 } :
-                    i === 1 ? { position: "sticky", left: 72, top: 0, zIndex: 5, minWidth: 50, boxShadow: "2px 0 4px rgba(0,0,0,0.1)" } :
-                    i === 29 ? { position: "sticky", right: 104, top: 0, zIndex: 5, minWidth: 80, boxShadow: "-2px 0 4px rgba(0,0,0,0.1)" } :
-                    i === 30 ? { position: "sticky", right: 52, top: 0, zIndex: 5, minWidth: 52 } :
-                    i === 31 ? { position: "sticky", right: 0, top: 0, zIndex: 5, minWidth: 52 } :
-                    { position: "sticky", top: 0, zIndex: 3 };
-                  return (
-                    <th key={i} style={{
-                      padding: "4px 2px", fontSize: 9, fontWeight: 600,
-                      whiteSpace: "normal", wordBreak: "keep-all",
-                      lineHeight: 1.15, verticalAlign: "bottom",
-                      textAlign: i < 2 ? "left" : "right",
-                      backgroundColor: HEADER_BG[i],
-                      color: (i < 2 || i >= 30) ? "#fff" : T.text,
-                      borderRight: "1px solid #D1D5DB",
-                      borderBottom: "2px solid #374151",
-                      ...sticky,
-                    }}>{h}</th>
-                  );
-                })}
+                {COLS.map(c => (
+                  <th key={c.key} style={{
+                    padding: "4px 2px", fontSize: 9, fontWeight: 600,
+                    whiteSpace: "normal", wordBreak: "keep-all",
+                    lineHeight: 1.15, verticalAlign: "bottom",
+                    textAlign: isTextCol(c) ? "left" : "right",
+                    backgroundColor: c.headerBg,
+                    color: c.headerColor ?? T.text,
+                    borderRight: "1px solid #D1D5DB",
+                    borderBottom: "2px solid #374151",
+                    ...stickyHeader(c),
+                  }}>{c.label}</th>
+                ))}
+                {/* 明細ボタン列 */}
+                <th style={{
+                  padding: "4px 2px", fontSize: 9, fontWeight: 600,
+                  backgroundColor: "#1a4b24", color: "#fff",
+                  borderRight: "1px solid #D1D5DB", borderBottom: "2px solid #374151",
+                  position: "sticky", right: 52, top: 0, zIndex: 5, minWidth: 52,
+                }}></th>
+                {/* 送信ボタン列 */}
+                <th style={{
+                  padding: "4px 2px", fontSize: 9, fontWeight: 600,
+                  backgroundColor: "#1a4b24", color: "#fff",
+                  borderRight: "1px solid #D1D5DB", borderBottom: "2px solid #374151",
+                  position: "sticky", right: 0, top: 0, zIndex: 5, minWidth: 52,
+                }}></th>
               </tr>
             </thead>
             <tbody>
-              {rows.map(r => {
-                const salaryTotal    = r.gross_amount - r.commute_amount;
-                const nonTaxable     = r.commute_amount;
-                const taxableTotal   = Math.max(0, r.gross_amount - nonTaxable - r.social_insurance - r.employment_insurance);
-                const insuranceTotal = r.social_insurance + r.employment_insurance;
-                const ec = (field: keyof Monthly, display: string, baseStyle: React.CSSProperties) => (
-                  <EditableCell
-                    value={(r[field] as number) ?? 0}
-                    display={display}
-                    onSave={(n) => updateMonthly(r, field, n)}
-                    baseStyle={baseStyle}
-                    disabled={r.status === "confirmed"}
-                  />
-                );
-                return (
-                  <tr key={r.id} style={{ borderBottom: "1px solid #9CA3AF" }} className="payroll-row">
-                    <td style={{ ...tdNarrow, position: "sticky", left: 0, zIndex: 1, backgroundColor: "#fff", minWidth: 72 }}>{r.display_name}</td>
-                    <td style={{ ...tdNarrow, position: "sticky", left: 72, zIndex: 1, backgroundColor: "#fff", minWidth: 50, boxShadow: "2px 0 4px rgba(0,0,0,0.1)" }}>
-                      <span style={{
-                        padding: "2px 6px", borderRadius: 10, fontSize: 9, fontWeight: 700, color: "#fff",
-                        backgroundColor: r.status === "confirmed" ? T.primary : T.warning,
-                      }}>{r.status === "confirmed" ? "確定" : "下書"}</span>
-                    </td>
-                    {ec("worked_days",     String(r.worked_days),       tdNum)}
-                    {ec("worked_minutes",  minToHM(r.worked_minutes),   tdNum)}
-                    {ec("overtime_minutes",minToHM(r.overtime_minutes), tdNum)}
-                    {ec("night_minutes",   minToHM(r.night_minutes),    tdNum)}
-                    {ec("paid_leave_days", String(r.paid_leave_days),   tdNum)}
-                    {ec("weekday_minutes", minToHM(r.weekday_minutes),  tdNum)}
-                    {ec("weekend_minutes", minToHM(r.weekend_minutes),  tdNum)}
-                    {ec("base_salary",          yen(r.base_salary),             tdNum)}
-                    {ec("fixed_overtime",       yen(r.fixed_overtime),          tdNum)}
-                    {ec("position_allowance",   yen(r.position_allowance),      tdNum)}
-                    {ec("family_allowance",     yen(r.family_allowance),        tdNum)}
-                    {ec("other_allowance",      yen(r.other_allowance),         tdNum)}
-                    {ec("paid_leave_amount",    yen(r.paid_leave_amount),       tdNum)}
-                    {/* 16 給料計（派生・編集不可） */}
-                    <td style={{ ...tdNum, fontWeight: 600, backgroundColor: "#BBF7D0" }}>{yen(salaryTotal)}</td>
-                    {ec("commute_amount", yen(r.commute_amount), tdNum)}
-                    {/* 18 非課税（派生・編集不可、= commute_amount） */}
-                    <td style={tdNum}>{yen(nonTaxable)}</td>
-                    {/* 19 総支給（派生・編集不可） */}
-                    <td style={{ ...tdNum, fontWeight: 600, backgroundColor: "#A7F3D0" }}>{yen(r.gross_amount)}</td>
-                    {/* 20 課税計（派生・編集不可） */}
-                    <td style={tdNum}>{yen(taxableTotal)}</td>
-                    {ec("social_insurance",     yen(r.social_insurance),     tdNum)}
-                    {ec("employment_insurance", yen(r.employment_insurance), tdNum)}
-                    {/* 23 社保計（派生・編集不可） */}
-                    <td style={{ ...tdNum, fontWeight: 600, backgroundColor: "#FECACA" }}>{yen(insuranceTotal)}</td>
-                    {ec("income_tax",    yen(r.income_tax),    tdNum)}
-                    {ec("resident_tax",  yen(r.resident_tax),  tdNum)}
-                    {ec("car_deduction", yen(r.car_deduction), tdNum)}
-                    {/* 26 支援金（読取専用・DB由来） */}
-                    <td style={tdNum}>{yen(r.child_support_deduction)}</td>
-                    {/* 27 控除計（派生・編集不可） */}
-                    <td style={{ ...tdNum, color: T.danger, fontWeight: 600, backgroundColor: "#FCA5A5" }}>{yen(r.total_deduction)}</td>
-                    {ec("dependents", String(r.dependents), tdNum)}
-                    {/* 29 差引支給額（派生・編集不可） */}
-                    <td style={{ ...tdNum, fontSize: 15, fontWeight: 700, color: T.primary, backgroundColor: "#DDD6FE", position: "sticky", right: 104, zIndex: 1, minWidth: 80, boxShadow: "-2px 0 4px rgba(0,0,0,0.1)" }}>{yen(r.net_amount)}</td>
-                    <td style={{ ...tdNarrow, position: "sticky", right: 52, zIndex: 1, backgroundColor: "#fff", minWidth: 52 }}>
-                      <button onClick={() => printOne(r)} style={{
-                        padding: "4px 8px", borderRadius: 4, border: `1px solid ${T.border}`,
-                        backgroundColor: "#fff", color: T.text, fontSize: 10, cursor: "pointer",
-                      }}>明細</button>
-                    </td>
-                    <td style={{ ...tdNarrow, position: "sticky", right: 0, zIndex: 1, backgroundColor: "#fff", minWidth: 52 }}>
-                      <button onClick={() => distributeRow(r)} disabled={r.status !== "confirmed"} style={{
-                        padding: "4px 8px", borderRadius: 4, border: "none",
-                        backgroundColor: r.status === "confirmed" ? T.success : "#D1D5DB",
-                        color: "#fff", fontSize: 10, cursor: r.status === "confirmed" ? "pointer" : "not-allowed",
-                        opacity: r.status === "confirmed" ? 1 : 0.5,
-                      }}>送信</button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            {totals && (
-              <tfoot>
-                <tr style={{ borderTop: "3px solid #374151", fontWeight: 700 }}>
-                  <td style={{ ...tfNum, position: "sticky", left: 0, zIndex: 4, minWidth: 72, textAlign: "left" }}>合計</td>
-                  <td style={{ ...tfNum, position: "sticky", left: 72, zIndex: 4, minWidth: 50, boxShadow: "2px 0 4px rgba(0,0,0,0.1)" }}></td>
-                  <td style={tfNum}>{totals.worked_days}</td>
-                  <td style={tfNum}>{minToHM(totals.worked_minutes)}</td>
-                  <td style={tfNum}>{minToHM(totals.overtime_minutes)}</td>
-                  <td style={tfNum}>{minToHM(totals.night_minutes)}</td>
-                  <td style={tfNum}>{totals.paid_leave_days}</td>
-                  <td style={tfNum}>{minToHM(totals.weekday_minutes)}</td>
-                  <td style={tfNum}>{minToHM(totals.weekend_minutes)}</td>
-                  <td style={tfNum}>{yen(totals.base_salary)}</td>
-                  <td style={tfNum}>{yen(totals.fixed_overtime)}</td>
-                  <td style={tfNum}>{yen(totals.position_allowance)}</td>
-                  <td style={tfNum}>{yen(totals.family_allowance)}</td>
-                  <td style={tfNum}>{yen(totals.other_allowance)}</td>
-                  <td style={tfNum}>{yen(totals.paid_leave_amount)}</td>
-                  <td style={{ ...tfNum, backgroundColor: "#b0e8bf" }}>{yen(totals.salaryTotal)}</td>
-                  <td style={tfNum}>{yen(totals.commute_amount)}</td>
-                  <td style={tfNum}>{yen(totals.nonTaxable)}</td>
-                  <td style={{ ...tfNum, backgroundColor: "#8fe0a8" }}>{yen(totals.gross_amount)}</td>
-                  <td style={tfNum}>{yen(totals.taxableTotal)}</td>
-                  <td style={tfNum}>{yen(totals.social_insurance)}</td>
-                  <td style={tfNum}>{yen(totals.employment_insurance)}</td>
-                  <td style={{ ...tfNum, backgroundColor: "#f5b8b8" }}>{yen(totals.insuranceTotal)}</td>
-                  <td style={tfNum}>{yen(totals.income_tax)}</td>
-                  <td style={tfNum}>{yen(totals.resident_tax)}</td>
-                  <td style={tfNum}>{yen(totals.car_deduction)}</td>
-                  <td style={tfNum}>{yen(totals.child_support_deduction)}</td>
-                  <td style={{ ...tfNum, color: T.danger, backgroundColor: "#f09090" }}>{yen(totals.total_deduction)}</td>
-                  <td style={tfNum}></td>
-                  <td style={{ ...tfNum, fontSize: 15, color: T.primary, backgroundColor: "#c9c0f0", position: "sticky", right: 104, zIndex: 4, minWidth: 80, boxShadow: "-2px 0 4px rgba(0,0,0,0.1)" }}>{yen(totals.net_amount)}</td>
-                  <td style={{ ...tfNum, position: "sticky", right: 52, zIndex: 4, minWidth: 52 }}></td>
-                  <td style={{ ...tfNum, position: "sticky", right: 0, zIndex: 4, minWidth: 52 }}></td>
+              {rows.map(r => (
+                <tr key={r.id} style={{ borderBottom: "1px solid #9CA3AF" }} className="payroll-row">
+                  {COLS.map(c => {
+                    const v = c.value(r);
+                    const display = fmtDisplay(c, v);
+                    const baseStyle: React.CSSProperties = {
+                      ...(isTextCol(c) ? tdNarrow : tdNum),
+                      ...(c.bodyBg ? { backgroundColor: c.bodyBg } : {}),
+                      ...(c.bodyExtra ?? {}),
+                      ...stickyBody(c),
+                    };
+
+                    // 状態列: 「確定/下書」バッジ
+                    if (c.format === "status") {
+                      return (
+                        <td key={c.key} style={baseStyle}>
+                          <span style={{
+                            padding: "2px 6px", borderRadius: 10, fontSize: 9, fontWeight: 700, color: "#fff",
+                            backgroundColor: r.status === "confirmed" ? T.primary : T.warning,
+                          }}>{display}</span>
+                        </td>
+                      );
+                    }
+
+                    // 編集可能列: EditableCell（disabledは中で処理）
+                    if (c.editable) {
+                      return (
+                        <EditableCell
+                          key={c.key}
+                          value={(r[c.editable] as number) ?? 0}
+                          display={display}
+                          onSave={(n) => updateMonthly(r, c.editable!, n)}
+                          baseStyle={baseStyle}
+                          disabled={r.status === "confirmed"}
+                        />
+                      );
+                    }
+
+                    // 派生・読取専用列
+                    return <td key={c.key} style={baseStyle}>{display}</td>;
+                  })}
+                  {/* 明細ボタン */}
+                  <td style={{ ...tdNarrow, position: "sticky", right: 52, zIndex: 1, backgroundColor: "#fff", minWidth: 52 }}>
+                    <button onClick={() => printOne(r)} style={{
+                      padding: "4px 8px", borderRadius: 4, border: `1px solid ${T.border}`,
+                      backgroundColor: "#fff", color: T.text, fontSize: 10, cursor: "pointer",
+                    }}>明細</button>
+                  </td>
+                  {/* 送信ボタン */}
+                  <td style={{ ...tdNarrow, position: "sticky", right: 0, zIndex: 1, backgroundColor: "#fff", minWidth: 52 }}>
+                    <button onClick={() => distributeRow(r)} disabled={r.status !== "confirmed"} style={{
+                      padding: "4px 8px", borderRadius: 4, border: "none",
+                      backgroundColor: r.status === "confirmed" ? T.success : "#D1D5DB",
+                      color: "#fff", fontSize: 10, cursor: r.status === "confirmed" ? "pointer" : "not-allowed",
+                      opacity: r.status === "confirmed" ? 1 : 0.5,
+                    }}>送信</button>
+                  </td>
                 </tr>
-              </tfoot>
-            )}
+              ))}
+            </tbody>
+            <tfoot>
+              <tr style={{ borderTop: "3px solid #374151", fontWeight: 700 }}>
+                {COLS.map(c => {
+                  const v = totalOf(c, rows);
+                  const style: React.CSSProperties = {
+                    ...tfNum,
+                    ...(c.totalBg ? { backgroundColor: c.totalBg } : {}),
+                    ...(c.totalExtra ?? {}),
+                    ...stickyTotals(c),
+                    ...(isTextCol(c) ? { textAlign: "left" } : {}),
+                  };
+                  if (v === "" || v == null) return <td key={c.key} style={style}></td>;
+                  if (isTextCol(c)) return <td key={c.key} style={style}>{String(v)}</td>;
+                  return <td key={c.key} style={style}>{fmtDisplay(c, v as number)}</td>;
+                })}
+                {/* 明細ボタン列（合計行は空） */}
+                <td style={{ ...tfNum, position: "sticky", right: 52, zIndex: 4, minWidth: 52 }}></td>
+                {/* 送信ボタン列（合計行は空） */}
+                <td style={{ ...tfNum, position: "sticky", right: 0, zIndex: 4, minWidth: 52 }}></td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       )}
