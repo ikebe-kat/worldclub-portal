@@ -7,6 +7,7 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import { T, DOW, PALETTE, CAL_GROUPS, stepMonth, displayReason, calendarDisplayName } from "@/lib/constants";
 import { useSmoothSwipe } from "@/hooks/useSmoothSwipe";
 import { supabase } from "@/lib/supabase";
+import { fetchLeaveDays, leaveKey } from "@/lib/employmentRpc";
 import { getPermLevel, canShowCalendarGroupSelect, getDefaultCalendarGroup, canChooseTargetCalendar, canDeleteEvent, storeIdToCalGroup, getAllowedCalGroups, canViewJimuCalendar, canViewOthersProfile } from "@/lib/permissions";
 import Dialog from "@/components/ui/Dialog";
 
@@ -378,11 +379,13 @@ export default function CalendarTab({ employee }: { employee: any }) {
       .not("reason", "is", null)
       .neq("reason", "");
 
+    const calLeaveDays = await fetchLeaveDays(employee.company_id, monthStart, monthEnd, 'attendance');
     const isAdmin = canViewOthersProfile(empCode);
     const mapped: AttendanceEvent[] = (attData || [])
       .filter((row: any) => {
         if (!row.reason) return false;
         if (String(row.reason).includes("休職")) return false;
+        if (calLeaveDays.has(leaveKey(row.employee_id, row.attendance_date))) return false;
         if ((row.employees as any)?.employee_code === "002") return false;
         if (isAdmin) return true;
         return (row.employees as any)?.employee_code === empCode;

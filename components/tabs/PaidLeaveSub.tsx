@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { T } from "@/lib/constants";
 import { supabase } from "@/lib/supabase";
+import { fetchEmploymentStatus } from "@/lib/employmentRpc";
 
 const COMPANY_ID = "c2d368f0-aa9b-4f70-b082-43ec07723d6c";
 
@@ -43,17 +44,16 @@ export default function PaidLeaveSub({ employee }: { employee: any }) {
 
     const { data: ed } = await supabase
       .from("employees")
-      .select("id, employee_code, full_name, store_id, resigned_at")
+      .select("id, employee_code, full_name, store_id")
       .eq("company_id", COMPANY_ID)
       .order("employee_code");
     const nowD = new Date();
-    const curKey = nowD.getFullYear() * 12 + (nowD.getMonth() + 1);
+    const todayStr = `${nowD.getFullYear()}-${String(nowD.getMonth() + 1).padStart(2, "0")}-${String(nowD.getDate()).padStart(2, "0")}`;
+    const statusMap = await fetchEmploymentStatus(COMPANY_ID, todayStr, todayStr, 'paid_leave');
     const emps = (ed || []).filter((e: any) => {
       if (["W02","W49","W67"].includes(e.employee_code)) return false;
-      if (e.resigned_at) {
-        const m = String(e.resigned_at).match(/^(\d{4})-(\d{2})/);
-        if (m && curKey > parseInt(m[1], 10) * 12 + parseInt(m[2], 10)) return false;
-      }
+      const st = statusMap.get(e.id);
+      if (st === 'not_employed' || st === 'excluded') return false;
       return true;
     });
 

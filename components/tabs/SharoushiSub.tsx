@@ -3,6 +3,7 @@ import { useState, useCallback } from "react";
 import { T } from "@/lib/constants";
 import Dialog from "@/components/ui/Dialog";
 import { supabase } from "@/lib/supabase";
+import { fetchEmploymentStatus } from "@/lib/employmentRpc";
 
 const REASON_MAP: Record<string, string> = {
   "希望休（全日）": "公休", "午前希望休": "公前", "午後希望休": "公後",
@@ -66,16 +67,17 @@ export default function SharoushiSub({ employee }: { employee: any }) {
     try {
       setProgress("従業員データ取得中...");
       const { data: empRawAll, error: empErr } = await supabase.from("employees")
-        .select("id, employee_code, full_name, employment_type, store_id, holiday_calendar, resigned_at")
+        .select("id, employee_code, full_name, employment_type, store_id, holiday_calendar")
         .eq("company_id", employee.company_id).order("employee_code");
       if (empErr) throw empErr;
       if (!empRawAll?.length) { setDialogMsg("従業員データがありません"); return; }
-      const selKey = selYear * 12 + selMonth;
+      const ym = `${selYear}-${String(selMonth).padStart(2, "0")}`;
+      const dim = new Date(selYear, selMonth, 0).getDate();
+      const d1 = `${ym}-01`, dN = `${ym}-${String(dim).padStart(2, "0")}`;
+      const statusMap = await fetchEmploymentStatus(employee.company_id, d1, dN, 'insurance');
       const empRaw = empRawAll.filter((e: any) => {
-        if (!e.resigned_at) return true;
-        const m = String(e.resigned_at).match(/^(\d{4})-(\d{2})/);
-        if (!m) return true;
-        return selKey <= parseInt(m[1], 10) * 12 + parseInt(m[2], 10);
+        const st = statusMap.get(e.id);
+        return st !== 'not_employed' && st !== 'excluded';
       });
 
       const { data: stRaw } = await supabase.from("stores").select("id, store_code, store_name").eq("company_id", employee.company_id);
@@ -83,9 +85,6 @@ export default function SharoushiSub({ employee }: { employee: any }) {
       const emps: EmpD[] = empRaw.map((e: any) => { const st = stMap.get(e.store_id) || { code: "000", name: "指定なし" }; return { ...e, store_code: st.code, store_name: st.name }; });
 
       setProgress("勤怠データ取得中...");
-      const ym = `${selYear}-${String(selMonth).padStart(2, "0")}`;
-      const dim = new Date(selYear, selMonth, 0).getDate();
-      const d1 = `${ym}-01`, dN = `${ym}-${String(dim).padStart(2, "0")}`;
 
       const { data: attRaw, error: attErr } = await supabase.from("attendance_daily")
         .select("employee_id, attendance_date, punch_in_raw, punch_out_raw, reason, late_minutes, early_leave_minutes, scheduled_hours, contract_hours, overtime_hours, over_under, is_holiday")

@@ -4,6 +4,7 @@ import { T, displayReason, isKoukyuPart, periodRange, currentPeriodMonth, period
 import { Badge, ReasonBadges } from "@/components/ui";
 import Dialog from "@/components/ui/Dialog";
 import { supabase } from "@/lib/supabase";
+import { fetchEmploymentStatus, fetchLeaveDays, leaveKey } from "@/lib/employmentRpc";
 import { getPermLevel, canEditPunch, canEditBreak } from "@/lib/permissions";
 import { periodOfDateStr } from "@/lib/shiftPeriod";
 import NotificationsSub from "@/components/tabs/NotificationsSub";
@@ -14,7 +15,7 @@ import SettingsSub from "@/components/tabs/SettingsSub";
 import ShiftSub from "@/components/tabs/ShiftSub";
 import PayrollSub from "@/components/tabs/PayrollSub";
 
-interface EmpOption { id: string; code: string; name: string; store_id: string; store_name: string; department: string | null; role: string | null; hire_date: string | null; paid_leave_grant_date: string | null; holiday_calendar: string | null; resigned_at: string | null; employment_type: string | null; }
+interface EmpOption { id: string; code: string; name: string; store_id: string; store_name: string; department: string | null; role: string | null; hire_date: string | null; paid_leave_grant_date: string | null; holiday_calendar: string | null; employment_type: string | null; }
 interface AttRow { id: string; attendance_date: string; day_of_week: string | null; punch_in: string | null; punch_out: string | null; reason: string | null; break_minutes: number | null; break_minutes_self_reported: number | null; late_minutes: number | null; early_leave_minutes: number | null; actual_hours: number | null; scheduled_hours: number | null; overtime_hours: number | null; over_under: number | null; employee_note: string | null; admin_memo: string | null; is_holiday: boolean | null; work_pattern_code: string | null; }
 
 type SubTab = "notifications" | "paidleave" | "shift" | "sharoushi" | "individual" | "daily" | "monthly" | "req_overtime" | "req_yukyu" | "req_other" | "req_info_change" | "payroll" | "documents" | "employee_manage" | "settings";
@@ -409,6 +410,7 @@ const IndividualSub = ({ employee }: { employee: any }) => {
   const [loading, setLoading] = useState(false);
   const [editRow, setEditRow] = useState<AttRow | null>(null);
   const [dialogMsg, setDialogMsg] = useState<string | null>(null);
+  const [indivLeaveDays, setIndivLeaveDays] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!employee?.company_id) return;
@@ -464,6 +466,8 @@ const IndividualSub = ({ employee }: { employee: any }) => {
       }
       else { allDays.push({ id: `empty-${dateStr}`, attendance_date: dateStr, day_of_week: null, punch_in: null, punch_out: null, reason: null, break_minutes: null, break_minutes_self_reported: null, late_minutes: null, early_leave_minutes: null, actual_hours: null, scheduled_hours: null, overtime_hours: null, over_under: null, employee_note: null, admin_memo: null, is_holiday: isHoliday || null, work_pattern_code: null }); }
     }
+    const lds = await fetchLeaveDays(employee.company_id, startDate, endDate, 'attendance');
+    setIndivLeaveDays(lds);
     setRows(allDays);
     setLoading(false);
   }, [yr, mo, emps, employee?.company_id]);
@@ -541,13 +545,13 @@ const IndividualSub = ({ employee }: { employee: any }) => {
           <div style={{ borderRadius: 6, border: `1px solid ${T.border}`, overflow: "hidden" }}><div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 640 }}>
               <thead><tr style={{ backgroundColor: T.primary }}>{["日付","出勤","退勤","休憩","事由","実労働","所定外","備考",""].map(h => <th key={h} style={{ padding: "8px 6px", color: "#fff", fontWeight: 600, fontSize: 11, textAlign: "center", whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
-              <tbody>{rows.map(r => { const d = new Date(r.attendance_date); const dow = d.getDay(); const isOff = r.is_holiday || r.reason === "公休"; const hasReason = r.reason && r.reason !== "公休"; return (
-                <tr key={r.id} style={{ backgroundColor: isOff ? "#FFF5F5" : hasReason ? "#FFFDE7" : "#fff", borderBottom: `1px solid ${T.borderLight}` }}>
+              <tbody>{rows.map(r => { const d = new Date(r.attendance_date); const dow = d.getDay(); const isLeave = selectedEmp && indivLeaveDays.has(leaveKey(selectedEmp.id, r.attendance_date)); const isOff = r.is_holiday || r.reason === "公休"; const hasReason = isLeave || (r.reason && r.reason !== "公休"); return (
+                <tr key={r.id} style={{ backgroundColor: isLeave ? "#F3E8FF" : isOff ? "#FFF5F5" : hasReason ? "#FFFDE7" : "#fff", borderBottom: `1px solid ${T.borderLight}` }}>
                   <td style={{ padding: "8px 6px", fontWeight: 600, color: dow === 0 ? T.holidayRed : dow === 6 ? T.yukyuBlue : T.text, textAlign: "center", whiteSpace: "nowrap" }}>{d.getDate()}<span style={{ fontSize: 10, marginLeft: 1, fontWeight: 400 }}>({DOW[dow]})</span></td>
                   <td style={{ padding: "8px 6px", textAlign: "center", fontVariantNumeric: "tabular-nums", color: r.punch_in ? T.text : T.textPH }}>{fmTime(r.punch_in)}</td>
                   <td style={{ padding: "8px 6px", textAlign: "center", fontVariantNumeric: "tabular-nums", color: r.punch_out ? T.text : T.textPH }}>{fmTime(r.punch_out)}</td>
                   <InlineBreakCell row={r} isPart={isWcPart(selectedEmp!.code, selectedEmp!.employment_type)} myCode={myCode} onSaved={() => fetchAttendance(selectedEmp!.id)} pad="8px 6px" />
-                  <td style={{ padding: "6px", textAlign: "center" }}>{r.reason ? <ReasonBadges reason={displayReason(r.reason, (r as any).emp_code || "") || r.reason} /> : r.is_holiday ? <ReasonBadges reason="休日" /> : "—"}</td>
+                  <td style={{ padding: "6px", textAlign: "center" }}>{isLeave ? <ReasonBadges reason="休職" /> : r.reason ? <ReasonBadges reason={displayReason(r.reason, (r as any).emp_code || "") || r.reason} /> : r.is_holiday ? <ReasonBadges reason="休日" /> : "—"}</td>
                   <td style={{ padding: "8px 6px", textAlign: "center", fontVariantNumeric: "tabular-nums", color: r.actual_hours != null ? T.text : T.textPH }}>{r.actual_hours != null ? fmDecimal(r.actual_hours) : "—"}</td>
                   <td style={{ padding: "8px 6px", textAlign: "center", fontVariantNumeric: "tabular-nums", fontWeight: 600, color: (r.over_under ?? 0) > 0 ? T.success : (r.over_under ?? 0) < 0 ? T.danger : T.textMuted }}>{r.over_under != null ? `${r.over_under > 0 ? "+" : ""}${fmDecimal(r.over_under)}` : "—"}</td>
                   <td style={{ padding: "8px 6px", textAlign: "center", fontSize: 11, color: T.textSec, maxWidth: 80, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.employee_note || r.admin_memo || "—"}</td>
@@ -719,6 +723,7 @@ const DailySub = ({ employee }: { employee: any }) => {
   const [selectMode, setSelectMode] = useState(false);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [showBulkModal, setShowBulkModal] = useState(false);
+  const [dailyLeaveEmpCodes, setDailyLeaveEmpCodes] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!employee?.company_id) return;
@@ -767,6 +772,12 @@ const DailySub = ({ employee }: { employee: any }) => {
       }
       return { id: `empty-${emp.id}`, attendance_date: selectedDate, day_of_week: null, punch_in: null, punch_out: null, reason: null, break_minutes: null, break_minutes_self_reported: null, late_minutes: null, early_leave_minutes: null, actual_hours: null, scheduled_hours: null, overtime_hours: null, over_under: null, employee_note: null, admin_memo: null, is_holiday: isHoliday || null, work_pattern_code: null, emp_code: emp.code, emp_name: emp.name, store_name: emp.store_name };
     });
+    const lds = await fetchLeaveDays(employee.company_id, selectedDate, selectedDate, 'attendance');
+    const leaveCodes = new Set<string>();
+    for (const emp of scopedEmps) {
+      if (lds.has(leaveKey(emp.id, selectedDate))) leaveCodes.add(emp.code);
+    }
+    setDailyLeaveEmpCodes(leaveCodes);
     setRows(allRows);
     setLoading(false);
   }, [selectedDate, emps, perm, myCode, employee?.company_id]);
@@ -851,18 +862,19 @@ const DailySub = ({ employee }: { employee: any }) => {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 700 }}>
             <thead><tr style={{ backgroundColor: T.primary }}>{[...(selectMode ? ["✓"] : []), "CD","氏名","出勤","退勤","休憩","事由","実労働","所定外","備考",""].map(h => <th key={h} style={{ padding: "8px 6px", color: "#fff", fontWeight: 600, fontSize: 11, textAlign: "center", whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
             <tbody>{rows.map(r => {
+              const isDailyLeave = dailyLeaveEmpCodes.has(r.emp_code);
               const isOff = r.reason?.includes("希望休") || r.reason?.includes("代休") || r.is_holiday;
               const isYukyu = r.reason?.includes("有給");
-              const hasReason = r.reason && r.reason !== "公休";
+              const hasReason = isDailyLeave || (r.reason && r.reason !== "公休");
               return (
-                <tr key={r.id} style={{ backgroundColor: isOff ? "#FFF5F5" : isYukyu ? "#EFF6FF" : hasReason ? "#FFFDE7" : "#fff", borderBottom: `1px solid ${T.borderLight}` }}>
+                <tr key={r.id} style={{ backgroundColor: isDailyLeave ? "#F3E8FF" : isOff ? "#FFF5F5" : isYukyu ? "#EFF6FF" : hasReason ? "#FFFDE7" : "#fff", borderBottom: `1px solid ${T.borderLight}` }}>
                   {selectMode && <td style={{ padding: "7px 4px", textAlign: "center" }}><input type="checkbox" checked={checkedIds.has(r.id)} onChange={e => { const next = new Set(checkedIds); if (e.target.checked) next.add(r.id); else next.delete(r.id); setCheckedIds(next); }} style={{ width: 16, height: 16, cursor: "pointer" }} /></td>}
                   <td style={{ padding: "7px 6px", fontSize: 11, color: T.textMuted, textAlign: "center" }}>{r.emp_code}</td>
                   <td style={{ padding: "7px 6px", fontWeight: 600, color: T.text, whiteSpace: "nowrap" }}>{r.emp_name}</td>
                   <td style={{ padding: "7px 6px", textAlign: "center", fontVariantNumeric: "tabular-nums", color: r.punch_in ? T.text : T.textPH }}>{fmTime(r.punch_in)}</td>
                   <td style={{ padding: "7px 6px", textAlign: "center", fontVariantNumeric: "tabular-nums", color: r.punch_out ? T.text : T.textPH }}>{fmTime(r.punch_out)}</td>
                   <InlineBreakCell row={r} isPart={(() => { const emp = emps.find(e => e.code === r.emp_code); return isWcPart(r.emp_code, emp?.employment_type); })()} myCode={myCode} onSaved={fetchDaily} pad="7px 6px" />
-                  <td style={{ padding: "5px", textAlign: "center" }}>{r.reason ? <ReasonBadges reason={displayReason(r.reason, (r as any).emp_code || "") || r.reason} /> : r.is_holiday ? <ReasonBadges reason="休日" /> : "—"}</td>
+                  <td style={{ padding: "5px", textAlign: "center" }}>{isDailyLeave ? <ReasonBadges reason="休職" /> : r.reason ? <ReasonBadges reason={displayReason(r.reason, (r as any).emp_code || "") || r.reason} /> : r.is_holiday ? <ReasonBadges reason="休日" /> : "—"}</td>
                   <td style={{ padding: "7px 6px", textAlign: "center", fontVariantNumeric: "tabular-nums", color: r.actual_hours != null ? T.text : T.textPH }}>{r.actual_hours != null ? fmDecimal(r.actual_hours) : "—"}</td>
                   <td style={{ padding: "7px 6px", textAlign: "center", fontVariantNumeric: "tabular-nums", fontWeight: 600, color: (r.over_under ?? 0) > 0 ? T.success : (r.over_under ?? 0) < 0 ? T.danger : T.textMuted }}>{r.over_under != null ? `${r.over_under > 0 ? "+" : ""}${fmDecimal(r.over_under)}` : "—"}</td>
                   <td style={{ padding: "7px 6px", textAlign: "center", fontSize: 11, color: T.textSec, maxWidth: 70, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.employee_note || r.admin_memo || "—"}</td>
@@ -920,8 +932,8 @@ const MonthlySub = ({ employee }: { employee: any }) => {
       setStores(storeList);
       const storeMap: Record<string, string> = {};
       storeList.forEach((s: { id: string; name: string }) => { storeMap[s.id] = s.name; });
-      const { data: ed } = await supabase.from("employees").select("id, employee_code, full_name, store_id, department, role, hire_date, paid_leave_grant_date, holiday_calendar, resigned_at, employment_type").eq("company_id", employee.company_id).order("employee_code");
-      setEmps((ed || []).filter((e: any) => !["W02","W49","W67"].includes(e.employee_code)).map((e: any) => ({ ...e, code: e.employee_code, name: e.full_name, store_name: storeMap[e.store_id] || "", resigned_at: e.resigned_at ? String(e.resigned_at).slice(0, 10) : null, employment_type: e.employment_type ?? null })));
+      const { data: ed } = await supabase.from("employees").select("id, employee_code, full_name, store_id, department, role, hire_date, paid_leave_grant_date, holiday_calendar, employment_type").eq("company_id", employee.company_id).order("employee_code");
+      setEmps((ed || []).filter((e: any) => !["W02","W49","W67"].includes(e.employee_code)).map((e: any) => ({ ...e, code: e.employee_code, name: e.full_name, store_name: storeMap[e.store_id] || "", employment_type: e.employment_type ?? null })));
     })();
   }, [employee?.company_id]);
 
@@ -933,10 +945,8 @@ const MonthlySub = ({ employee }: { employee: any }) => {
     const { start: startDate, end: endDate } = periodRange(yr, mo);
     const yearMonth = `${yr}/${String(mo).padStart(2,"0")}`;
 
-    let scopedEmps = emps.filter(e => {
-      if (e.resigned_at && e.resigned_at < startDate) return false;
-      return true;
-    });
+    const statusMap = await fetchEmploymentStatus(employee.company_id, startDate, endDate, 'payroll');
+    let scopedEmps = emps.filter(e => statusMap.get(e.id) !== 'not_employed');
     if (perm === "admin") scopedEmps = scopedEmps.filter(e => canEditPunch(myCode, e.store_id, e.department));
 
     const empIds = scopedEmps.map(e => e.id);

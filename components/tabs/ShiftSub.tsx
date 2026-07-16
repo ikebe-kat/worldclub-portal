@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { T, DOW, stepMonth, periodRange } from "@/lib/constants";
 import Dialog from "@/components/ui/Dialog";
 import { supabase } from "@/lib/supabase";
+import { fetchEmploymentStatus } from "@/lib/employmentRpc";
 import {
   getCurrentSubmissionPeriod, periodOfDateStr,
   type PeriodYM,
@@ -139,9 +140,8 @@ export default function ShiftSub({ employee, onBadgeRefresh }: { employee: any; 
     const monthStart = periodStart;
     const monthEnd = periodEnd;
 
-    // 従業員一覧（is_active=true または NULL、is_on_leave=true は除外）
     const { data: emps } = await supabase.from("employees")
-      .select("id, employee_code, full_name, employment_type, is_on_leave")
+      .select("id, employee_code, full_name, employment_type")
       .eq("company_id", COMPANY_ID)
       .or("is_active.is.null,is_active.eq.true")
       .order("employee_code");
@@ -162,8 +162,8 @@ export default function ShiftSub({ employee, onBadgeRefresh }: { employee: any; 
       .lte("attendance_date", monthEnd)
       .not("reason", "is", null);
 
-    // ⑤ WCxxx のみフィルタ（本部メンバー除外）＋休職中除外
-    const filteredEmps = (emps || []).filter(e => isVisibleCode(e.employee_code) && e.is_on_leave !== true);
+    const statusMap = await fetchEmploymentStatus(COMPANY_ID, monthStart, monthEnd, 'attendance');
+    const filteredEmps = (emps || []).filter(e => isVisibleCode(e.employee_code) && statusMap.get(e.id) !== 'excluded');
 
     // shift_submissions（当月分の提出有無）
     const targetMonth = `${yr}-${String(mo).padStart(2, "0")}`;

@@ -84,6 +84,16 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+async function getOnLeaveSet(sb: any, companyId: string, targetDate: string): Promise<Set<string>> {
+  const { data } = await sb.rpc("fn_leave_days_in_period", {
+    p_company_id: companyId,
+    p_period_start: targetDate,
+    p_period_end: targetDate,
+    p_target: "attendance",
+  });
+  return new Set<string>((data || []).map((r: any) => r.employee_id));
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -299,10 +309,12 @@ serve(async (req) => {
         (hcData || []).forEach((h: any) => { holidayCalSet.add(h.calendar_type); });
       }
 
+      const onLeaveSet = await getOnLeaveSet(sb, company_id, target_date);
       const unpunched: { id: string; code: string; name: string; storeName: string; department: string; calDisplayName?: string | null }[] = [];
       const dateShort = shortDate(target_date);
 
       for (const emp of allEmps) {
+        if (onLeaveSet.has(emp.id)) continue;
         if (emp.employment_type?.includes("パート")) continue;
         if (emp.employee_code === "002") continue;
 
@@ -395,8 +407,10 @@ serve(async (req) => {
         empMap[e.id] = { name: e.full_name, storeName: storeMap[e.store_id] || "", department: e.department || "", code: e.employee_code, calDisplayName: e.calendar_display_name || null };
       });
 
+      const mcOnLeaveSet = await getOnLeaveSet(sb, company_id, target_date);
       const leaveItems: { label: string; targetCal: string }[] = [];
       for (const att of (attData || [])) {
+        if (mcOnLeaveSet.has(att.employee_id)) continue;
         const emp = empMap[att.employee_id];
         if (!emp) continue;
         const r = att.reason;
