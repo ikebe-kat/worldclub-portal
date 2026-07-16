@@ -7,6 +7,7 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import { T, DOW, PALETTE, CAL_GROUPS, stepMonth, displayReason, calendarDisplayName } from "@/lib/constants";
 import { useSmoothSwipe } from "@/hooks/useSmoothSwipe";
 import { supabase } from "@/lib/supabase";
+import { customEventsApi } from "@/lib/secureApi";
 import { fetchLeaveDays, leaveKey } from "@/lib/employmentRpc";
 import { getPermLevel, canShowCalendarGroupSelect, getDefaultCalendarGroup, canChooseTargetCalendar, canDeleteEvent, storeIdToCalGroup, getAllowedCalGroups, canViewJimuCalendar, canViewOthersProfile } from "@/lib/permissions";
 import Dialog from "@/components/ui/Dialog";
@@ -23,9 +24,13 @@ interface CustomEvent {
   color: string;
   target_calendar: string;
   repeat_type: string;
+  repeat_until: string | null;
   creator_employee_id: string;
   creator_code: string | null;
   creator_name: string | null;
+  memo: string | null;
+  display_start: string;
+  display_end: string;
 }
 
 interface AttendanceEvent {
@@ -41,37 +46,6 @@ interface AttendanceEvent {
 // ── ユーティリティ ──────────────────────────
 function toLocalDate(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-function expandRepeats(ev: CustomEvent, yr: number, mo: number): { startDay: number; endDay: number }[] {
-  const monthStart = new Date(yr, mo - 1, 1);
-  const monthEnd = new Date(yr, mo, 0);
-  const daysInMonth = monthEnd.getDate();
-  const hits: { startDay: number; endDay: number }[] = [];
-
-  if (ev.repeat_type === "none" || !ev.repeat_type) {
-    const evStart = new Date(ev.start_date + "T00:00:00");
-    const evEnd = new Date(ev.end_date + "T00:00:00");
-    if (evEnd < monthStart || evStart > monthEnd) return [];
-    const sd = evStart < monthStart ? 1 : evStart.getDate();
-    const ed = evEnd > monthEnd ? daysInMonth : evEnd.getDate();
-    hits.push({ startDay: sd, endDay: ed });
-  } else if (ev.repeat_type === "monthly") {
-    const origStart = new Date(ev.start_date + "T00:00:00");
-    const origEnd = new Date(ev.end_date + "T00:00:00");
-    const span = Math.round((origEnd.getTime() - origStart.getTime()) / 86400000);
-    const sd = Math.min(origStart.getDate(), daysInMonth);
-    const ed = Math.min(sd + span, daysInMonth);
-    hits.push({ startDay: sd, endDay: ed });
-  } else if (ev.repeat_type === "weekly") {
-    const origDow = new Date(ev.start_date + "T00:00:00").getDay();
-    for (let d = 1; d <= daysInMonth; d++) {
-      if (new Date(yr, mo - 1, d).getDay() === origDow) {
-        hits.push({ startDay: d, endDay: d });
-      }
-    }
-  }
-  return hits;
 }
 
 // ── バッジコンポーネント ──────────────────────
@@ -114,18 +88,25 @@ interface AddModalProps {
   defaultDate?: string;
   defaultTargetCal?: string;
   editEvent?: CustomEvent | null;
+  editMode?: "all" | "this" | "future";
+  occurrenceDate?: string;
 }
 
-const AddEventModal = ({ employee, perm, empCode, myCalGroup, allowedGroups, onClose, onSaved, defaultDate, defaultTargetCal, editEvent }: AddModalProps) => {
+const AddEventModal = ({ employee, perm, empCode, myCalGroup, allowedGroups, onClose, onSaved, defaultDate, defaultTargetCal, editEvent, editMode = "all", occurrenceDate }: AddModalProps) => {
   const todayStr = toLocalDate(new Date());
   const isEdit = !!editEvent;
+  const useOccurrence = isEdit && (editMode === "this" || editMode === "future");
   const [title, setTitle] = useState(isEdit ? editEvent!.title : "");
   const [isAllDay, setIsAllDay] = useState(isEdit ? editEvent!.is_all_day : true);
-  const [startDate, setStartDate] = useState(isEdit ? editEvent!.start_date : (defaultDate || todayStr));
-  const [endDate, setEndDate] = useState(isEdit ? editEvent!.end_date : (defaultDate || todayStr));
+  const [startDate, setStartDate] = useState(isEdit ? (useOccurrence ? editEvent!.display_start : editEvent!.start_date) : (defaultDate || todayStr));
+  const [endDate, setEndDate] = useState(isEdit ? (useOccurrence ? editEvent!.display_end : editEvent!.end_date) : (defaultDate || todayStr));
   const [startTime, setStartTime] = useState(isEdit && editEvent!.start_time ? editEvent!.start_time.slice(0, 5) : "09:30");
   const [endTime, setEndTime] = useState(isEdit && editEvent!.end_time ? editEvent!.end_time.slice(0, 5) : "10:30");
-  const [repeatType, setRepeatType] = useState(isEdit ? (editEvent!.repeat_type || "none") : "none");
+  const [repeatType, setRepeatType] = useState(() => {
+    if (!isEdit) return "none";
+    if (editMode === "this") return "none";
+    return editEvent!.repeat_type || "none";
+  });
   const [targetCalendar, setTargetCalendar] = useState(
     isEdit ? editEvent!.target_calendar : (defaultTargetCal && defaultTargetCal !== "all" ? defaultTargetCal : myCalGroup)
   );
@@ -149,45 +130,69 @@ const AddEventModal = ({ employee, perm, empCode, myCalGroup, allowedGroups, onC
     }
   };
 
+  const newEventPayload = () => ({
+    company_id: employee.company_id,
+    creator_employee_id: employee.id,
+    creator_code: employee.employee_code,
+    creator_name: employee.full_name,
+    title: title.trim(),
+    start_date: startDate,
+    end_date: endDate || startDate,
+    is_all_day: isAllDay,
+    start_time: isAllDay ? null : startTime,
+    end_time: isAllDay ? null : endTime,
+    color: selectedColor,
+    target_calendar: targetCalendar,
+    repeat_type: repeatType,
+  });
+
   const handleSave = async () => {
+    if (saving) return;
     if (!title.trim()) { setDlg("予定名を入力してください"); return; }
     if (!startDate) { setDlg("開始日を選択してください"); return; }
     setSaving(true);
-    if (isEdit) {
-      const { error } = await supabase.from("custom_events").update({
-        title: title.trim(),
-        start_date: startDate,
-        end_date: endDate || startDate,
-        is_all_day: isAllDay,
-        start_time: isAllDay ? null : startTime,
-        end_time: isAllDay ? null : endTime,
-        color: selectedColor,
-        target_calendar: targetCalendar,
-        repeat_type: repeatType,
-      }).eq("id", editEvent!.id);
+    try {
+      if (isEdit && editMode === "this" && occurrenceDate) {
+        const { error: excErr } = await customEventsApi({
+          action: "insert_exception",
+          data: { event_id: editEvent!.id, exception_date: occurrenceDate },
+        });
+        if (excErr) { setDlg("更新に失敗しました: " + excErr); return; }
+        const { error } = await customEventsApi({ action: "insert_event", data: newEventPayload() });
+        if (error) { setDlg("登録に失敗しました: " + error); return; }
+
+      } else if (isEdit && editMode === "future" && occurrenceDate) {
+        const prev = new Date(occurrenceDate + "T00:00:00");
+        prev.setDate(prev.getDate() - 1);
+        const repeatUntilStr = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}-${String(prev.getDate()).padStart(2, "0")}`;
+        const { error: upErr } = await customEventsApi({
+          action: "update_event", id: editEvent!.id,
+          data: { repeat_until: repeatUntilStr },
+        });
+        if (upErr) { setDlg("更新に失敗しました: " + upErr); return; }
+        const { error } = await customEventsApi({ action: "insert_event", data: newEventPayload() });
+        if (error) { setDlg("登録に失敗しました: " + error); return; }
+
+      } else if (isEdit) {
+        const { error } = await customEventsApi({
+          action: "update_event", id: editEvent!.id,
+          data: {
+            title: title.trim(), start_date: startDate, end_date: endDate || startDate,
+            is_all_day: isAllDay, start_time: isAllDay ? null : startTime, end_time: isAllDay ? null : endTime,
+            color: selectedColor, target_calendar: targetCalendar, repeat_type: repeatType,
+          },
+        });
+        if (error) { setDlg("更新に失敗しました: " + error); return; }
+
+      } else {
+        const { error } = await customEventsApi({ action: "insert_event", data: newEventPayload() });
+        if (error) { setDlg("登録に失敗しました: " + error); return; }
+      }
+      onSaved();
+      onClose();
+    } finally {
       setSaving(false);
-      if (error) { setDlg("更新に失敗しました: " + error.message); return; }
-    } else {
-      const { error } = await supabase.from("custom_events").insert({
-        company_id: employee.company_id,
-        creator_employee_id: employee.id,
-        creator_code: employee.employee_code,
-        creator_name: employee.full_name,
-        title: title.trim(),
-        start_date: startDate,
-        end_date: endDate || startDate,
-        is_all_day: isAllDay,
-        start_time: isAllDay ? null : startTime,
-        end_time: isAllDay ? null : endTime,
-        color: selectedColor,
-        target_calendar: targetCalendar,
-        repeat_type: repeatType,
-      });
-      setSaving(false);
-      if (error) { setDlg("登録に失敗しました: " + error.message); return; }
     }
-    onSaved();
-    onClose();
   };
 
   const timeOptions = useMemo(() => {
@@ -362,12 +367,13 @@ export default function CalendarTab({ employee }: { employee: any }) {
     const daysInMonth = new Date(yr, mo, 0).getDate();
     const monthEnd = `${yr}-${String(mo).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
 
-    const { data: evData } = await supabase
-      .from("custom_events")
-      .select("id, title, start_date, end_date, is_all_day, start_time, end_time, color, target_calendar, repeat_type, creator_employee_id, creator_code, creator_name")
-      .eq("company_id", employee.company_id)
-      .or(`and(start_date.lte.${monthEnd},end_date.gte.${monthStart}),repeat_type.neq.none`);
-
+    const { data: evData, error: evErr } = await customEventsApi({
+      action: "expand_events",
+      company_id: employee.company_id,
+      year: yr,
+      month: mo,
+    });
+    if (evErr) console.error("[CalendarTab] expand_events error:", evErr);
     setCustomEvents(evData || []);
 
     const { data: attData } = await supabase
@@ -437,20 +443,12 @@ export default function CalendarTab({ employee }: { employee: any }) {
   // ── 日ごとのイベント取得 ──────────────────────
   const isJimu = canViewJimuCalendar(empCode);
   const getEventsForDay = useCallback((day: number) => {
-    const results: (CustomEvent & { _startDay: number; _endDay: number })[] = [];
-    for (const ev of customEvents) {
-      // 業務部イベントは W02/W49/W67 のみ閲覧可
-      if (ev.target_calendar === "jimu" && !isJimu) continue;
-      if (group !== "all" && ev.target_calendar !== "all" && ev.target_calendar !== group) continue;
-      const spans = expandRepeats(ev, yr, mo);
-      for (const span of spans) {
-        if (day >= span.startDay && day <= span.endDay) {
-          results.push({ ...ev, _startDay: span.startDay, _endDay: span.endDay });
-          break;
-        }
-      }
-    }
-    return results;
+    const dateStr = `${yr}-${String(mo).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    return customEvents.filter(ev => {
+      if (ev.target_calendar === "jimu" && !isJimu) return false;
+      if (group !== "all" && ev.target_calendar !== "all" && ev.target_calendar !== group) return false;
+      return dateStr >= ev.display_start && dateStr <= ev.display_end;
+    });
   }, [customEvents, yr, mo, group, isJimu]);
 
   const getAttForDay = useCallback((day: number) => {
@@ -469,18 +467,43 @@ export default function CalendarTab({ employee }: { employee: any }) {
 
   // ── 削除処理 ──────────────────────────
   const [calDialog, setCalDialog] = useState<{ message: string; mode: "alert" | "confirm"; onOk: () => void } | null>(null);
+  const [repeatChoice, setRepeatChoice] = useState<{ event: CustomEvent; occurrenceDate: string; action: "edit" | "delete" } | null>(null);
+  const [editMode, setEditMode] = useState<"all" | "this" | "future">("all");
 
-  const handleDelete = (eventId: string) => {
+  const handleDelete = (ev: CustomEvent) => {
+    if (ev.repeat_type && ev.repeat_type !== "none") {
+      setRepeatChoice({ event: ev, occurrenceDate: ev.display_start, action: "delete" });
+      return;
+    }
     setCalDialog({
       message: "この予定を削除しますか？",
       mode: "confirm",
       onOk: async () => {
         setCalDialog(null);
-        const { error } = await supabase.from("custom_events").delete().eq("id", eventId);
-        if (error) { setCalDialog({ message: "削除に失敗しました: " + error.message, mode: "alert", onOk: () => setCalDialog(null) }); return; }
+        const { error } = await customEventsApi({ action: "delete_event", id: ev.id });
+        if (error) { setCalDialog({ message: "削除に失敗しました: " + error, mode: "alert", onOk: () => setCalDialog(null) }); return; }
         fetchData();
       },
     });
+  };
+
+  const handleRepeatDelete = async (ev: CustomEvent, occDate: string, mode: "this" | "future" | "all") => {
+    if (mode === "this") {
+      const { error } = await customEventsApi({ action: "insert_exception", data: { event_id: ev.id, exception_date: occDate } });
+      if (error) { setCalDialog({ message: "削除に失敗しました: " + error, mode: "alert", onOk: () => setCalDialog(null) }); return; }
+      fetchData();
+    } else if (mode === "future") {
+      const prev = new Date(occDate + "T00:00:00");
+      prev.setDate(prev.getDate() - 1);
+      const untilStr = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}-${String(prev.getDate()).padStart(2, "0")}`;
+      const { error } = await customEventsApi({ action: "update_event", id: ev.id, data: { repeat_until: untilStr } });
+      if (error) { setCalDialog({ message: "削除に失敗しました: " + error, mode: "alert", onOk: () => setCalDialog(null) }); return; }
+      fetchData();
+    } else {
+      const { error } = await customEventsApi({ action: "delete_event", id: ev.id });
+      if (error) { setCalDialog({ message: "削除に失敗しました: " + error, mode: "alert", onOk: () => setCalDialog(null) }); return; }
+      fetchData();
+    }
   };
 
   const canDelete = (creatorId: string) => {
@@ -522,8 +545,13 @@ export default function CalendarTab({ employee }: { employee: any }) {
         {selCustom.length > 0 && (
           <div>
             <div style={{ fontSize: 11, color: T.textMuted, marginBottom: 6, fontWeight: 600 }}>カスタム予定</div>
-            {selCustom.map((e) => (
-              <div key={e.id} onClick={() => { if (canDelete(e.creator_employee_id)) { setEditTarget(e); setModal(true); } }} style={{ padding: "7px 0", borderBottom: `1px solid ${T.borderLight}`, cursor: canDelete(e.creator_employee_id) ? "pointer" : "default", WebkitTapHighlightColor: "transparent", touchAction: "manipulation" }}>
+            {[...selCustom].sort((a, b) => {
+              if (a.is_all_day && !b.is_all_day) return -1;
+              if (!a.is_all_day && b.is_all_day) return 1;
+              if (!a.is_all_day && !b.is_all_day) return (a.start_time || "").localeCompare(b.start_time || "");
+              return 0;
+            }).map((e) => (
+              <div key={`${e.id}-${e.display_start}`} onClick={() => { if (canDelete(e.creator_employee_id)) { if (e.repeat_type && e.repeat_type !== "none") { setRepeatChoice({ event: e, occurrenceDate: e.display_start, action: "edit" }); } else { setEditMode("all"); setEditTarget(e); setModal(true); } } }} style={{ padding: "7px 0", borderBottom: `1px solid ${T.borderLight}`, cursor: canDelete(e.creator_employee_id) ? "pointer" : "default", WebkitTapHighlightColor: "transparent", touchAction: "manipulation" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
                   <div style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: e.color, flexShrink: 0 }} />
                   <span style={{ fontSize: 13, fontWeight: 600, color: T.text, flex: 1 }}>{e.title}</span>
@@ -537,8 +565,12 @@ export default function CalendarTab({ employee }: { employee: any }) {
                   {e.is_all_day ? "終日" : `${e.start_time?.slice(0, 5) || ""} 〜 ${e.end_time?.slice(0, 5) || ""}`}
                   {" ・ "}{e.creator_name || "不明"}
                 </div>
+                {e.memo && (
+                  <div style={{ fontSize: 11, color: T.textSec, marginLeft: 14, marginTop: 3, whiteSpace: "pre-wrap", wordBreak: "break-all" }}
+                    dangerouslySetInnerHTML={{ __html: e.memo.replace(/https?:\/\/[^\s]+/g, (url: string) => `<a href="${url}" target="_blank" rel="noopener" style="color:#2563EB">${url}</a>`) }} />
+                )}
                 {canDelete(e.creator_employee_id) && (
-                  <button onClick={(ev) => { ev.stopPropagation(); handleDelete(e.id); }}
+                  <button onClick={(clickEv) => { clickEv.stopPropagation(); handleDelete(e); }}
                     style={{ fontSize: 11, color: T.danger, background: "none", border: "none", cursor: "pointer", padding: "4px 0 0 14px" }}>
                     削除
                   </button>
@@ -721,12 +753,59 @@ export default function CalendarTab({ employee }: { employee: any }) {
           empCode={empCode}
           myCalGroup={myCalGroup}
           allowedGroups={allowedGroups}
-          onClose={() => { setModal(false); setEditTarget(null); }}
+          onClose={() => { setModal(false); setEditTarget(null); setEditMode("all"); }}
           onSaved={fetchData}
           defaultDate={selDay ? `${yr}-${String(mo).padStart(2, "0")}-${String(selDay).padStart(2, "0")}` : undefined}
           defaultTargetCal={group}
           editEvent={editTarget}
+          editMode={editMode}
+          occurrenceDate={editTarget?.display_start}
         />
+      )}
+
+      {/* 繰り返し予定の3択ダイアログ */}
+      {repeatChoice && (
+        <div
+          style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000, animation: "fadeIn 0.15s ease" }}
+          onClick={() => setRepeatChoice(null)}
+        >
+          <div
+            style={{ backgroundColor: "#fff", borderRadius: "12px", padding: "24px 20px", width: "100%", maxWidth: 320, animation: "scaleIn 0.2s ease" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontSize: 15, fontWeight: 700, color: T.text, marginBottom: 16, textAlign: "center" }}>
+              {repeatChoice.action === "edit" ? "繰り返し予定の編集" : "繰り返し予定の削除"}
+            </div>
+            {([
+              { key: "this" as const, label: "この予定のみ" },
+              { key: "future" as const, label: "これ以降すべて" },
+              { key: "all" as const, label: "すべての予定" },
+            ]).map(({ key, label }) => (
+              <button key={key} onClick={async () => {
+                const { event, occurrenceDate: occDate, action } = repeatChoice;
+                setRepeatChoice(null);
+                if (action === "edit") {
+                  setEditMode(key); setEditTarget(event); setModal(true);
+                } else {
+                  await handleRepeatDelete(event, occDate, key);
+                }
+              }}
+                style={{
+                  width: "100%", padding: "12px", marginBottom: 6, borderRadius: "3px",
+                  border: `1px solid ${T.border}`, backgroundColor: "#fff", color: T.text,
+                  fontSize: 14, cursor: "pointer", textAlign: "center",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = T.bg)}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#fff")}
+              >{label}</button>
+            ))}
+            <button onClick={() => setRepeatChoice(null)}
+              style={{ width: "100%", padding: "12px", marginTop: 4, borderRadius: "3px", border: `1px solid ${T.border}`, backgroundColor: "#fff", color: T.textSec, fontSize: 14, cursor: "pointer", textAlign: "center" }}>
+              キャンセル
+            </button>
+          </div>
+          <style>{`@keyframes scaleIn { from { transform: scale(0.9); opacity: 0 } to { transform: scale(1); opacity: 1 } }`}</style>
+        </div>
       )}
 
       {/* カスタムダイアログ */}
