@@ -228,6 +228,7 @@ type ColDef = {
   totalExtra?: React.CSSProperties;
   sticky?: ColSticky;
   excelWidth: number;                    // Excel列幅（px相当 / 5 が実際のwidth）
+  step?: string;                         // インライン編集時のinput step（半休0.5対応など、既定は"1"）
 };
 
 // ガード付き数値取得: null/undefined/NaN を 0 に落とす（Excel derivedのNaNガード）
@@ -256,7 +257,7 @@ const COLS: ColDef[] = [
   { key: "worked_minutes",   label: "労働時間", format: "time", value: r => num(r.worked_minutes),   editable: "worked_minutes",   headerBg: "#DBEAFE", excelWidth: 60 },
   { key: "overtime_minutes", label: "残業時間", format: "time", value: r => num(r.overtime_minutes), editable: "overtime_minutes", headerBg: "#DBEAFE", excelWidth: 60 },
   { key: "night_minutes",    label: "深夜早朝", format: "time", value: r => num(r.night_minutes),    editable: "night_minutes",    headerBg: "#DBEAFE", excelWidth: 60 },
-  { key: "paid_leave_days",  label: "有給(日)", format: "days", value: r => num(r.paid_leave_days),  editable: "paid_leave_days",  headerBg: "#DBEAFE", excelWidth: 55 },
+  { key: "paid_leave_days",  label: "有給(日)", format: "days", value: r => num(r.paid_leave_days),  editable: "paid_leave_days",  headerBg: "#DBEAFE", excelWidth: 55, step: "0.5" },
   { key: "weekday_minutes",  label: "平日時間", format: "time", value: r => num(r.weekday_minutes),  editable: "weekday_minutes",  headerBg: "#DBEAFE", excelWidth: 60 },
   { key: "weekend_minutes",  label: "土日時間", format: "time", value: r => num(r.weekend_minutes),  editable: "weekend_minutes",  headerBg: "#DBEAFE", excelWidth: 60 },
   { key: "base_salary",        label: "基本給",       format: "money", value: r => num(r.base_salary),        editable: "base_salary",        headerBg: "#DCFCE7", excelWidth: 70 },
@@ -748,10 +749,11 @@ function CalcView({ employee }: { employee: any }) {
                       return (
                         <EditableCell
                           key={c.key}
-                          value={(r[c.editable] as number) ?? 0}
+                          value={num(r[c.editable])}
                           display={display}
                           onSave={(n) => updateMonthly(r, c.editable!, n)}
                           baseStyle={baseStyle}
+                          step={c.step}
                           disabled={r.status === "confirmed"}
                         />
                       );

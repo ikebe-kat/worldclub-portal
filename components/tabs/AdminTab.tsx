@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { fetchEmploymentStatus, fetchLeaveDays, leaveKey } from "@/lib/employmentRpc";
 import { getPermLevel, canEditPunch, canEditBreak } from "@/lib/permissions";
 import { periodOfDateStr } from "@/lib/shiftPeriod";
+import { countPaidLeaveDays } from "@/lib/leaveDays";
 import NotificationsSub from "@/components/tabs/NotificationsSub";
 import PaidLeaveSub from "@/components/tabs/PaidLeaveSub";
 import SharoushiSub from "@/components/tabs/SharoushiSub";
@@ -505,8 +506,11 @@ const IndividualSub = ({ employee }: { employee: any }) => {
     let workDays = 0, holidays = 0, yukyuDays = 0, absentDays = 0, totalMinutes = 0, scheduledMinutes = 0, lateCount = 0, earlyCount = 0;
     rows.forEach(r => {
       if (r.is_holiday || r.reason === "公休") { holidays++; return; }
-      if (r.reason?.includes("有給（全日）")) { yukyuDays++; return; }
-      if (r.reason?.includes("午前有給") || r.reason?.includes("午後有給")) yukyuDays += 0.5;
+      const y = countPaidLeaveDays(r.reason);
+      if (y > 0) {
+        yukyuDays += y;
+        if (y === 1) return; // 全日休は以降の集計をスキップ
+      }
       if (r.reason?.includes("希望休（全日）")) return;
       if (r.reason === "欠勤") { absentDays++; return; }
       if (r.actual_hours != null) { totalMinutes += Math.round(r.actual_hours * 60); workDays++; }
@@ -991,8 +995,7 @@ const MonthlySub = ({ employee }: { employee: any }) => {
 
       recs.forEach((r: any) => {
         if (r.is_holiday || r.reason === "公休") { return; }
-        if (r.reason?.includes("有給（全日）")) { yukyuDays++; }
-        else if (r.reason?.includes("午前有給") || r.reason?.includes("午後有給")) { yukyuDays += 0.5; }
+        yukyuDays += countPaidLeaveDays(r.reason);
         if (r.reason?.includes("希望休（全日）")) { kibouDays++; return; }
         if (r.reason?.includes("午前希望休") || r.reason?.includes("午後希望休")) { kibouDays += 0.5; }
         if (r.reason === "欠勤") { absences++; return; }

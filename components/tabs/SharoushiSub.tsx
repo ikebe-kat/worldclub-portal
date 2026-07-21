@@ -4,6 +4,7 @@ import { T } from "@/lib/constants";
 import Dialog from "@/components/ui/Dialog";
 import { supabase } from "@/lib/supabase";
 import { fetchEmploymentStatus } from "@/lib/employmentRpc";
+import { countPaidLeaveDays } from "@/lib/leaveDays";
 
 const REASON_MAP: Record<string, string> = {
   "希望休（全日）": "公休", "午前希望休": "公前", "午後希望休": "公後",
@@ -149,7 +150,7 @@ export default function SharoushiSub({ employee }: { employee: any }) {
             if (a.reason) {
               cR++;
               const r = a.reason;
-              if (r.includes("有給")) cY += (r.includes("午前") || r.includes("午後")) ? 0.5 : 1;
+              cY += countPaidLeaveDays(r);
               if (r.includes("希望休")) cK += (r.includes("午前") || r.includes("午後")) ? 0.5 : 1;
               if (r === "欠勤") cKk++;
               if (r.includes("出張") || r === "直行" || r === "直帰" || r === "直直") cSh++;
@@ -192,7 +193,7 @@ export default function SharoushiSub({ employee }: { employee: any }) {
           if (a.scheduled_hours) sm += Math.round(a.scheduled_hours * 60);
           if (a.reason) {
             const r = a.reason;
-            if (r.includes("有給")) y += (r.includes("午前") || r.includes("午後")) ? 0.5 : 1;
+            y += countPaidLeaveDays(r);
             if (r.includes("出張") || r === "直行" || r === "直帰" || r === "直直") sh++;
             if (r === "欠勤") k++;
             if (r.includes("希望休")) oth += (r.includes("午前") || r.includes("午後")) ? 0.5 : 1;

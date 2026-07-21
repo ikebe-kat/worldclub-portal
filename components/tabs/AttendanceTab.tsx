@@ -6,6 +6,7 @@ import { ReasonBadges } from "@/components/ui";
 import { useSmoothSwipe } from "@/hooks/useSmoothSwipe";
 import type { MonthlySummary } from "@/lib/types";
 import Dialog from "@/components/ui/Dialog";
+import { countPaidLeaveDays } from "@/lib/leaveDays";
 import {
   getCurrentSubmissionPeriod, formatTargetMonth,
   isSubmissionClosed, submissionDeadline, periodBounds, periodLength, periodDateAt,
@@ -619,12 +620,7 @@ export default function AttendanceTab({ employee }: { employee: any }) {
     const wd = allDays.filter(d => !d.off && d.pi).length;
     const hd = allDays.filter(d => d.off).length;
     const ab = allDays.filter(d => d.reason === "欠勤").length;
-    const yu = allDays.reduce((s, d) => {
-      if (!d.reason) return s;
-      if (d.reason.includes("有給（全日）")) return s + 1;
-      if (d.reason.includes("午前有給") || d.reason.includes("午後有給")) return s + 0.5;
-      return s;
-    }, 0);
+    const yu = allDays.reduce((s, d) => s + countPaidLeaveDays(d.reason), 0);
     const ku = allDays.reduce((s, d) => {
       if (!d.reason) return s;
       if (d.reason.includes("希望休（全日）")) return s + 1;
