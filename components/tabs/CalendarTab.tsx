@@ -9,6 +9,7 @@ import { useSmoothSwipe } from "@/hooks/useSmoothSwipe";
 import { supabase } from "@/lib/supabase";
 import { customEventsApi } from "@/lib/secureApi";
 import { fetchLeaveDays, leaveKey } from "@/lib/employmentRpc";
+import { countPaidLeaveDays } from "@/lib/leaveDays";
 import { getPermLevel, canShowCalendarGroupSelect, getDefaultCalendarGroup, canChooseTargetCalendar, canDeleteEvent, storeIdToCalGroup, getAllowedCalGroups, canViewJimuCalendar, canViewOthersProfile } from "@/lib/permissions";
 import Dialog from "@/components/ui/Dialog";
 
@@ -393,6 +394,9 @@ export default function CalendarTab({ employee }: { employee: any }) {
         if (String(row.reason).includes("休職")) return false;
         if (calLeaveDays.has(leaveKey(row.employee_id, row.attendance_date))) return false;
         if ((row.employees as any)?.employee_code === "002") return false;
+        // 一般社員のカレンダーでは有給(全日/午前/午後)を非表示。管理者(W02/W49/W67/WC001)は従来通り表示。
+        // 判定は countPaidLeaveDays() で TS/SQL 側の有給集計と同一ルール。
+        if (!isAdmin && countPaidLeaveDays(row.reason) > 0) return false;
         if (isAdmin) return true;
         return (row.employees as any)?.employee_code === empCode;
       })
