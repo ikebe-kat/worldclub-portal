@@ -61,11 +61,11 @@ function getCell(row: AttRow | undefined): Cell {
   return "empty";
 }
 
-/** セル色・文字（ShiftSub の C.koukyuu/C.yukyu に配色を揃える） */
+/** セル色・文字（公休は白地＋緑〇の線描き。有給は塗りつぶしのまま） */
 const CELL_STYLE: Record<Cell, { bg: string; fg: string; label: string; fontSize?: number; fontWeight?: number }> = {
-  koukyu:     { bg: "#1a4b24", fg: "#fff",     label: "〇",   fontSize: 14, fontWeight: 700 },
-  yukyu_full: { bg: "#1d4ed8", fg: "#fff",     label: "有",   fontSize: 12, fontWeight: 700 },
-  yukyu_half: { bg: "#93c5fd", fg: "#1e3a8a",  label: "半有", fontSize: 10, fontWeight: 700 },
+  koukyu:     { bg: "#fff",    fg: "#1a4b24",   label: "〇",   fontSize: 14, fontWeight: 700 },
+  yukyu_full: { bg: "#1d4ed8", fg: "#fff",      label: "有",   fontSize: 12, fontWeight: 700 },
+  yukyu_half: { bg: "#93c5fd", fg: "#1e3a8a",   label: "半有", fontSize: 10, fontWeight: 700 },
   workday:    { bg: "#fff",    fg: T.textMuted, label: "" },
   empty:      { bg: "#fff",    fg: T.textMuted, label: "" },
 };
@@ -184,7 +184,7 @@ export default function ShiftViewSub() {
         display: "flex", gap: 12, marginBottom: 8, flexWrap: "wrap",
         padding: "6px 10px", backgroundColor: "#fff", border,
       }}>
-        <Legend bg={CELL_STYLE.koukyu.bg}     fg={CELL_STYLE.koukyu.fg}     label={CELL_STYLE.koukyu.label}     name="公休" />
+        <Legend bg={CELL_STYLE.koukyu.bg}     fg={CELL_STYLE.koukyu.fg}     label={CELL_STYLE.koukyu.label}     name="公休" outline />
         <Legend bg={CELL_STYLE.yukyu_full.bg} fg={CELL_STYLE.yukyu_full.fg} label={CELL_STYLE.yukyu_full.label} name="有給(全日)" />
         <Legend bg={CELL_STYLE.yukyu_half.bg} fg={CELL_STYLE.yukyu_half.fg} label={CELL_STYLE.yukyu_half.label} name="有給(半日)" />
         <Legend bg="#fff" fg={T.textMuted} label="" name="出勤 / データなし" outline />
@@ -249,8 +249,8 @@ export default function ShiftViewSub() {
                     {cols.map(c => {
                       const cell = getCell(byEmpDate.get(`${emp.id}|${c.ds}`));
                       const style = CELL_STYLE[cell];
-                      // workday/empty のときは曜日背景色を適用（公休/有給の色は保持）
-                      const bg = (cell === "workday" || cell === "empty") ? (dowBg(c.dow) ?? style.bg) : style.bg;
+                      // 公休/workday/empty は白ベースなので曜日背景色を適用（有給の塗りつぶし色は保持）
+                      const bg = (cell === "workday" || cell === "empty" || cell === "koukyu") ? (dowBg(c.dow) ?? style.bg) : style.bg;
                       return (
                         <td key={c.idx} style={{
                           ...tdBase,
