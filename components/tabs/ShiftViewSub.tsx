@@ -86,7 +86,9 @@ export default function ShiftViewSub() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [{ data: empRows }, { data: attRows }] = await Promise.all([
+    // 従業員・勤怠・非表示フラグを並行取得。フラグは wc_payroll_settings 側にあるので
+    // employees には join できないが、追加クエリ1本で済ませる（余計なクエリを増やさない）。
+    const [{ data: empRows }, { data: attRows }, { data: hideRows }] = await Promise.all([
       supabase.from("employees")
         .select("id, employee_code, full_name, employment_type")
         .eq("company_id", COMPANY_ID)
@@ -97,10 +99,21 @@ export default function ShiftViewSub() {
         .eq("company_id", COMPANY_ID)
         .gte("attendance_date", start)
         .lte("attendance_date", end),
+      supabase.from("wc_payroll_settings")
+        .select("employee_id")
+        .eq("company_id", COMPANY_ID)
+        .eq("hide_from_shift_view", true),
     ]);
     const statusMap = await fetchEmploymentStatus(COMPANY_ID, start, end, "attendance");
+    const hideIds = new Set<string>(((hideRows || []) as { employee_id: string | null }[])
+      .map(r => r.employee_id)
+      .filter((v): v is string => !!v));
     const filtered = ((empRows || []) as Emp[])
-      .filter(e => isVisibleCode(e.employee_code) && statusMap.get(e.id) !== "excluded");
+      .filter(e =>
+        isVisibleCode(e.employee_code)
+        && statusMap.get(e.id) !== "excluded"
+        && !hideIds.has(e.id)
+      );
     setEmps(filtered);
     setAtts((attRows || []) as AttRow[]);
     setLoading(false);

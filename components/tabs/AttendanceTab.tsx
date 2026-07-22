@@ -422,6 +422,19 @@ export default function AttendanceTab({ employee }: { employee: any }) {
   }, [employee?.id]);
   const isPart = empType === 'パート' || PART_CODES.includes(employee?.employee_code);
 
+  /* シフト表非表示フラグ（本人がtrueなら「シフト表」サブタブ自体を隠す） */
+  // 既存の empType 取得と同じ理由でここで単発取得。employee prop は employees テーブル
+  // ベースで hide_from_shift_view (wc_payroll_settings 側) を持たないため。
+  const [hideFromShiftView, setHideFromShiftView] = useState<boolean>(false);
+  useEffect(() => {
+    if (!employee?.id) return;
+    supabase.from('wc_payroll_settings')
+      .select('hide_from_shift_view')
+      .eq('employee_id', employee.id)
+      .maybeSingle()
+      .then(({ data }) => setHideFromShiftView(!!(data as any)?.hide_from_shift_view));
+  }, [employee?.id]);
+
   /* レスポンシブ判定 */
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -943,12 +956,18 @@ export default function AttendanceTab({ employee }: { employee: any }) {
   };
 
   /* ══════════ JSX ══════════ */
-  // サブタブ配列: WC001(小川) は「シフト希望」を持たない（既存挙動維持）が、
-  // 「シフト表」は全員閲覧可なので全員に表示する。
+  // サブタブ配列:
+  //   - WC001(小川) は「シフト希望」を持たない（既存挙動維持）が、「シフト表」は全員閲覧可なので出す
+  //   - hide_from_shift_view=true の本人は「シフト表」自体を非表示（自分の名前が並びから消えた画面は不要）
   const isOgawa = employee?.employee_code === "WC001";
-  const subTabs: { id: "attendance" | "shift_wish" | "shift_view"; label: string }[] = isOgawa
+  const baseTabs: { id: "attendance" | "shift_wish" | "shift_view"; label: string }[] = isOgawa
     ? [{ id: "attendance", label: "出勤簿" }, { id: "shift_view", label: "シフト表" }]
     : [{ id: "attendance", label: "出勤簿" }, { id: "shift_wish", label: "シフト希望" }, { id: "shift_view", label: "シフト表" }];
+  const subTabs = hideFromShiftView ? baseTabs.filter(t => t.id !== "shift_view") : baseTabs;
+  // 自分のタブが消えた場合の保険: activeSubTab が subTabs に無ければ attendance にフォールバック
+  useEffect(() => {
+    if (!subTabs.some(t => t.id === activeSubTab)) setActiveSubTab("attendance");
+  }, [subTabs, activeSubTab]);
 
   const SubTabBar = () => (
     <div style={{ display: "flex", gap: 0, marginBottom: 0, borderBottom: `2px solid ${T.border}`, padding: "0 12px" }}>
