@@ -7,6 +7,7 @@ import { useSmoothSwipe } from "@/hooks/useSmoothSwipe";
 import type { MonthlySummary } from "@/lib/types";
 import Dialog from "@/components/ui/Dialog";
 import { countPaidLeaveDays } from "@/lib/leaveDays";
+import ShiftViewSub from "@/components/tabs/ShiftViewSub";
 import {
   getCurrentSubmissionPeriod, formatTargetMonth,
   isSubmissionClosed, submissionDeadline, periodBounds, periodLength, periodDateAt,
@@ -393,7 +394,7 @@ const ShiftWishView = ({ employee }: { employee: any }) => {
 };
 
 export default function AttendanceTab({ employee }: { employee: any }) {
-  const [activeSubTab, setActiveSubTab] = useState<"attendance" | "shift_wish">("attendance");
+  const [activeSubTab, setActiveSubTab] = useState<"attendance" | "shift_wish" | "shift_view">("attendance");
   const _cp = currentPeriodMonth();
   const [yr, setYr] = useState(_cp.yr);
   const [mo, setMo] = useState(_cp.mo);
@@ -942,38 +943,47 @@ export default function AttendanceTab({ employee }: { employee: any }) {
   };
 
   /* ══════════ JSX ══════════ */
+  // サブタブ配列: WC001(小川) は「シフト希望」を持たない（既存挙動維持）が、
+  // 「シフト表」は全員閲覧可なので全員に表示する。
+  const isOgawa = employee?.employee_code === "WC001";
+  const subTabs: { id: "attendance" | "shift_wish" | "shift_view"; label: string }[] = isOgawa
+    ? [{ id: "attendance", label: "出勤簿" }, { id: "shift_view", label: "シフト表" }]
+    : [{ id: "attendance", label: "出勤簿" }, { id: "shift_wish", label: "シフト希望" }, { id: "shift_view", label: "シフト表" }];
+
+  const SubTabBar = () => (
+    <div style={{ display: "flex", gap: 0, marginBottom: 0, borderBottom: `2px solid ${T.border}`, padding: "0 12px" }}>
+      {subTabs.map(t => (
+        <button key={t.id} onClick={() => setActiveSubTab(t.id)} style={{
+          padding: "10px 20px", border: "none", backgroundColor: "transparent", cursor: "pointer",
+          fontSize: 14, fontWeight: activeSubTab === t.id ? 700 : 400,
+          color: activeSubTab === t.id ? T.primary : T.textSec,
+          borderBottom: activeSubTab === t.id ? `3px solid ${T.primary}` : "3px solid transparent",
+        }}>{t.label}</button>
+      ))}
+    </div>
+  );
+
   if (activeSubTab === "shift_wish") {
     return (
       <div>
-        <div style={{ display: "flex", gap: 0, marginBottom: 0, borderBottom: `2px solid ${T.border}`, padding: "0 12px" }}>
-          {[{ id: "attendance" as const, label: "出勤簿" }, { id: "shift_wish" as const, label: "シフト希望" }].map(t => (
-            <button key={t.id} onClick={() => setActiveSubTab(t.id)} style={{
-              padding: "10px 20px", border: "none", backgroundColor: "transparent", cursor: "pointer",
-              fontSize: 14, fontWeight: activeSubTab === t.id ? 700 : 400,
-              color: activeSubTab === t.id ? T.primary : T.textSec,
-              borderBottom: activeSubTab === t.id ? `3px solid ${T.primary}` : "3px solid transparent",
-            }}>{t.label}</button>
-          ))}
-        </div>
+        <SubTabBar />
         <ShiftWishView employee={employee} />
+      </div>
+    );
+  }
+
+  if (activeSubTab === "shift_view") {
+    return (
+      <div>
+        <SubTabBar />
+        <ShiftViewSub />
       </div>
     );
   }
 
   return (
     <div>
-      {employee?.employee_code !== "WC001" && (
-        <div style={{ display: "flex", gap: 0, marginBottom: 0, borderBottom: `2px solid ${T.border}`, padding: "0 12px" }}>
-          {[{ id: "attendance" as const, label: "出勤簿" }, { id: "shift_wish" as const, label: "シフト希望" }].map(t => (
-            <button key={t.id} onClick={() => setActiveSubTab(t.id)} style={{
-              padding: "10px 20px", border: "none", backgroundColor: "transparent", cursor: "pointer",
-              fontSize: 14, fontWeight: activeSubTab === t.id ? 700 : 400,
-              color: activeSubTab === t.id ? T.primary : T.textSec,
-              borderBottom: activeSubTab === t.id ? `3px solid ${T.primary}` : "3px solid transparent",
-            }}>{t.label}</button>
-          ))}
-        </div>
-      )}
+      <SubTabBar />
     <div style={{ padding: "16px 12px", maxWidth: 720, margin: "0 auto" }}>
       {/* 月ナビ */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, gap: 8, flexWrap: "wrap" }}>

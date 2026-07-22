@@ -30,3 +30,14 @@ export function sumPaidLeaveDays(
   }
   return total;
 }
+
+/**
+ * reason が「公休（全日）」を含むかを返す（新規シフト表閲覧画面用）。
+ * 既存コードには「公休」「公休（全日）」の完全一致・部分一致が混在しているが、
+ * この関数はどれにも触らず新画面ローカルの用途のみに使う。判定粒度を統一するのは
+ * 別マイグレーション扱い（既存動作を変えない）。
+ */
+export function isPublicHolidayReason(reason: string | null | undefined): boolean {
+  if (!reason) return false;
+  return reason.includes("公休（全日）");
+}
