@@ -8,6 +8,7 @@
 // ═══════════════════════════════════════════
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { T } from "@/lib/constants";
+import { isValidPin } from "@/lib/pinValidation";
 import { Avatar, Badge } from "@/components/ui";
 import Dialog from "@/components/ui/Dialog";
 import { supabase } from "@/lib/supabase";
@@ -98,8 +99,8 @@ const PinChangeModal = ({ employeeId, onClose, onSuccess }: PinModalProps) => {
     setError(null);
     if (!currentPin) { setError("現在のPINを入力してください"); return; }
     if (!newPin) { setError("新しいPINを入力してください"); return; }
-    if (newPin.length < 4 || newPin.length > 8 || !/^\d+$/.test(newPin)) {
-      setError("PINは4〜8桁の数字で入力してください"); return;
+    if (!isValidPin(newPin)) {
+      setError("PINは4〜6桁の数字で入力してください"); return;
     }
     if (newPin !== confirmPin) { setError("新しいPINが一致しません"); return; }
 
@@ -132,7 +133,7 @@ const PinChangeModal = ({ employeeId, onClose, onSuccess }: PinModalProps) => {
         </div>
         <div style={{ marginBottom: 14 }}>
           <label style={{ fontSize: 12, color: T.textSec, display: "block", marginBottom: 4 }}>新しいPIN</label>
-          <input type="password" inputMode="numeric" placeholder="4〜8桁の数字" value={newPin} onChange={(e) => setNewPin(e.target.value)}
+          <input type="password" inputMode="numeric" placeholder="4〜6桁の数字" value={newPin} onChange={(e) => setNewPin(e.target.value)}
             style={{ width: "100%", padding: "11px 14px", borderRadius: 6, border: `1px solid ${T.border}`, fontSize: 16, boxSizing: "border-box" }} />
         </div>
         <div style={{ marginBottom: 20 }}>
