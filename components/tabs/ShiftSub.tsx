@@ -324,11 +324,8 @@ export default function ShiftSub({ employee, onBadgeRefresh }: { employee: any; 
   /* ── 確定処理用：提出チェックなし ── */
   const getCellStateRaw = (empId: string, day: number): CellState => computeCellState(empId, day);
 
-  /* ── 表示用：未提出者は空白 ── */
-  const getCellState = (empId: string, day: number): CellState => {
-    if (!submittedIds.has(empId) && !exemptIds.has(empId)) return "workday";
-    return computeCellState(empId, day);
-  };
+  /* ── 表示用：実データをそのまま反映（提出状態は済/再/未バッジで表現） ── */
+  const getCellState = (empId: string, day: number): CellState => computeCellState(empId, day);
 
   /* ── セルの背景色 ── */
   const cellBg = (state: string) => {
@@ -365,8 +362,6 @@ export default function ShiftSub({ employee, onBadgeRefresh }: { employee: any; 
   /* ── ⑦ セルタップ処理（空きセル→直接公休insert） ── */
   const tappingRef = useRef<Set<string>>(new Set());
   const handleCellTap = async (emp: Emp, day: number) => {
-    // 未提出者は操作不可（ただしWC001は例外）
-    if (!submittedIds.has(emp.id) && !exemptIds.has(emp.id)) return;
 
     const tapKey = `${emp.id}_${day}`;
     if (tappingRef.current.has(tapKey)) return;
@@ -703,11 +698,8 @@ export default function ShiftSub({ employee, onBadgeRefresh }: { employee: any; 
 
   /* ── 確定ボタン処理 ── */
   const handleConfirm = async () => {
-    // 提出済み従業員に未承認(pending)が残っていたら確定不可
-    const hasPending = leaveReqs.some(r =>
-      r.status === "pending" &&
-      (submittedIds.has(r.employee_id) || exemptIds.has(r.employee_id))
-    );
+    // 未承認(pending)が残っていたら確定不可（全従業員対象）
+    const hasPending = leaveReqs.some(r => r.status === "pending");
     if (hasPending) {
       setDialog({
         message: "未承認の申請があります。\n全て承認または差し戻しをしてから確定してください。",
@@ -781,19 +773,19 @@ export default function ShiftSub({ employee, onBadgeRefresh }: { employee: any; 
           .gte("attendance_date", _monthStart)
           .lte("attendance_date", _monthEnd);
 
-        // 未提出者のpending leave_requestsを自動差し戻し（バッジ残留防止）
-        const unsubmittedPending = leaveReqs.filter(r =>
+        // セーフティネット: ガードをすり抜けたpendingがあれば自動差し戻し
+        const remainingPending = leaveReqs.filter(r =>
           r.status === "pending" &&
-          !submittedIds.has(r.employee_id) && !exemptIds.has(r.employee_id)
+          r.attendance_date >= _monthStart && r.attendance_date <= _monthEnd
         );
-        if (unsubmittedPending.length > 0) {
+        if (remainingPending.length > 0) {
           await supabase.from("leave_requests")
             .update({
               status: "returned",
-              reject_reason: "シフト未提出のため確定時に自動差し戻し",
+              reject_reason: "シフト確定時に自動差し戻し",
               updated_at: new Date().toISOString(),
             })
-            .in("id", unsubmittedPending.map(r => r.id));
+            .in("id", remainingPending.map(r => r.id));
         }
 
         // shift_confirmations: 既存行があれば UPDATE（is_modified は維持）、なければ INSERT（is_modified=false）
