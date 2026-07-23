@@ -1,5 +1,5 @@
 ﻿"use client";
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { T, displayReason, isKoukyuPart, periodRange, currentPeriodMonth, periodDays } from "@/lib/constants";
 import { Badge, ReasonBadges } from "@/components/ui";
 import Dialog from "@/components/ui/Dialog";
@@ -1236,7 +1236,8 @@ const RequestsSub = ({ employee, categoryFilter }: { employee: any; categoryFilt
 /* ── 書類配布サブタブ ── */
 /* ══════════════════════════════════════ */
 interface DocRow {
-  id: string; document_name: string; category: string; file_url: string;
+  id: string; document_name: string; category: string; file_url: string | null;
+  doc_type: string | null; content: string | null;
   employee_id: string | null; upload_date: string; confirmed_at: string | null;
   emp_name?: string; emp_code?: string;
 }
@@ -1255,6 +1256,9 @@ const DocumentsSub = ({ employee }: { employee: any }) => {
   const [targetEmpId, setTargetEmpId] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [previewDoc, setPreviewDoc] = useState<DocRow | null>(null);
+  const previewIframeRef = useRef<HTMLIFrameElement>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!employee?.company_id) return;
@@ -1333,12 +1337,51 @@ const DocumentsSub = ({ employee }: { employee: any }) => {
                   <td style={{ padding: "8px 6px", textAlign: "center", fontSize: 11, color: T.textSec }}>{d.emp_name}{d.emp_code !== "—" ? ` (${d.emp_code})` : ""}</td>
                   <td style={{ padding: "8px 6px", textAlign: "center", fontSize: 11, color: T.textMuted }}>{fmtDate(d.upload_date)}</td>
                   <td style={{ padding: "8px 6px", textAlign: "center" }}>{d.confirmed_at ? <span style={{ color: T.success, fontWeight: 600, fontSize: 11 }}>✓ 済</span> : <span style={{ color: T.textMuted, fontSize: 11 }}>未確認</span>}</td>
-                  <td style={{ padding: "6px", textAlign: "center" }}><a href={d.file_url} target="_blank" rel="noopener noreferrer" style={{ padding: "4px 10px", borderRadius: 4, border: `1px solid ${T.primary}`, backgroundColor: "#fff", color: T.primary, fontSize: 11, fontWeight: 600, textDecoration: "none", cursor: "pointer" }}>開く</a></td>
+                  <td style={{ padding: "6px", textAlign: "center" }}>{d.doc_type === "payslip" && d.content ? (
+                    <button onClick={() => setPreviewDoc(d)} style={{ padding: "4px 10px", borderRadius: 4, border: `1px solid ${T.primary}`, backgroundColor: "#fff", color: T.primary, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>表示</button>
+                  ) : d.file_url ? (
+                    <a href={d.file_url} target="_blank" rel="noopener noreferrer" style={{ padding: "4px 10px", borderRadius: 4, border: `1px solid ${T.primary}`, backgroundColor: "#fff", color: T.primary, fontSize: 11, fontWeight: 600, textDecoration: "none", cursor: "pointer" }}>開く</a>
+                  ) : (
+                    <span style={{ padding: "4px 10px", fontSize: 11, color: T.textMuted }}>—</span>
+                  )}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div></div>
+      )}
+      {previewDoc && previewDoc.content && (
+        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1200 }} onClick={() => { setPreviewDoc(null); setPdfLoading(false); }}>
+          <div style={{ backgroundColor: "#fff", borderRadius: 10, width: "95%", maxWidth: 820, height: "90vh", display: "flex", flexDirection: "column", overflow: "hidden" }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderBottom: `1px solid ${T.border}` }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: T.text }}>{previewDoc.document_name}{previewDoc.emp_name ? ` — ${previewDoc.emp_name}` : ""}</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={async () => {
+                  if (!previewIframeRef.current) return;
+                  setPdfLoading(true);
+                  try {
+                    const html2canvas = (await import("html2canvas")).default;
+                    const { jsPDF } = await import("jspdf");
+                    const iframeDoc = previewIframeRef.current.contentDocument;
+                    if (!iframeDoc?.body) { setPdfLoading(false); return; }
+                    const canvas = await html2canvas(iframeDoc.body, { scale: 2, useCORS: true, backgroundColor: "#fff" });
+                    const imgW = 210;
+                    const imgH = (canvas.height * imgW) / canvas.width;
+                    const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+                    const pageH = 297;
+                    let yOff = 0;
+                    while (yOff < imgH) { if (yOff > 0) pdf.addPage(); pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, -yOff, imgW, imgH); yOff += pageH; }
+                    const month = previewDoc.document_name.replace("給与明細 ", "").trim();
+                    pdf.save(`給与明細_${month}.pdf`);
+                  } catch (e) { console.error("PDF生成失敗:", e); }
+                  setPdfLoading(false);
+                }} disabled={pdfLoading} style={{ padding: "6px 14px", borderRadius: 6, border: `1px solid ${T.primary}`, backgroundColor: "#fff", color: T.primary, fontSize: 12, fontWeight: 600, cursor: pdfLoading ? "default" : "pointer", opacity: pdfLoading ? 0.6 : 1 }}>{pdfLoading ? "生成中..." : "PDF DL"}</button>
+                <button onClick={() => { setPreviewDoc(null); setPdfLoading(false); }} style={{ padding: "6px 14px", borderRadius: 6, border: `1px solid ${T.border}`, backgroundColor: "#fff", color: T.textSec, fontSize: 12, cursor: "pointer" }}>閉じる</button>
+              </div>
+            </div>
+            <iframe ref={previewIframeRef} srcDoc={previewDoc.content} style={{ flex: 1, border: "none", width: "100%" }} />
+          </div>
+        </div>
       )}
       {dialogMsg && <Dialog message={dialogMsg} onOk={() => setDialogMsg(null)} />}
     </div>
