@@ -118,6 +118,7 @@ export default function ShiftSub({ employee, onBadgeRefresh }: { employee: any; 
   const [leaveReqs, setLeaveReqs] = useState<LeaveReq[]>([]);
   const [attData, setAttData] = useState<AttRow[]>([]);
   const [submittedIds, setSubmittedIds] = useState<Set<string>>(new Set());
+  const [resubmittedIds, setResubmittedIds] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<"shift" | "yukyu">("shift");
   const [yukyuReqs, setYukyuReqs] = useState<any[]>([]);
   const [yukyuTargetMonthSet, setYukyuTargetMonthSet] = useState<Set<string>>(new Set());
@@ -172,6 +173,7 @@ export default function ShiftSub({ employee, onBadgeRefresh }: { employee: any; 
       .eq("company_id", COMPANY_ID)
       .eq("target_month", targetMonth);
     const submitted = new Set<string>((subs || []).map((s: any) => s.employee_id));
+    const resubmitted = new Set<string>((subs || []).filter((s: any) => s.submitted_at && s.created_at && s.submitted_at > s.created_at).map((s: any) => s.employee_id));
 
     // shift_confirmations（当月確定状態）
     const { data: confRow } = await supabase.from("shift_confirmations")
@@ -185,6 +187,7 @@ export default function ShiftSub({ employee, onBadgeRefresh }: { employee: any; 
     setLeaveReqs(reqs || []);
     setAttData(att || []);
     setSubmittedIds(submitted);
+    setResubmittedIds(resubmitted);
     setShiftConfirmedAt(confirmedAt);
 
     // 有給申請（pending）：今日が属する月度＋確定済みの未来月度
@@ -777,6 +780,21 @@ export default function ShiftSub({ employee, onBadgeRefresh }: { employee: any; 
           .eq("status", "approved")
           .gte("attendance_date", _monthStart)
           .lte("attendance_date", _monthEnd);
+
+        // 未提出者のpending leave_requestsを自動差し戻し（バッジ残留防止）
+        const unsubmittedPending = leaveReqs.filter(r =>
+          r.status === "pending" &&
+          !submittedIds.has(r.employee_id) && !exemptIds.has(r.employee_id)
+        );
+        if (unsubmittedPending.length > 0) {
+          await supabase.from("leave_requests")
+            .update({
+              status: "returned",
+              reject_reason: "シフト未提出のため確定時に自動差し戻し",
+              updated_at: new Date().toISOString(),
+            })
+            .in("id", unsubmittedPending.map(r => r.id));
+        }
 
         // shift_confirmations: 既存行があれば UPDATE（is_modified は維持）、なければ INSERT（is_modified=false）
         const targetMonth = `${yr}-${String(mo).padStart(2, "0")}`;
@@ -1374,9 +1392,9 @@ export default function ShiftSub({ employee, onBadgeRefresh }: { employee: any; 
                           ) : !shiftConfirmedAt && (
                             <span style={{
                               fontSize: 11, fontWeight: 600, lineHeight: 1,
-                              color: submittedIds.has(emp.id) ? C.koukyuu : T.textMuted,
+                              color: resubmittedIds.has(emp.id) ? "#E97A00" : submittedIds.has(emp.id) ? C.koukyuu : T.textMuted,
                             }}>
-                              {submittedIds.has(emp.id) ? "済" : "未"}
+                              {resubmittedIds.has(emp.id) ? "再" : submittedIds.has(emp.id) ? "済" : "未"}
                             </span>
                           )}
                         </span>
