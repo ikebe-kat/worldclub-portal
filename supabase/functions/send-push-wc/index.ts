@@ -30,25 +30,6 @@ const ALL_CALENDAR_CODES = ["002", "018", "067", "003", "009", "006", "049", "07
 const GYOMU_DEPTS = ["人事", "経理", "DX", "人事総務", "DX推進"];
 const WC_NOTIFY_CODES = ["WC001", "W49", "W67"];
 
-const calMap: Record<string, string> = {
-  "all": "全店舗", "kengun": "健軍", "ozu": "大津", "yatsushiro": "八代", "gyomu": "業務部",
-  "higashibypass": "東バイパス", "rentacar": "レンタカー",
-  "全店舗": "全店舗", "健軍": "健軍", "大津": "大津", "八代": "八代", "業務部": "業務部",
-};
-
-function resolveStoreShort(storeName: string): string {
-  if (!storeName) return "—";
-  if (storeName.includes("八代")) return "八代";
-  if (storeName.includes("健軍")) return "健軍";
-  if (storeName.includes("大津") || storeName.includes("菊陽")) return "大津";
-  if (storeName.includes("東バイパス")) return "東バイパス";
-  if (storeName.includes("レンタカー")) return "レンタカー";
-  if (storeName.includes("本社")) return "本社";
-  if (storeName.includes("経理") || storeName.includes("人事") || storeName.includes("DX")) return "業務部";
-  if (storeName.includes("御領")) return "御領";
-  return storeName;
-}
-
 /* 従業員のカレンダーグループを特定（stores.calendar_group ベース） */
 function resolveCalendarGroup(empCode: string, department: string, calGroup: string): string {
   if (empCode === "002") return "gyomu";
@@ -122,15 +103,24 @@ serve(async (req) => {
         .or("is_active.is.null,is_active.eq.true")
         .is("resigned_at", null);
       const { data: stores } = await sb.from("stores")
-        .select("id, store_name, calendar_group")
+        .select("id, store_name, calendar_group, short_name")
         .eq("company_id", companyId);
       const storeMap: Record<string, string> = {};
       const calGroupMap: Record<string, string> = {};
+      const shortNameMap: Record<string, string> = {};
       (stores || []).forEach((s: any) => {
         storeMap[s.id] = s.store_name || "";
         calGroupMap[s.id] = s.calendar_group || "";
+        shortNameMap[s.id] = s.short_name || "";
       });
-      return { allEmps: allEmps || [], storeMap, calGroupMap };
+      const { data: calGroups } = await sb.from("calendar_groups")
+        .select("group_key, display_name")
+        .eq("company_id", companyId);
+      const calLabelMap: Record<string, string> = {};
+      (calGroups || []).forEach((g: any) => {
+        calLabelMap[g.group_key] = g.display_name || "";
+      });
+      return { allEmps: allEmps || [], storeMap, calGroupMap, shortNameMap, calLabelMap };
     }
 
     async function getStoreHistory(empIds: string[]) {
@@ -173,12 +163,12 @@ serve(async (req) => {
       const creatorName = event.creator_name || "不明";
       const creatorEmpId = event.creator_employee_id || null;
       const isJimu = event.target_calendar === "jimu";
-      const calLabel = isJimu ? "業務部" : (calMap[event.target_calendar] || event.target_calendar);
       const actionText = action === "updated" ? "編集" : action === "deleted" ? "削除" : "登録";
       const title = `${creatorName}が予定を${actionText}しました`;
       const timeStr = event.start_time ? ` ${event.start_time.slice(0, 5)}` : "";
 
-      const { allEmps, calGroupMap } = await getEmpsAndStores(event.company_id);
+      const { allEmps, calGroupMap, calLabelMap } = await getEmpsAndStores(event.company_id);
+      const calLabel = isJimu ? "業務部" : (calLabelMap[event.target_calendar] || event.target_calendar);
       const allNames = allEmps.map((e: any) => e.full_name);
       const creatorEmp = creatorEmpId ? allEmps.find((e: any) => e.id === creatorEmpId) : null;
       const body = `${calLabel}：${lastName(creatorName, creatorEmp?.calendar_display_name, allNames)}　${event.title} ${shortDate(event.start_date)}${timeStr}`;
@@ -233,13 +223,13 @@ serve(async (req) => {
     // ============================
     if (type === "attendance_reason_set") {
       const { company_id, employee_id, employee_name, reason, attendance_date } = payload;
-      const { allEmps, storeMap, calGroupMap } = await getEmpsAndStores(company_id);
+      const { allEmps, storeMap, calGroupMap, shortNameMap } = await getEmpsAndStores(company_id);
       const histMap = await getStoreHistory(allEmps.map((e: any) => e.id));
 
       const empObj = allEmps.find((e: any) => e.id === employee_id);
       const senderHist = histMap[employee_id] || [];
       const senderResolvedStore = resolveStoreAtDate(senderHist, empObj?.store_id || "", attendance_date);
-      const storeShort = resolveStoreShort(storeMap[senderResolvedStore] || "");
+      const storeShort = shortNameMap[senderResolvedStore] || "—";
       const dateShort = shortDate(attendance_date);
 
       let reasonLabel = "";
@@ -291,13 +281,13 @@ serve(async (req) => {
     // ============================
     if (type === "attendance_reason_cleared") {
       const { company_id, employee_id, employee_name, old_reason, attendance_date } = payload;
-      const { allEmps, storeMap, calGroupMap } = await getEmpsAndStores(company_id);
+      const { allEmps, storeMap, calGroupMap, shortNameMap } = await getEmpsAndStores(company_id);
       const histMap = await getStoreHistory(allEmps.map((e: any) => e.id));
 
       const empObj = allEmps.find((e: any) => e.id === employee_id);
       const senderHist = histMap[employee_id] || [];
       const senderResolvedStore = resolveStoreAtDate(senderHist, empObj?.store_id || "", attendance_date);
-      const storeShort = resolveStoreShort(storeMap[senderResolvedStore] || "");
+      const storeShort = shortNameMap[senderResolvedStore] || "—";
       const dateShort = shortDate(attendance_date);
 
       let reasonLabel = "";
@@ -568,10 +558,10 @@ serve(async (req) => {
         return new Response(JSON.stringify({ sent: 0 }));
       }
 
-      const { allEmps, calGroupMap } = await getEmpsAndStores(company_id);
+      const { allEmps, calGroupMap, calLabelMap } = await getEmpsAndStores(company_id);
 
       for (const evt of events) {
-        const calLabel = calMap[evt.target_calendar] || evt.target_calendar;
+        const calLabel = calLabelMap[evt.target_calendar] || evt.target_calendar;
         const dow = ["日","月","火","水","木","金","土"][new Date(evt.start_date).getDay()];
         const d = new Date(evt.start_date);
         const dateDisplay = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日(${dow})`;
