@@ -616,21 +616,23 @@ serve(async (req) => {
     }
 
     // ============================
-    // シフト確定通知（全従業員）
+    // シフト確定通知（WC管理者3名のみ）
     // ============================
     if (type === "shift_confirmed") {
       const { company_id, target_month } = payload;
       const mo = parseInt(target_month.split("-")[1], 10);
       const { allEmps } = await getEmpsAndStores(company_id);
-      for (const emp of allEmps) {
-        if (WC_NOTIFY_CODES.includes(emp.employee_code)) continue;
-        targets.push({
-          employee_id: emp.id,
-          title: "シフト確定",
-          body: `${mo}月のシフトが確定しました`,
-          tag: "shift-confirmed",
-          url: "/home",
-        });
+      for (const code of WC_NOTIFY_CODES) {
+        const emp = allEmps.find((e: any) => e.employee_code === code);
+        if (emp) {
+          targets.push({
+            employee_id: emp.id,
+            title: "シフト確定",
+            body: `${mo}月のシフトが確定しました`,
+            tag: "shift-confirmed",
+            url: "/home",
+          });
+        }
       }
     }
 
@@ -793,24 +795,22 @@ serve(async (req) => {
     }
 
     // ============================
-    // WC: 情報変更申請通知 → WC001/W49/W67
+    // WC: 情報変更申請通知 → W67（池邉）のみ
     // ============================
     if (type === "wc_info_change_request") {
       const { company_id, employee_name, category } = payload;
       const { allEmps } = await getEmpsAndStores(company_id);
       const allNamesIc = allEmps.map((e: any) => e.full_name);
       const icEmp = allEmps.find((e: any) => e.full_name === employee_name);
-      for (const code of WC_NOTIFY_CODES) {
-        const emp = allEmps.find((e: any) => e.employee_code === code);
-        if (emp) {
-          targets.push({
-            employee_id: emp.id,
-            title: `${lastName(employee_name, icEmp?.calendar_display_name, allNamesIc)}が情報変更を申請`,
-            body: category || "情報変更申請",
-            tag: "wc-info-change",
-            url: "/home",
-          });
-        }
+      const emp = allEmps.find((e: any) => e.employee_code === "W67");
+      if (emp) {
+        targets.push({
+          employee_id: emp.id,
+          title: `${lastName(employee_name, icEmp?.calendar_display_name, allNamesIc)}が情報変更を申請`,
+          body: category || "情報変更申請",
+          tag: "wc-info-change",
+          url: "/home",
+        });
       }
     }
 
