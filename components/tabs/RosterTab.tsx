@@ -12,6 +12,7 @@ import { isValidPin } from "@/lib/pinValidation";
 import { Avatar, Badge } from "@/components/ui";
 import Dialog from "@/components/ui/Dialog";
 import { supabase } from "@/lib/supabase";
+import { notifyPush } from "@/lib/notifyPush";
 import { canSeeProfile, canViewOthersProfile } from "@/lib/permissions";
 import type { ProfileSection } from "@/lib/permissions";
 
@@ -212,12 +213,7 @@ const ChangeRequestModal = ({ employeeId, companyId, employeeName, onClose, onSu
     setSaving(false);
 
     if (insertErr) { setError("申請の送信に失敗しました"); return; }
-    try {
-      await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-push`, {
-        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}` },
-        body: JSON.stringify({ type: "wc_info_change_request", payload: { company_id: companyId, employee_name: employeeName, category } }),
-      });
-    } catch (_) {}
+    notifyPush("wc_info_change_request", { company_id: companyId, employee_name: employeeName, category });
     onSuccess();
   };
 

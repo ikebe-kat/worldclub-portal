@@ -6,7 +6,7 @@ import { T, DOW } from '@/lib/constants'
 import { ReasonBadges } from '@/components/ui'
 import Dialog from '@/components/ui/Dialog'
 
-const PUSH_URL = "https://pktqlbpdjemmomfanvgt.supabase.co/functions/v1/send-push";
+import { notifyPush } from "@/lib/notifyPush";
 
 // ─── 型 ──────────────────────────────────────────────────────────────────────
 
@@ -279,10 +279,7 @@ export default function PunchTab({ employee }: { employee: any }) {
     setOvertimeStatus('pending')
     setOvertimeReason('')
     setMessage({ text: '残業申請を提出しました（小川さん承認待ち）', ok: true })
-    fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-push`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'wc_leave_request', payload: { company_id: employee.company_id, employee_name: employee.full_name, reason: '残業申請', attendance_date: today } }),
-    }).catch(() => {})
+    notifyPush('wc_leave_request', { company_id: employee.company_id, employee_name: employee.full_name, reason: '残業申請', attendance_date: today })
   }
 
   // ─── 打刻処理 ─────────────────────────────────────────────────────────────
@@ -539,10 +536,7 @@ export default function PunchTab({ employee }: { employee: any }) {
       })
       if (crErr) { console.error('change_requests insert failed:', crErr); showAlert('申請は登録しましたが、管理者への通知に失敗しました: ' + crErr.message); }
       setModalOpen(false); fetchTodayRecord(employee.id); setMessage({ text: '有給申請を提出しました', ok: true })
-      fetch(PUSH_URL, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "wc_leave_request", payload: { company_id: employee.company_id, employee_name: employee.full_name, reason: previewReason, attendance_date: todayStr } }),
-      }).catch(() => {})
+      notifyPush("wc_leave_request", { company_id: employee.company_id, employee_name: employee.full_name, reason: previewReason, attendance_date: todayStr })
       return
     }
 
@@ -563,10 +557,7 @@ export default function PunchTab({ employee }: { employee: any }) {
       })
       if (crErr) { console.error('change_requests insert failed:', crErr); showAlert('申請は登録しましたが、管理者への通知に失敗しました: ' + crErr.message); }
       setModalOpen(false); fetchTodayRecord(employee.id); setMessage({ text: '申請を登録しました', ok: true })
-      fetch(PUSH_URL, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "wc_leave_request", payload: { company_id: employee.company_id, employee_name: employee.full_name, reason: previewReason, attendance_date: todayStr } }),
-      }).catch(() => {})
+      notifyPush("wc_leave_request", { company_id: employee.company_id, employee_name: employee.full_name, reason: previewReason, attendance_date: todayStr })
     }
     else { showAlert('登録に失敗しました: ' + error.message) }
   }

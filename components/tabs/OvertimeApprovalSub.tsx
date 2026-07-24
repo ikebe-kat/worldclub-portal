@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase";
 import Dialog from "@/components/ui/Dialog";
 
 const COMPANY_ID = "c2d368f0-aa9b-4f70-b082-43ec07723d6c";
-const PUSH_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-push`;
+import { notifyPush } from "@/lib/notifyPush";
 
 interface OvertimeReq {
   id: string;
@@ -87,7 +87,7 @@ export default function OvertimeApprovalSub({ employee }: { employee: any }) {
       updated_at: new Date().toISOString(),
     }).eq("id", r.id);
     if (error) { setDialog({ message: "承認に失敗: " + error.message }); return; }
-    fetch(PUSH_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "wc_request_processed", payload: { employee_id: r.employee_id, category: "残業申請", status: "承認" } }) }).catch(() => {});
+    notifyPush("wc_request_processed", { employee_id: r.employee_id, category: "残業申請", status: "承認" });
     load();
   };
 
@@ -102,7 +102,7 @@ export default function OvertimeApprovalSub({ employee }: { employee: any }) {
       updated_at: new Date().toISOString(),
     }).eq("id", rejectFor.id);
     if (error) { setDialog({ message: "却下に失敗: " + error.message }); return; }
-    fetch(PUSH_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "wc_request_processed", payload: { employee_id: rejectFor.employee_id, category: "残業申請", status: "却下" } }) }).catch(() => {});
+    notifyPush("wc_request_processed", { employee_id: rejectFor.employee_id, category: "残業申請", status: "却下" });
     setRejectFor(null); setRejectText(""); load();
   };
 

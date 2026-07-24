@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase";
 import Dialog from "@/components/ui/Dialog";
 
 const COMPANY_ID = "c2d368f0-aa9b-4f70-b082-43ec07723d6c";
-const PUSH_URL = "https://pktqlbpdjemmomfanvgt.supabase.co/functions/v1/send-push";
+import { notifyPush } from "@/lib/notifyPush";
 
 type Tab = "calc" | "master";
 
@@ -491,11 +491,7 @@ function CalcView({ employee }: { employee: any }) {
       console.error("[distributeOne] insert error:", error);
       return { ok: false, message: error.message };
     }
-    fetch(PUSH_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "document_delivered", payload: { employee_id: empId, document_name: docName } }),
-    }).catch(() => {});
+    notifyPush("document_delivered", { employee_id: empId, document_name: docName });
     return { ok: true };
   };
 

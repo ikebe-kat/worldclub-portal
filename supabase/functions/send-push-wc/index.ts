@@ -26,14 +26,13 @@ const lastName = (fullName: string, displayOverride?: string | null, allNames?: 
   }
   return surname;
 };
-const ALL_CALENDAR_CODES = ["002", "018", "067", "003", "009", "006", "049"];
-const GYOMU_DEPTS = ["人事", "経理", "DX"];
-const HAMAMURA_CODE = "095";
-const WC_COMPANY_ID = "c2d368f0-aa9b-4f70-b082-43ec07723d6c";
-const WC_NOTIFY_CODES_REASON = ["WC001", "W67", "W49"];
+const ALL_CALENDAR_CODES = ["002", "018", "067", "003", "009", "006", "049", "070"];
+const GYOMU_DEPTS = ["人事", "経理", "DX", "人事総務", "DX推進"];
+const WC_NOTIFY_CODES = ["WC001", "W49", "W67"];
 
 const calMap: Record<string, string> = {
   "all": "全店舗", "kengun": "健軍", "ozu": "大津", "yatsushiro": "八代", "gyomu": "業務部",
+  "higashibypass": "東バイパス", "rentacar": "レンタカー",
   "全店舗": "全店舗", "健軍": "健軍", "大津": "大津", "八代": "八代", "業務部": "業務部",
 };
 
@@ -42,29 +41,38 @@ function resolveStoreShort(storeName: string): string {
   if (storeName.includes("八代")) return "八代";
   if (storeName.includes("健軍")) return "健軍";
   if (storeName.includes("大津") || storeName.includes("菊陽")) return "大津";
+  if (storeName.includes("東バイパス")) return "東バイパス";
+  if (storeName.includes("レンタカー")) return "レンタカー";
   if (storeName.includes("本社")) return "本社";
   if (storeName.includes("経理") || storeName.includes("人事") || storeName.includes("DX")) return "業務部";
   if (storeName.includes("御領")) return "御領";
   return storeName;
 }
 
-/* 従業員のカレンダーグループを特定（departmentベース） */
-function resolveCalendarGroup(empCode: string, department: string, storeName: string): string {
-  if (empCode === "002") return "業務部";
-  if (GYOMU_DEPTS.includes(department)) return "業務部";
-  if (storeName.includes("八代")) return "八代";
-  if (storeName.includes("健軍")) return "健軍";
-  if (storeName.includes("大津") || storeName.includes("菊陽")) return "大津";
-  return "業務部";
+/* 従業員のカレンダーグループを特定（stores.calendar_group ベース） */
+function resolveCalendarGroup(empCode: string, department: string, calGroup: string): string {
+  if (empCode === "002") return "gyomu";
+  if (GYOMU_DEPTS.some(d => (department || "").includes(d))) return "gyomu";
+  return calGroup || "gyomu";
+}
+
+/* 複数カレンダーグループに所属する社員の全グループを返す */
+const MULTI_CAL_GROUPS: Record<string, string[]> = {
+  "070": ["gyomu", "ozu"],
+  "095": ["gyomu", "kengun"],
+};
+
+function resolveCalendarGroups(empCode: string, department: string, calGroup: string): string[] {
+  if (MULTI_CAL_GROUPS[empCode]) return MULTI_CAL_GROUPS[empCode];
+  return [resolveCalendarGroup(empCode, department, calGroup)];
 }
 
 /* 通知を受け取るかどうか判定 */
-function matchCalendar(empCode: string, storeName: string, department: string, targetCal: string): boolean {
+function matchCalendar(empCode: string, calGroup: string, department: string, targetCal: string): boolean {
   if (ALL_CALENDAR_CODES.includes(empCode)) return true;
-  if (empCode === HAMAMURA_CODE) return targetCal === "業務部" || targetCal === "健軍" || targetCal === "全店舗" || targetCal === "all";
   if (targetCal === "全店舗" || targetCal === "all") return true;
-  const myGroup = resolveCalendarGroup(empCode, department, storeName);
-  return myGroup === targetCal;
+  const myGroups = resolveCalendarGroups(empCode, department, calGroup);
+  return myGroups.includes(targetCal);
 }
 
 function formatDate(dateStr: string): string {
@@ -78,12 +86,8 @@ function shortDate(dateStr: string): string {
   return `${d.getMonth()+1}/${d.getDate()}`;
 }
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "Content-Type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
-
+// 3社共通の DB関数 fn_leave_days_in_period(target='attendance') に一本化。
+// 指定日1日分の休職(attendance除外)従業員IDセットを返す。
 async function getOnLeaveSet(sb: any, companyId: string, targetDate: string): Promise<Set<string>> {
   const { data } = await sb.rpc("fn_leave_days_in_period", {
     p_company_id: companyId,
@@ -93,6 +97,12 @@ async function getOnLeaveSet(sb: any, companyId: string, targetDate: string): Pr
   });
   return new Set<string>((data || []).map((r: any) => r.employee_id));
 }
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -109,36 +119,83 @@ serve(async (req) => {
       const { data: allEmps } = await sb.from("employees")
         .select("id, employee_code, full_name, store_id, department, employment_type, holiday_calendar, calendar_display_name")
         .eq("company_id", companyId)
-        .eq("is_active", true);
+        .or("is_active.is.null,is_active.eq.true")
+        .is("resigned_at", null);
       const { data: stores } = await sb.from("stores")
-        .select("id, store_name")
+        .select("id, store_name, calendar_group")
         .eq("company_id", companyId);
       const storeMap: Record<string, string> = {};
-      (stores || []).forEach((s: any) => { storeMap[s.id] = s.store_name || ""; });
-      return { allEmps: allEmps || [], storeMap };
+      const calGroupMap: Record<string, string> = {};
+      (stores || []).forEach((s: any) => {
+        storeMap[s.id] = s.store_name || "";
+        calGroupMap[s.id] = s.calendar_group || "";
+      });
+      return { allEmps: allEmps || [], storeMap, calGroupMap };
+    }
+
+    async function getStoreHistory(empIds: string[]) {
+      if (empIds.length === 0) return {};
+      const { data } = await sb.from("employee_store_history")
+        .select("employee_id, store_id, start_date, created_at")
+        .in("employee_id", empIds)
+        .order("start_date", { ascending: false })
+        .order("created_at", { ascending: false });
+      const map: Record<string, { store_id: string; start_date: string; created_at: string }[]> = {};
+      for (const h of (data || [])) {
+        if (!map[h.employee_id]) map[h.employee_id] = [];
+        map[h.employee_id].push({ store_id: h.store_id, start_date: h.start_date, created_at: h.created_at });
+      }
+      return map;
+    }
+
+    // fn_resolve_store_at_date と同一定義。変更時は storeResolve.ts・storeHistory.ts・DB関数も同時に更新すること。
+    function resolveStoreAtDate(
+      history: { store_id: string; start_date: string; created_at?: string }[],
+      currentStoreId: string,
+      date: string,
+    ): string {
+      let best: { store_id: string; start_date: string; created_at?: string } | null = null;
+      for (const h of (history || [])) {
+        if (h.start_date > date) continue;
+        if (!best || h.start_date > best.start_date ||
+            (h.start_date === best.start_date && (h.created_at ?? "") > (best.created_at ?? ""))) {
+          best = h;
+        }
+      }
+      return best?.store_id ?? currentStoreId;
     }
 
     // ============================
-    // 2. 予定登録時（即時通知）
+    // 2. 予定登録/編集/削除時（即時通知）
     // ============================
     if (type === "calendar_event") {
       const { action, event } = payload;
       const creatorName = event.creator_name || "不明";
-      const calLabel = calMap[event.target_calendar] || event.target_calendar;
-      const isCreate = action === "created";
-      const title = isCreate
-        ? `${creatorName}が予定を登録しました`
-        : `${creatorName}が予定を削除しました`;
+      const creatorEmpId = event.creator_employee_id || null;
+      const isJimu = event.target_calendar === "jimu";
+      const calLabel = isJimu ? "業務部" : (calMap[event.target_calendar] || event.target_calendar);
+      const actionText = action === "updated" ? "編集" : action === "deleted" ? "削除" : "登録";
+      const title = `${creatorName}が予定を${actionText}しました`;
+      const timeStr = event.start_time ? ` ${event.start_time.slice(0, 5)}` : "";
 
-      const { allEmps, storeMap } = await getEmpsAndStores(event.company_id);
+      const { allEmps, calGroupMap } = await getEmpsAndStores(event.company_id);
       const allNames = allEmps.map((e: any) => e.full_name);
-      const creatorEmp = allEmps.find((e: any) => e.full_name === creatorName);
-      const body = `${calLabel}：${lastName(creatorName, creatorEmp?.calendar_display_name, allNames)}　${event.title} ${shortDate(event.start_date)}`;
+      const creatorEmp = creatorEmpId ? allEmps.find((e: any) => e.id === creatorEmpId) : null;
+      const body = `${calLabel}：${lastName(creatorName, creatorEmp?.calendar_display_name, allNames)}　${event.title} ${shortDate(event.start_date)}${timeStr}`;
 
-      for (const emp of allEmps) {
-        const storeName = storeMap[emp.store_id] || "";
-        if (matchCalendar(emp.employee_code, storeName, emp.department || "", event.target_calendar)) {
+      if (isJimu) {
+        for (const emp of allEmps) {
+          if (!["W02", "W49", "W67"].includes(emp.employee_code)) continue;
+          if (creatorEmpId && emp.id === creatorEmpId) continue;
           targets.push({ employee_id: emp.id, title, body, tag: "calendar", url: "/home" });
+        }
+      } else {
+        for (const emp of allEmps) {
+          if (creatorEmpId && emp.id === creatorEmpId) continue;
+          const cg = calGroupMap[emp.store_id] || "";
+          if (matchCalendar(emp.employee_code, cg, emp.department || "", event.target_calendar)) {
+            targets.push({ employee_id: emp.id, title, body, tag: "calendar", url: "/home" });
+          }
         }
       }
     }
@@ -161,11 +218,11 @@ serve(async (req) => {
     // 7. 申請承認/却下（即時通知）
     // ============================
     if (type === "request_processed") {
-      const { employee_id, category, status } = payload;
+      const { employee_id, category, status, title: pTitle, body: pBody } = payload;
       targets.push({
         employee_id,
-        title: `申請が${status}されました`,
-        body: category,
+        title: pTitle || `申請が${status}されました`,
+        body: pBody || category,
         tag: "request",
         url: "/home",
       });
@@ -176,9 +233,13 @@ serve(async (req) => {
     // ============================
     if (type === "attendance_reason_set") {
       const { company_id, employee_id, employee_name, reason, attendance_date } = payload;
-      const { allEmps: _emps1, storeMap: _sm1 } = await getEmpsAndStores(company_id);
-      const _emp1 = _emps1.find((e: any) => e.id === employee_id);
-      const storeShort = resolveStoreShort(_emp1 ? (_sm1[_emp1.store_id] || "") : "");
+      const { allEmps, storeMap, calGroupMap } = await getEmpsAndStores(company_id);
+      const histMap = await getStoreHistory(allEmps.map((e: any) => e.id));
+
+      const empObj = allEmps.find((e: any) => e.id === employee_id);
+      const senderHist = histMap[employee_id] || [];
+      const senderResolvedStore = resolveStoreAtDate(senderHist, empObj?.store_id || "", attendance_date);
+      const storeShort = resolveStoreShort(storeMap[senderResolvedStore] || "");
       const dateShort = shortDate(attendance_date);
 
       let reasonLabel = "";
@@ -202,28 +263,24 @@ serve(async (req) => {
       if (payload.end_date && payload.end_date !== attendance_date) {
         bodyDate = `${dateShort}～${shortDate(payload.end_date)}`;
       }
-      const allNames1 = _emps1.map((e: any) => e.full_name);
-      const body = `${storeShort}：${lastName(employee_name, _emp1?.calendar_display_name, allNames1)}　${bodyDate}`;
+      const allNames = allEmps.map((e: any) => e.full_name);
+      const body = `${storeShort}：${lastName(employee_name, empObj?.calendar_display_name, allNames)}　${bodyDate}`;
 
-      const { allEmps, storeMap } = await getEmpsAndStores(company_id);
+      const empCalGroup = calGroupMap[senderResolvedStore] || "";
+      const empDept = empObj?.department || "";
+      const empCode = empObj?.employee_code || "";
+      const targetCals = resolveCalendarGroups(empCode, empDept, empCalGroup);
 
-      if (company_id === WC_COMPANY_ID) {
-        targets.push({ employee_id, title, body, tag: "attendance-reason", url: "/home" });
-        for (const code of WC_NOTIFY_CODES_REASON) {
-          const mgr = allEmps.find((e: any) => e.employee_code === code && e.id !== employee_id);
-          if (mgr) targets.push({ employee_id: mgr.id, title, body, tag: "attendance-reason", url: "/home" });
-        }
-      } else {
-        const empObj = allEmps.find((e: any) => e.id === employee_id);
-        const empStoreName = empObj ? (storeMap[empObj.store_id] || "") : "";
-        const empDept = empObj?.department || "";
-        const empCode = empObj?.employee_code || "";
-        const targetCal = resolveCalendarGroup(empCode, empDept, empStoreName);
-
+      const seen = new Set<string>();
+      for (const targetCal of targetCals) {
         for (const emp of allEmps) {
-          const sn = storeMap[emp.store_id] || "";
-          if (matchCalendar(emp.employee_code, sn, emp.department || "", targetCal)) {
-            targets.push({ employee_id: emp.id, title, body, tag: "attendance-reason", url: "/home" });
+          if (seen.has(emp.id)) continue;
+          const rcvHist = histMap[emp.id] || [];
+          const rcvStore = resolveStoreAtDate(rcvHist, emp.store_id, attendance_date);
+          const cg = calGroupMap[rcvStore] || "";
+          if (matchCalendar(emp.employee_code, cg, emp.department || "", targetCal)) {
+            seen.add(emp.id);
+            targets.push({ employee_id: emp.id, title, body, tag: `attendance-reason-${employee_id}-${attendance_date}`, url: "/home" });
           }
         }
       }
@@ -234,9 +291,13 @@ serve(async (req) => {
     // ============================
     if (type === "attendance_reason_cleared") {
       const { company_id, employee_id, employee_name, old_reason, attendance_date } = payload;
-      const { allEmps: _emps2, storeMap: _sm2 } = await getEmpsAndStores(company_id);
-      const _emp2 = _emps2.find((e: any) => e.id === employee_id);
-      const storeShort = resolveStoreShort(_emp2 ? (_sm2[_emp2.store_id] || "") : "");
+      const { allEmps, storeMap, calGroupMap } = await getEmpsAndStores(company_id);
+      const histMap = await getStoreHistory(allEmps.map((e: any) => e.id));
+
+      const empObj = allEmps.find((e: any) => e.id === employee_id);
+      const senderHist = histMap[employee_id] || [];
+      const senderResolvedStore = resolveStoreAtDate(senderHist, empObj?.store_id || "", attendance_date);
+      const storeShort = resolveStoreShort(storeMap[senderResolvedStore] || "");
       const dateShort = shortDate(attendance_date);
 
       let reasonLabel = "";
@@ -253,28 +314,24 @@ serve(async (req) => {
       else return new Response(JSON.stringify({ sent: 0, reason: "not a notifiable reason" }));
 
       const title = `${employee_name}が${reasonLabel}を取り消しました`;
-      const allNames2 = _emps2.map((e: any) => e.full_name);
-      const body = `${storeShort}：${lastName(employee_name, _emp2?.calendar_display_name, allNames2)}　${dateShort}`;
+      const allNames = allEmps.map((e: any) => e.full_name);
+      const body = `${storeShort}：${lastName(employee_name, empObj?.calendar_display_name, allNames)}　${dateShort}`;
 
-      const { allEmps, storeMap } = await getEmpsAndStores(company_id);
+      const empCalGroup = calGroupMap[senderResolvedStore] || "";
+      const empDept = empObj?.department || "";
+      const empCode = empObj?.employee_code || "";
+      const targetCals = resolveCalendarGroups(empCode, empDept, empCalGroup);
 
-      if (company_id === WC_COMPANY_ID) {
-        targets.push({ employee_id, title, body, tag: "attendance-reason", url: "/home" });
-        for (const code of WC_NOTIFY_CODES_REASON) {
-          const mgr = allEmps.find((e: any) => e.employee_code === code && e.id !== employee_id);
-          if (mgr) targets.push({ employee_id: mgr.id, title, body, tag: "attendance-reason", url: "/home" });
-        }
-      } else {
-        const empObj = allEmps.find((e: any) => e.id === employee_id);
-        const empStoreName = empObj ? (storeMap[empObj.store_id] || "") : "";
-        const empDept = empObj?.department || "";
-        const empCode = empObj?.employee_code || "";
-        const targetCal = resolveCalendarGroup(empCode, empDept, empStoreName);
-
+      const seen = new Set<string>();
+      for (const targetCal of targetCals) {
         for (const emp of allEmps) {
-          const sn = storeMap[emp.store_id] || "";
-          if (matchCalendar(emp.employee_code, sn, emp.department || "", targetCal)) {
-            targets.push({ employee_id: emp.id, title, body, tag: "attendance-reason", url: "/home" });
+          if (seen.has(emp.id)) continue;
+          const rcvHist = histMap[emp.id] || [];
+          const rcvStore = resolveStoreAtDate(rcvHist, emp.store_id, attendance_date);
+          const cg = calGroupMap[rcvStore] || "";
+          if (matchCalendar(emp.employee_code, cg, emp.department || "", targetCal)) {
+            seen.add(emp.id);
+            targets.push({ employee_id: emp.id, title, body, tag: `attendance-reason-${employee_id}-${attendance_date}`, url: "/home" });
           }
         }
       }
@@ -309,14 +366,16 @@ serve(async (req) => {
         (hcData || []).forEach((h: any) => { holidayCalSet.add(h.calendar_type); });
       }
 
-      const onLeaveSet = await getOnLeaveSet(sb, company_id, target_date);
-      const unpunched: { id: string; code: string; name: string; storeName: string; department: string; calDisplayName?: string | null }[] = [];
+      const allNames = allEmps.map((e: any) => e.full_name);
+      const unpunched: { id: string; code: string; name: string; storeName: string; department: string; calDisplayName: string | null }[] = [];
       const dateShort = shortDate(target_date);
 
+      const onLeaveSet = await getOnLeaveSet(sb, company_id, target_date);
+
       for (const emp of allEmps) {
-        if (onLeaveSet.has(emp.id)) continue;
         if (emp.employment_type?.includes("パート")) continue;
         if (emp.employee_code === "002") continue;
+        if (onLeaveSet.has(emp.id)) continue;
 
         const att = attMap[emp.id];
         if (att?.is_holiday) continue;
@@ -325,7 +384,7 @@ serve(async (req) => {
 
         if (att?.reason) {
           const rs = att.reason;
-          const isFullDayOff = rs === "有給（全日）" || rs === "希望休（全日）" || rs === "欠勤" || rs === "休日" || rs === "公休" || rs === "休職" || (rs.includes("代休") && !rs.includes("午前") && !rs.includes("午後"));
+          const isFullDayOff = rs === "有給（全日）" || rs === "希望休（全日）" || rs === "指定休" || rs === "欠勤" || rs === "休日" || rs === "公休" || rs === "休職" || (rs.includes("代休") && !rs.includes("午前") && !rs.includes("午後"));
           if (isFullDayOff) continue;
         }
 
@@ -359,6 +418,10 @@ serve(async (req) => {
         { code: "006", filter: (u) => u.storeName.includes("健軍") },
         { code: "003", filter: (u) => u.storeName.includes("大津") || u.storeName.includes("菊陽") || u.department === "営業部" },
         { code: "069", filter: (u) => u.department === "鈑金塗装部" },
+        { code: "099", filter: (u) => u.department === "レンタカー部門" },
+        { code: "043", filter: (u) => u.storeName.includes("東バイパス") },
+        { code: "095", filter: (u) => u.storeName.includes("健軍") || GYOMU_DEPTS.some(d => (u.department || "").includes(d)) },
+        { code: "070", filter: () => true },
         { code: "067", filter: () => true },
       ];
 
@@ -368,8 +431,7 @@ serve(async (req) => {
         const mgrUnpunched = unpunched.filter(mgr.filter);
         if (mgrUnpunched.length === 0) continue;
 
-        const allNamesAlert = allEmps.map((e: any) => e.full_name);
-        const names = mgrUnpunched.slice(0, 5).map(u => lastName(u.name, u.calDisplayName, allNamesAlert)).join("、");
+        const names = mgrUnpunched.slice(0, 5).map(u => lastName(u.name, u.calDisplayName, allNames)).join("、");
         const suffix = mgrUnpunched.length > 5 ? `、他${mgrUnpunched.length - 5}名` : "";
 
         targets.push({
@@ -388,29 +450,31 @@ serve(async (req) => {
     if (type === "morning_calendar") {
       const { company_id, target_date } = payload;
 
-      const { data: events } = await sb.from("custom_events")
+      const { data: events, error: eventsErr } = await sb.from("custom_events")
         .select("title, start_date, end_date, target_calendar")
         .eq("company_id", company_id)
         .lte("start_date", target_date)
         .gte("end_date", target_date);
 
-      const { data: attData } = await sb.from("attendance_daily")
+      const { data: attData, error: attErr } = await sb.from("attendance_daily")
         .select("employee_id, reason")
         .eq("attendance_date", target_date)
         .not("reason", "is", null);
 
-      const { allEmps, storeMap } = await getEmpsAndStores(company_id);
-
-      const allNames = allEmps.map((e: any) => e.full_name);
-      const empMap: Record<string, { name: string; storeName: string; department: string; code: string; calDisplayName?: string | null }> = {};
-      allEmps.forEach((e: any) => {
-        empMap[e.id] = { name: e.full_name, storeName: storeMap[e.store_id] || "", department: e.department || "", code: e.employee_code, calDisplayName: e.calendar_display_name || null };
-      });
+      const { allEmps, storeMap, calGroupMap } = await getEmpsAndStores(company_id);
+      const histMap = await getStoreHistory(allEmps.map((e: any) => e.id));
 
       const mcOnLeaveSet = await getOnLeaveSet(sb, company_id, target_date);
+
+      const allNames = allEmps.map((e: any) => e.full_name);
+      const empMap: Record<string, { name: string; store_id: string; department: string; code: string; calDisplayName: string | null }> = {};
+      allEmps.forEach((e: any) => {
+        empMap[e.id] = { name: e.full_name, store_id: e.store_id || "", department: e.department || "", code: e.employee_code, calDisplayName: e.calendar_display_name || null };
+      });
+
       const leaveItems: { label: string; targetCal: string }[] = [];
       for (const att of (attData || [])) {
-        if (mcOnLeaveSet.has(att.employee_id)) continue;
+        if (mcOnLeaveSet.has(att.employee_id)) continue; // 休職者は事由ラベルを出さない
         const emp = empMap[att.employee_id];
         if (!emp) continue;
         const r = att.reason;
@@ -427,7 +491,10 @@ serve(async (req) => {
         else if (r === "休職") label = `${dn}:休職`;
         else continue;
 
-        const tc = resolveCalendarGroup(emp.code, emp.department, emp.storeName);
+        const empHist = histMap[att.employee_id] || [];
+        const resolvedStore = resolveStoreAtDate(empHist, emp.store_id, target_date);
+        const resolvedCg = calGroupMap[resolvedStore] || "";
+        const tc = resolveCalendarGroup(emp.code, emp.department, resolvedCg);
         leaveItems.push({ label, targetCal: tc });
       }
 
@@ -435,8 +502,10 @@ serve(async (req) => {
 
       for (const evt of (events || [])) {
         for (const emp of allEmps) {
-          const sn = storeMap[emp.store_id] || "";
-          if (matchCalendar(emp.employee_code, sn, emp.department || "", evt.target_calendar)) {
+          const rcvHist = histMap[emp.id] || [];
+          const rcvStore = resolveStoreAtDate(rcvHist, emp.store_id, target_date);
+          const cg = calGroupMap[rcvStore] || "";
+          if (matchCalendar(emp.employee_code, cg, emp.department || "", evt.target_calendar)) {
             if (!empItems[emp.id]) empItems[emp.id] = [];
             empItems[emp.id].push(evt.title);
           }
@@ -445,8 +514,10 @@ serve(async (req) => {
 
       for (const li of leaveItems) {
         for (const emp of allEmps) {
-          const sn = storeMap[emp.store_id] || "";
-          if (matchCalendar(emp.employee_code, sn, emp.department || "", li.targetCal)) {
+          const rcvHist = histMap[emp.id] || [];
+          const rcvStore = resolveStoreAtDate(rcvHist, emp.store_id, target_date);
+          const cg = calGroupMap[rcvStore] || "";
+          if (matchCalendar(emp.employee_code, cg, emp.department || "", li.targetCal)) {
             if (!empItems[emp.id]) empItems[emp.id] = [];
             if (!empItems[emp.id].includes(li.label)) empItems[emp.id].push(li.label);
           }
@@ -497,7 +568,7 @@ serve(async (req) => {
         return new Response(JSON.stringify({ sent: 0 }));
       }
 
-      const { allEmps, storeMap } = await getEmpsAndStores(company_id);
+      const { allEmps, calGroupMap } = await getEmpsAndStores(company_id);
 
       for (const evt of events) {
         const calLabel = calMap[evt.target_calendar] || evt.target_calendar;
@@ -509,10 +580,173 @@ serve(async (req) => {
         const body = `${calLabel}：${evt.title}\n${dateDisplay} ${evt.start_time?.slice(0,5)}`;
 
         for (const emp of allEmps) {
-          const sn = storeMap[emp.store_id] || "";
-          if (matchCalendar(emp.employee_code, sn, emp.department || "", evt.target_calendar)) {
+          const cg = calGroupMap[emp.store_id] || "";
+          if (matchCalendar(emp.employee_code, cg, emp.department || "", evt.target_calendar)) {
             targets.push({ employee_id: emp.id, title, body, tag: "event-reminder", url: "/home" });
           }
+        }
+      }
+    }
+
+    // ============================
+    // シフト差し戻し通知（公休/有給）
+    // ============================
+    if (type === "shift_returned") {
+      const { employee_id, target_month, attendance_date, leave_type, reject_reason } = payload;
+      let title = "シフト差し戻し";
+      let body = "";
+      if (attendance_date && (leave_type === "yukyu" || leave_type === "shift_koukyuu")) {
+        const isYukyu = leave_type === "yukyu";
+        title = isYukyu ? "有給申請 差し戻し" : "公休申請 差し戻し";
+        const reasonText = reject_reason ? `（${reject_reason}）` : "";
+        const dm = String(attendance_date).match(/^(\d{4})-(\d{2})-(\d{2})/);
+        const dateLabel = dm ? `${parseInt(dm[2], 10)}月${parseInt(dm[3], 10)}日` : attendance_date;
+        body = `${dateLabel}の${isYukyu ? "有給" : "公休"}申請が差し戻されました${reasonText}`;
+      } else if (target_month) {
+        const mo = parseInt(target_month.split("-")[1], 10);
+        body = `${mo}月のシフトが差し戻されました`;
+      }
+      targets.push({
+        employee_id,
+        title,
+        body,
+        tag: "shift-returned",
+        url: "/home",
+      });
+    }
+
+    // ============================
+    // シフト確定通知（全従業員）
+    // ============================
+    if (type === "shift_confirmed") {
+      const { company_id, target_month } = payload;
+      const mo = parseInt(target_month.split("-")[1], 10);
+      const { allEmps } = await getEmpsAndStores(company_id);
+      for (const emp of allEmps) {
+        if (WC_NOTIFY_CODES.includes(emp.employee_code)) continue;
+        targets.push({
+          employee_id: emp.id,
+          title: "シフト確定",
+          body: `${mo}月のシフトが確定しました`,
+          tag: "shift-confirmed",
+          url: "/home",
+        });
+      }
+    }
+
+    // ============================
+    // シフト提出通知（管理者宛）
+    // ============================
+    if (type === "shift_submitted") {
+      const { employee_id, employee_name, target_month } = payload;
+      const mo = parseInt(target_month.split("-")[1], 10);
+      targets.push({
+        employee_id,
+        title: "シフト提出",
+        body: `${employee_name}さんが${mo}月のシフトを提出しました`,
+        tag: "shift-submitted",
+        url: "/home",
+      });
+    }
+
+    // ============================
+    // シフト提出リマインド（毎月23日・25日 10:00 JST（pg_cron jobid 14/15））
+    // ============================
+    if (type === "shift_reminder") {
+      const { company_id, target_month, is_deadline } = payload;
+      if (!target_month || typeof target_month !== "string" || !target_month.includes("-")) {
+        // target_month が未指定・不正な場合は何もせず抜ける
+      } else {
+        const mo = parseInt(target_month.split("-")[1], 10);
+
+        const { data: psRows } = await sb.from("wc_payroll_settings")
+          .select("employee_id")
+          .eq("company_id", company_id)
+          .eq("is_active", true)
+          .eq("hide_from_shift_view", false);
+        const payrollEmpIds = new Set<string>((psRows || []).map((r: any) => r.employee_id).filter(Boolean));
+
+        const { data: allEmps } = await sb.from("employees")
+          .select("id, employee_code")
+          .eq("company_id", company_id)
+          .or("is_active.is.null,is_active.eq.true");
+
+        const candidates = (allEmps || []).filter((e: any) =>
+          payrollEmpIds.has(e.id) && e.employee_code !== "WC001"
+        );
+        const candidateIds = candidates.map((e: any) => e.id);
+
+        const { data: subs } = await sb.from("shift_submissions")
+          .select("employee_id")
+          .eq("company_id", company_id)
+          .eq("target_month", target_month)
+          .in("employee_id", candidateIds);
+        const submittedSet = new Set<string>((subs || []).map((s: any) => s.employee_id));
+
+        const title = is_deadline ? "本日シフト締切" : "シフト提出リマインド";
+        const body = is_deadline
+          ? `${mo}月度の希望シフトが未提出です。本日が締切です。`
+          : `${mo}月度の希望シフトが未提出です。25日までに提出してください。`;
+
+        for (const emp of candidates) {
+          if (submittedSet.has(emp.id)) continue;
+          targets.push({
+            employee_id: emp.id,
+            title,
+            body,
+            tag: "shift-reminder",
+            url: "/home",
+          });
+        }
+      }
+    }
+
+    // ============================
+    // 業務部ハブ通知（即時通知）
+    // ============================
+    if (type === "biz_hub_notify") {
+      const { target_employee_ids, title: bTitle, body: bBody } = payload;
+      for (const eid of (target_employee_ids || [])) {
+        targets.push({
+          employee_id: eid,
+          title: bTitle || "業務部",
+          body: bBody || "",
+          tag: "biz-hub",
+          url: "/home",
+        });
+      }
+    }
+
+    // ============================
+    // お知らせ通知（即時 — NotificationManageSubから呼び出し）
+    // ============================
+    if (type === "notification") {
+      const { employee_ids, title: nTitle, body: nBody, click_action } = payload;
+      for (const eid of (employee_ids || [])) {
+        targets.push({
+          employee_id: eid,
+          title: nTitle || "新しいお知らせ",
+          body: nBody || "",
+          tag: "notification",
+          url: click_action || "/home?tab=mypage&sub=notifications",
+        });
+      }
+    }
+
+    // ============================
+    // お知らせリマインド（pg_cronバッチ — 期限3日前/当日）
+    // ============================
+    if (type === "notification_reminder") {
+      const { employee_ids, title: rTitle, body: rBody, click_action } = payload;
+      if (employee_ids && employee_ids.length > 0) {
+        for (const eid of employee_ids) {
+          targets.push({
+            employee_id: eid,
+            title: rTitle || "【リマインド】未提出のお知らせがあります",
+            body: rBody || "提出期限が近づいています",
+            tag: "notification-reminder",
+            url: click_action || "/home?tab=mypage&sub=notifications",
+          });
         }
       }
     }
@@ -522,7 +756,6 @@ serve(async (req) => {
     // ============================
     if (type === "wc_leave_request") {
       const { company_id, employee_name, reason, attendance_date } = payload;
-      const WC_NOTIFY_CODES = ["WC001", "W67", "W49"];
       const { allEmps } = await getEmpsAndStores(company_id);
       const allNamesWc = allEmps.map((e: any) => e.full_name);
       const reqEmp = allEmps.find((e: any) => e.full_name === employee_name);
@@ -560,15 +793,14 @@ serve(async (req) => {
     }
 
     // ============================
-    // WC: 情報変更申請通知 → W67のみ
+    // WC: 情報変更申請通知 → WC001/W49/W67
     // ============================
     if (type === "wc_info_change_request") {
       const { company_id, employee_name, category } = payload;
       const { allEmps } = await getEmpsAndStores(company_id);
       const allNamesIc = allEmps.map((e: any) => e.full_name);
       const icEmp = allEmps.find((e: any) => e.full_name === employee_name);
-      const W67_CODES = ["W67"];
-      for (const code of W67_CODES) {
+      for (const code of WC_NOTIFY_CODES) {
         const emp = allEmps.find((e: any) => e.employee_code === code);
         if (emp) {
           targets.push({
@@ -583,115 +815,8 @@ serve(async (req) => {
     }
 
     // ============================
-    // WC: シフト差し戻し通知 → 該当従業員
-    // ============================
-    if (type === "shift_returned") {
-      const { employee_id, attendance_date, leave_type } = payload;
-      const kindLabel = leave_type === "yukyu" ? "有給" : "公休";
-      targets.push({
-        employee_id,
-        title: `${kindLabel}希望が差し戻されました`,
-        body: `${shortDate(attendance_date)}の${kindLabel}希望が差し戻されました`,
-        tag: "shift-returned",
-        url: "/home",
-      });
-    }
-
-    // ============================
-    // WC: シフト確定通知 → 全従業員
-    // ============================
-    if (type === "shift_confirmed") {
-      const { company_id, target_month } = payload;
-      const { allEmps } = await getEmpsAndStores(company_id);
-      const WC_NOTIFY_CODES = ["W02", "W49", "W67"];
-      for (const emp of allEmps) {
-        if (WC_NOTIFY_CODES.includes(emp.employee_code)) continue;
-        targets.push({
-          employee_id: emp.id,
-          title: `${target_month}のシフトが確定しました`,
-          body: "出勤簿タブで確認してください",
-          tag: "shift-confirmed",
-          url: "/home",
-        });
-      }
-    }
-
-    // ============================
-    // WC: シフト提出リマインダー（pg_cron: 毎月23日・25日）
-    // ============================
-    if (type === "shift_reminder") {
-      const companyId = payload.company_id;
-
-      // ── 対象月度を動的に算出（getCurrentSubmissionPeriod相当） ──
-      let targetMonth: string | null = null;
-      const { data: confs } = await sb.from("shift_confirmations")
-        .select("target_month")
-        .eq("company_id", companyId)
-        .not("confirmed_at", "is", null)
-        .order("target_month", { ascending: false })
-        .limit(1);
-      if (confs && confs.length > 0) {
-        const [cy, cm] = (confs[0].target_month as string).split("-").map(Number);
-        const nm = cm + 1 > 12 ? 1 : cm + 1;
-        const ny = cm + 1 > 12 ? cy + 1 : cy;
-        targetMonth = `${ny}-${String(nm).padStart(2, "0")}`;
-      } else {
-        const { data: subMin } = await sb.from("shift_submissions")
-          .select("target_month")
-          .eq("company_id", companyId)
-          .order("target_month", { ascending: true })
-          .limit(1);
-        if (subMin && subMin.length > 0) {
-          targetMonth = subMin[0].target_month as string;
-        } else {
-          const nowJst = new Date(Date.now() + 9 * 3600 * 1000);
-          const base = { yr: nowJst.getUTCFullYear(), mo: nowJst.getUTCMonth() + 1 };
-          const adj = nowJst.getUTCDate() <= 25 ? base : { yr: base.mo === 12 ? base.yr + 1 : base.yr, mo: base.mo === 12 ? 1 : base.mo + 1 };
-          const fm = adj.mo + 2 > 12 ? { yr: adj.yr + (adj.mo + 2 > 24 ? 2 : 1), mo: (adj.mo + 2 - 1) % 12 + 1 } : { yr: adj.yr, mo: adj.mo + 2 };
-          targetMonth = `${fm.yr}-${String(fm.mo).padStart(2, "0")}`;
-        }
-      }
-
-      // ── 未提出者を抽出 ──
-      const { data: allWcEmps } = await sb.from("employees")
-        .select("id, employee_code, full_name")
-        .eq("company_id", companyId)
-        .or("is_active.is.null,is_active.eq.true")
-        .order("employee_code");
-      const wcEmps = (allWcEmps || []).filter((e: any) =>
-        /^WC\d+$/.test(e.employee_code) && e.employee_code !== "WC001"
-      );
-      const { data: submitted } = await sb.from("shift_submissions")
-        .select("employee_id")
-        .eq("company_id", companyId)
-        .eq("target_month", targetMonth);
-      const submittedSet = new Set((submitted || []).map((s: any) => s.employee_id));
-      const unsubmitted = wcEmps.filter((e: any) => !submittedSet.has(e.id));
-
-      // ── 文面を出し分け ──
-      const nowJst2 = new Date(Date.now() + 9 * 3600 * 1000);
-      const jstDay = nowJst2.getUTCDate();
-      const jstMonth = nowJst2.getUTCMonth() + 1;
-      const moNum = parseInt(targetMonth.split("-")[1], 10);
-      const isDeadline = jstDay === 25;
-      const title = isDeadline ? "本日シフト締切" : "シフト未提出です";
-      const body = isDeadline
-        ? `${moNum}月度の希望シフトが未提出です。本日(${jstMonth}/25)が締切です。提出してください。`
-        : `${moNum}月度の希望シフトが未提出です。${jstMonth}月25日までに提出してください。`;
-
-      for (const emp of unsubmitted) {
-        targets.push({
-          employee_id: emp.id,
-          title,
-          body,
-          tag: "shift-reminder",
-          url: "/home",
-        });
-      }
-    }
-
-    // ============================
     // 送信直前: 退職者を除外（全タイプ共通の最終防衛線）
+    // ============================
     if (targets.length > 0) {
       const empIds = [...new Set(targets.map(t => t.employee_id))];
       const { data: activeEmps } = await sb.from("employees")
@@ -703,33 +828,40 @@ serve(async (req) => {
       targets = targets.filter(t => activeSet.has(t.employee_id));
     }
 
-    // 通知送信
+    // ============================
+    // 通知送信（Promise.allSettledで並列送信）
     // ============================
     let sent = 0;
     let failed = 0;
 
+    const sendJobs: Promise<any>[] = [];
     for (const t of targets) {
       const { data: subs } = await sb.from("push_subscriptions")
         .select("endpoint, p256dh, auth")
         .eq("employee_id", t.employee_id);
 
       for (const sub of (subs || [])) {
-        try {
-          await webpush.sendNotification(
+        sendJobs.push(
+          webpush.sendNotification(
             { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
             JSON.stringify({ title: t.title, body: t.body, tag: t.tag, url: t.url })
-          );
-          sent++;
-        } catch (err: any) {
-          if (err.statusCode === 410) {
-            await sb.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
-          }
-          failed++;
-        }
+          ).catch(async (err: any) => {
+            if (err.statusCode === 410) {
+              await sb.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
+            }
+            throw err;
+          })
+        );
       }
     }
 
-    return new Response(JSON.stringify({ sent, failed, targets: targets.length }), {
+    const results = await Promise.allSettled(sendJobs);
+    for (const r of results) {
+      if (r.status === "fulfilled") sent++;
+      else failed++;
+    }
+
+    return new Response(JSON.stringify({ sent, failed, targets: targets.length, type }), {
       headers: { "Content-Type": "application/json", ...corsHeaders },
     });
   } catch (err: any) {

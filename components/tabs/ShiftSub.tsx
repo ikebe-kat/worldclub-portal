@@ -16,7 +16,7 @@ import {
 const COMPANY_ID = "c2d368f0-aa9b-4f70-b082-43ec07723d6c";
 const STORE_ID   = "06027f43-fa49-4b2e-8009-903456b0ce33";
 
-const PUSH_URL = "https://pktqlbpdjemmomfanvgt.supabase.co/functions/v1/send-push";
+import { notifyPush } from "@/lib/notifyPush";
 
 /* ⑤ 表示対象：employee_code が "WC" で始まる従業員（本部メンバー W02/W49/W67 等は除外） */
 const isVisibleCode = (code: string) => /^WC\d+$/.test(code || "");
@@ -536,10 +536,7 @@ export default function ShiftSub({ employee, onBadgeRefresh }: { employee: any; 
       }).eq("id", reqId);
       if (error) { console.error(error); loadData(); }
       else {
-        fetch(PUSH_URL, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "request_processed", payload: { employee_id: approvedEmpId, category: "公休申請", status: "承認" } }),
-        }).catch(() => {});
+        notifyPush("request_processed", { employee_id: approvedEmpId, category: "公休申請", status: "承認" });
         loadData();
         onBadgeRefresh?.();
       }
@@ -583,20 +580,13 @@ export default function ShiftSub({ employee, onBadgeRefresh }: { employee: any; 
 
       // シフト差し戻し通知
       const ds = periodDateAtLocal(yr, mo, pendingDialog.day);
-      fetch(PUSH_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "shift_returned",
-          payload: {
-            company_id: COMPANY_ID,
-            employee_id: pendingDialog.emp.id,
-            attendance_date: ds,
-            leave_type: pendingDialog.reqType,
-            reject_reason: reasonText,
-          },
-        }),
-      }).catch(() => {});
+      notifyPush("shift_returned", {
+        company_id: COMPANY_ID,
+        employee_id: pendingDialog.emp.id,
+        attendance_date: ds,
+        leave_type: pendingDialog.reqType,
+        reject_reason: reasonText,
+      });
 
       setPendingDialog(null);
       loadData();
@@ -822,17 +812,10 @@ export default function ShiftSub({ employee, onBadgeRefresh }: { employee: any; 
           setDialog({ message: `確定記録の保存に失敗\n${confErr.message}`, mode: "alert", onOk: () => { setDialog(null); loadData(); } });
         } else {
           // シフト確定通知（全従業員）
-          fetch(PUSH_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              type: "shift_confirmed",
-              payload: {
-                company_id: COMPANY_ID,
-                target_month: targetMonth,
-              },
-            }),
-          }).catch(() => {});
+          notifyPush("shift_confirmed", {
+            company_id: COMPANY_ID,
+            target_month: targetMonth,
+          });
           setDialog({ message: `${upserts.length}件の公休を登録し、シフトを確定しました。`, mode: "alert", onOk: () => { setDialog(null); loadData(); } });
         }
       },
@@ -908,17 +891,11 @@ export default function ShiftSub({ employee, onBadgeRefresh }: { employee: any; 
       updated_at: new Date().toISOString(),
     }).eq("id", req.id);
     const kindLabel = req.type === "yukyu" ? "有給" : "公休";
-    fetch(PUSH_URL, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type: "request_processed",
-        payload: {
-          employee_id: req.employee_id,
-          category: `${kindLabel}申請`,
-          status: "承認",
-        },
-      }),
-    }).catch(() => {});
+    notifyPush("request_processed", {
+      employee_id: req.employee_id,
+      category: `${kindLabel}申請`,
+      status: "承認",
+    });
     loadData();
     onBadgeRefresh?.();
   };
@@ -998,17 +975,11 @@ export default function ShiftSub({ employee, onBadgeRefresh }: { employee: any; 
       await supabase.from("leave_requests").delete().eq("id", cancelRequestId);
     }
 
-    fetch(PUSH_URL, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type: "request_processed",
-        payload: {
-          employee_id,
-          category: "有給取消",
-          status: "承認",
-        },
-      }),
-    }).catch(() => {});
+    notifyPush("request_processed", {
+      employee_id,
+      category: "有給取消",
+      status: "承認",
+    });
     loadData();
     onBadgeRefresh?.();
   };
@@ -1034,19 +1005,13 @@ export default function ShiftSub({ employee, onBadgeRefresh }: { employee: any; 
         return;
       }
       if (req) {
-        fetch(PUSH_URL, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "shift_returned",
-            payload: {
-              company_id: COMPANY_ID,
-              employee_id: req.employee_id,
-              attendance_date: req.attendance_date,
-              leave_type: req.type,
-              reject_reason: yukyuReturnInput.reason.trim(),
-            },
-          }),
-        }).catch(() => {});
+        notifyPush("shift_returned", {
+          company_id: COMPANY_ID,
+          employee_id: req.employee_id,
+          attendance_date: req.attendance_date,
+          leave_type: req.type,
+          reject_reason: yukyuReturnInput.reason.trim(),
+        });
       }
       setYukyuReturnInput(null);
       loadData();

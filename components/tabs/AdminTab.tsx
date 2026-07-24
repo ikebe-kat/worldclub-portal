@@ -83,7 +83,7 @@ const InlineBreakCell = ({ row, isPart, myCode, onSaved, pad }: { row: AttRow; i
   );
 };
 
-const PUSH_URL = "https://pktqlbpdjemmomfanvgt.supabase.co/functions/v1/send-push";
+import { notifyPush } from "@/lib/notifyPush";
 const DOW = ["日","月","火","水","木","金","土"];
 const fmTime = (t: string | null) => t ? t.slice(0,5) : "—";
 const fmHours = (n: number) => { const h = Math.floor(Math.abs(n) / 60); const m = Math.abs(n) % 60; return `${n < 0 ? "-" : ""}${h}:${String(Math.round(m)).padStart(2,"0")}`; };
@@ -1148,10 +1148,7 @@ const RequestsSub = ({ employee, categoryFilter }: { employee: any; categoryFilt
       await q;
     }
     if (!error) {
-      fetch(PUSH_URL, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "wc_request_processed", payload: { company_id: employee.company_id, employee_id: req.employee_id, category: req.category, status: newStatus } }),
-      }).catch(() => {});
+      notifyPush("wc_request_processed", { company_id: employee.company_id, employee_id: req.employee_id, category: req.category, status: newStatus });
     }
     setProcessing(null);
     if (error) { setDialogState({ message: "処理に失敗しました", mode: "alert", onOk: () => setDialogState(null) }); }

@@ -15,7 +15,7 @@ import {
   type PeriodYM,
 } from "@/lib/shiftPeriod";
 
-const PUSH_URL = "https://pktqlbpdjemmomfanvgt.supabase.co/functions/v1/send-push";
+import { notifyPush } from "@/lib/notifyPush";
 
 /* ── 小部品 ── */
 const SC = ({ l, v, u, c }: { l: string; v: string | number; u?: string; c?: string }) => (
@@ -230,7 +230,7 @@ const ShiftWishView = ({ employee }: { employee: any }) => {
     const now = Date.now();
     if (now - lastOgawaNotifyRef.current > 3000) {
       lastOgawaNotifyRef.current = now;
-      fetch(PUSH_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "wc_leave_request", payload: { company_id: employee.company_id, employee_name: employee.full_name, reason: "シフト希望提出", attendance_date: targetMonthStr } }) }).catch(() => {});
+      notifyPush("wc_leave_request", { company_id: employee.company_id, employee_name: employee.full_name, reason: "シフト希望提出", attendance_date: targetMonthStr });
     }
   };
 
@@ -763,10 +763,7 @@ export default function AttendanceTab({ employee }: { employee: any }) {
       category: "残業申請", detail: `${modalDay.dateStr} 残業申請\n${overtimeReason.trim()}`, status: "未処理",
     });
     if (crErr) { console.error("change_requests insert failed:", crErr); showAlert("残業申請は登録しましたが、管理者への通知に失敗しました: " + crErr.message); }
-    fetch(PUSH_URL, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "wc_leave_request", payload: { company_id: employee.company_id, employee_name: employee.full_name, reason: "残業申請", attendance_date: modalDay.dateStr } }),
-    }).catch(() => {});
+    notifyPush("wc_leave_request", { company_id: employee.company_id, employee_name: employee.full_name, reason: "残業申請", attendance_date: modalDay.dateStr });
     setModalDay(null); loadData();
   };
 
@@ -849,10 +846,7 @@ export default function AttendanceTab({ employee }: { employee: any }) {
         detail: `${modalDay.dateStr} ${previewReason}${note ? "\n" + note : ""}`, status: "未処理",
       });
       if (crErr) { console.error("change_requests insert failed:", crErr); showAlert("申請は登録しましたが、管理者への通知に失敗しました: " + crErr.message); }
-      fetch(PUSH_URL, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "wc_leave_request", payload: { company_id: employee.company_id, employee_name: employee.full_name, reason: previewReason, attendance_date: modalDay.dateStr } }),
-      }).catch(() => {});
+      notifyPush("wc_leave_request", { company_id: employee.company_id, employee_name: employee.full_name, reason: previewReason, attendance_date: modalDay.dateStr });
       setModalDay(null); loadData();
       return;
     }
@@ -871,10 +865,7 @@ export default function AttendanceTab({ employee }: { employee: any }) {
         category: reqCat, detail: `${modalDay.dateStr} ${previewReason}${note ? "\n" + note : ""}`, status: "未処理",
       });
       if (crErr) { console.error("change_requests insert failed:", crErr); showAlert("申請は登録しましたが、管理者への通知に失敗しました: " + crErr.message); }
-      fetch(PUSH_URL, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "wc_leave_request", payload: { company_id: employee.company_id, employee_name: employee.full_name, reason: previewReason, attendance_date: modalDay.dateStr } }),
-      }).catch(() => {});
+      notifyPush("wc_leave_request", { company_id: employee.company_id, employee_name: employee.full_name, reason: previewReason, attendance_date: modalDay.dateStr });
       setModalDay(null); loadData();
     }
     else { showAlert("登録に失敗しました: " + error.message); }
@@ -917,10 +908,7 @@ export default function AttendanceTab({ employee }: { employee: any }) {
         category: "有給取消申請",
         detail: `${modalDay.dateStr} ${originalReason} の取消申請`, status: "未処理",
       });
-      fetch(PUSH_URL, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "wc_leave_request", payload: { company_id: employee.company_id, employee_name: employee.full_name, reason: `有給取消申請（${originalReason}）`, attendance_date: modalDay.dateStr } }),
-      }).catch(() => {});
+      notifyPush("wc_leave_request", { company_id: employee.company_id, employee_name: employee.full_name, reason: `有給取消申請（${originalReason}）`, attendance_date: modalDay.dateStr });
       setModalDay(null); loadData();
     }, "申請", "#DC2626");
   };
@@ -945,10 +933,7 @@ export default function AttendanceTab({ employee }: { employee: any }) {
         setModalDay(null); loadData();
         if (modalDay.reason && (modalDay.reason.includes("有給") || modalDay.reason.includes("希望休") || modalDay.reason.includes("代休") || modalDay.reason.includes("出張"))) {
           const storeName = employee.store_name || "";
-          fetch("https://pktqlbpdjemmomfanvgt.supabase.co/functions/v1/send-push", {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ type: "attendance_reason_cleared", payload: { company_id: employee.company_id, employee_id: employee.id, employee_name: employee.full_name, old_reason: modalDay.reason, attendance_date: modalDay.dateStr, store_name: storeName } }),
-          }).catch(() => {});
+          notifyPush("attendance_reason_cleared", { company_id: employee.company_id, employee_id: employee.id, employee_name: employee.full_name, old_reason: modalDay.reason, attendance_date: modalDay.dateStr, store_name: storeName });
         }
       }
       else { showAlert("取消に失敗しました: " + error.message); }
