@@ -9,9 +9,6 @@ export function getPermLevel(role: string | null): PermLevel {
   if (!role) return "employee";
   if (role === "全店") return "super";
   if (role === "店長" || role === "部門長") return "admin";
-  // TODO: DB移行後に削除 — 旧role値の互換判定
-  if (role === "super" || role.startsWith("全店")) return "super";
-  if (role === "admin" || role.includes("店長") || role.includes("経理") || role.includes("鈑金")) return "admin";
   return "employee";
 }
 
