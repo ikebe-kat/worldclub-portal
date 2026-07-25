@@ -42,6 +42,10 @@ export const PALETTE = [
 export const DOW = ["日", "月", "火", "水", "木", "金", "土"] as const;
 
 
+/** 権限ロール（DB値の正規化） */
+export const ROLES = ["全店", "店長", "部門長", "人事限定", "一般"] as const;
+export type Role = (typeof ROLES)[number];
+
 /** 分 → "H:MM" 形式 */
 export const fmtMin = (m: number): string =>
   `${Math.floor(Math.abs(m) / 60)}:${String(Math.abs(m) % 60).padStart(2, "0")}`;

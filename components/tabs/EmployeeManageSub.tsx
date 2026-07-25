@@ -1,6 +1,6 @@
 ﻿"use client";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { T } from "@/lib/constants";
+import { T, ROLES } from "@/lib/constants";
 import Dialog from "@/components/ui/Dialog";
 import { supabase } from "@/lib/supabase";
 import NyushaSheetExport from "@/components/tabs/NyushaSheetExport";
@@ -14,7 +14,6 @@ const COMPANY_ID = "c2d368f0-aa9b-4f70-b082-43ec07723d6c";
 const EMPLOYMENT_TYPES = ["代表取締役", "正社員", "パート", "特定技能", "技能実習"] as const;
 const HOLIDAY_CALENDARS = ["全員共通"] as const;
 const WORK_PATTERNS = ["09:30-18:00","09:30-17:30","09:30-17:00","10:00-17:30","09:30-16:30"] as const;
-const ROLES = ["全店（代表）","全店（専務）","全店（人事）","全店（本部長）","八代店長","健軍店長","鈑金塗装部","一般"] as const;
 const GENDERS = ["男性", "女性"] as const;
 const BANK_TYPES = ["普通", "当座"] as const;
 const DOC_CATEGORIES = ["履歴書", "免許証", "資格証明書", "契約書", "その他"] as const;
