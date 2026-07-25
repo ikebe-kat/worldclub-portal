@@ -179,7 +179,6 @@ const ResignModal = ({ emp, onClose, onSaved }: { emp: EmpRow; onClose: () => vo
     setSaving(true);
     const { error } = await supabase.from("employees").update({ is_active: false, resigned_at: resignDate, updated_at: new Date().toISOString() }).eq("id", emp.id);
     if (error) { setSaving(false); onSaved("退職処理に失敗しました: " + error.message); return; }
-    await supabase.from("push_subscriptions").delete().eq("employee_id", emp.id);
     setSaving(false);
     onSaved(`${emp.full_name}さんの退職処理が完了しました`); onClose();
   };

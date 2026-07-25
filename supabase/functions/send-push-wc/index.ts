@@ -828,7 +828,8 @@ serve(async (req) => {
     for (const t of targets) {
       const { data: subs } = await sb.from("push_subscriptions")
         .select("endpoint, p256dh, auth")
-        .eq("employee_id", t.employee_id);
+        .eq("employee_id", t.employee_id)
+        .is("dead_at", null);
 
       for (const sub of (subs || [])) {
         sendJobs.push(
@@ -836,8 +837,9 @@ serve(async (req) => {
             { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
             JSON.stringify({ title: t.title, body: t.body, tag: t.tag, url: t.url })
           ).catch(async (err: any) => {
-            if (err.statusCode === 410) {
-              await sb.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
+            // 410 Gone / 404 Not Found のみ dead 判定。500・429・タイムアウト等では絶対に立てない
+            if (err.statusCode === 410 || err.statusCode === 404) {
+              await sb.from("push_subscriptions").update({ dead_at: new Date().toISOString() }).eq("endpoint", sub.endpoint);
             }
             throw err;
           })

@@ -1,5 +1,3 @@
-import { supabase } from "@/lib/supabase";
-
 const VAPID_PUBLIC_KEY = "BBIYaJqhRjCkTBbDL_90GDdJ_WTo7n4GDS9-7wOcTShpqjw5ym6rMt1rYMDCDilFidTHuv2y1WSBwiEIPZAq99Q";
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
@@ -11,7 +9,36 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return outputArray;
 }
 
-/** Service Worker登録 + プッシュ購読 + Supabase保存 */
+export function isIosNonPwa(): boolean {
+  const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const isPwa = window.matchMedia?.("(display-mode: standalone)")?.matches ?? false;
+  return isIos && !isPwa;
+}
+
+async function callPushSubscribe(
+  employeeId: string,
+  endpoint: string,
+  p256dh: string,
+  auth: string,
+): Promise<{ success?: boolean; stale?: boolean; error?: string }> {
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const res = await fetch(`${base}/functions/v1/push-subscribe`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ employee_id: employeeId, endpoint, p256dh, auth }),
+  });
+  return res.json();
+}
+
+async function freshSubscribe(reg: ServiceWorkerRegistration): Promise<PushSubscription> {
+  const key = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+  return reg.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: key.buffer as ArrayBuffer,
+  });
+}
+
+/** Service Worker登録 + プッシュ購読 + DB保存 */
 export async function registerAndSubscribe(employeeId: string): Promise<boolean> {
   try {
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
@@ -19,37 +46,41 @@ export async function registerAndSubscribe(employeeId: string): Promise<boolean>
       return false;
     }
 
-    // Service Worker 登録
     const reg = await navigator.serviceWorker.register("/sw.js");
     await navigator.serviceWorker.ready;
 
-    // 既存の購読があるか確認
     let subscription = await reg.pushManager.getSubscription();
-
     if (!subscription) {
-      // 新規購読
-      const key = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
-      subscription = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: key.buffer as ArrayBuffer,
-      });
+      subscription = await freshSubscribe(reg);
     }
 
-    // Supabaseに保存
     const subJson = subscription.toJSON();
-    const { error } = await supabase.from("push_subscriptions").upsert(
-      {
-        employee_id: employeeId,
-        endpoint: subJson.endpoint,
-        p256dh: subJson.keys?.p256dh || "",
-        auth: subJson.keys?.auth || "",
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "employee_id,endpoint" }
+    const result = await callPushSubscribe(
+      employeeId,
+      subJson.endpoint || "",
+      subJson.keys?.p256dh || "",
+      subJson.keys?.auth || "",
     );
 
-    if (error) {
-      console.error("Failed to save push subscription:", error);
+    if (result.stale) {
+      try { await subscription.unsubscribe(); } catch {}
+      const newSub = await freshSubscribe(reg);
+      const newJson = newSub.toJSON();
+      const retry = await callPushSubscribe(
+        employeeId,
+        newJson.endpoint || "",
+        newJson.keys?.p256dh || "",
+        newJson.keys?.auth || "",
+      );
+      if (retry.error) {
+        console.error("Push subscription retry failed:", retry.error);
+        return false;
+      }
+      return true;
+    }
+
+    if (result.error) {
+      console.error("Push subscription failed:", result.error);
       return false;
     }
     return true;
