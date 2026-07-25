@@ -41,6 +41,17 @@ export const PALETTE = [
 /** 曜日 */
 export const DOW = ["日", "月", "火", "水", "木", "金", "土"] as const;
 
+/** カレンダーグループ（通知送り分け単位） */
+export const CAL_GROUPS = [
+  { id: "all",  label: "全体" },
+  { id: "jimu", label: "業務部" },
+] as const;
+
+export type CalGroupId = (typeof CAL_GROUPS)[number]["id"];
+
+/** 店舗IDからラベルを返すユーティリティ */
+export const storeLabel = (id: string): string =>
+  CAL_GROUPS.find((g) => g.id === id)?.label ?? id;
 
 /** 分 → "H:MM" 形式 */
 export const fmtMin = (m: number): string =>
